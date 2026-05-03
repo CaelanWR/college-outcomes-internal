@@ -83,6 +83,7 @@ def _write_query_dataset(sf_client, query: str, root: Path, partition_cols: list
                 partition_cols=partition_cols,
                 compression="snappy",
                 basename_template=f"part-{batch_count:05d}-{{i}}.parquet",
+                max_partitions=8192,
             )
     finally:
         cur.close()
