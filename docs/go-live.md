@@ -57,13 +57,15 @@ The workflow at `.github/workflows/pages.yml` deploys the `site/` folder.
 
 ## Step 4: Decide Access Control
 
-For internal-only access, use one of:
+For internal-only access, do not use a client-side JavaScript password. It is not real security because the frontend code is public to anyone who can load the page.
+
+Use one of:
 
 - GitHub Enterprise private Pages, if enabled for `opencareer`.
-- Cloudflare Access in front of the frontend and API.
+- Cloudflare Access in front of the frontend and API. This is the recommended path if private GitHub Pages is unavailable.
 - Vercel/Render/Fly with organization SSO.
 
-If private Pages is not available, a private GitHub repo can still publish a public Pages site. Do not put sensitive data in that case.
+If private Pages is not available, a private GitHub repo can still publish a public Pages site. Do not put sensitive data in that case. The API and data store must still be private.
 
 ## Step 5: Deploy The API
 
@@ -90,7 +92,17 @@ Set:
 ```text
 OUTCOMES_PARQUET_ROOT=/mounted/path/to/platform_parquet/base_fact
 SUPPRESSION_THRESHOLD=25
+OUTCOMES_APP_PASSWORD=<long random password>
+OUTCOMES_ALLOWED_ORIGINS=https://YOUR_FRONTEND_DOMAIN
 ```
+
+`OUTCOMES_APP_PASSWORD` is a fallback API password guard. It expects clients to send:
+
+```text
+X-Outcomes-Password: <password>
+```
+
+This is acceptable only over HTTPS and only as a stopgap. Prefer SSO or Cloudflare Access for the actual internal rollout.
 
 ## Step 6: Put Data Somewhere Safe
 
@@ -114,4 +126,3 @@ The frontend should not directly expose `base_fact`.
 - No `origin` remote is configured.
 - The local shell currently cannot resolve `github.com` without network approval.
 - The GitHub connector can see `opencareer`, but does not expose repository creation.
-

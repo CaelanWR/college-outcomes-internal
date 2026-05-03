@@ -1,17 +1,34 @@
 from __future__ import annotations
 
+import hmac
 import os
 from typing import Any
 
 import duckdb
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 
 DATA_ROOT = os.environ.get("OUTCOMES_PARQUET_ROOT", "./data/parquet")
 SUPPRESSION_THRESHOLD = int(os.environ.get("SUPPRESSION_THRESHOLD", "25"))
+APP_PASSWORD = os.environ.get("OUTCOMES_APP_PASSWORD")
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("OUTCOMES_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
 
 app = FastAPI(title="College Outcomes API")
+
+if ALLOWED_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=ALLOWED_ORIGINS,
+        allow_credentials=False,
+        allow_methods=["GET", "POST"],
+        allow_headers=["*"],
+    )
 
 
 class DemographicFilters(BaseModel):
@@ -34,6 +51,18 @@ class QueryRequest(BaseModel):
     demographics: DemographicFilters = Field(default_factory=DemographicFilters)
     postgrad: PostgradFilters = Field(default_factory=PostgradFilters)
     tabs: list[str] = Field(default_factory=lambda: ["overview"])
+
+
+def require_internal_password(x_outcomes_password: str | None = Header(default=None)) -> None:
+    """Fallback API password guard.
+
+    Prefer real SSO or network-level access control in production. This protects
+    the data API when a stronger gate is not available.
+    """
+    if not APP_PASSWORD:
+        return
+    if not x_outcomes_password or not hmac.compare_digest(x_outcomes_password, APP_PASSWORD):
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 def _connect() -> duckdb.DuckDBPyConnection:
@@ -85,7 +114,7 @@ def health() -> dict[str, str]:
 
 
 @app.post("/api/query")
-def query(filters: QueryRequest) -> dict[str, Any]:
+def query(filters: QueryRequest, _: None = Depends(require_internal_password)) -> dict[str, Any]:
     where_sql, params = _where(filters)
     path = os.path.join(DATA_ROOT, "**", "*.parquet")
 
@@ -117,4 +146,3 @@ def query(filters: QueryRequest) -> dict[str, Any]:
         },
         "overview": rows,
     }
-
