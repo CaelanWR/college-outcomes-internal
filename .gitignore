@@ -10,9 +10,9 @@ __pycache__/
 # Keep generated/raw data out of GitHub. Publish data to private object storage
 # or serve it through the API instead.
 site/school_outcomes_data/
+site/school_outcomes_data
 site/data/
 data/
 *.parquet
 *.duckdb
 *.db
-

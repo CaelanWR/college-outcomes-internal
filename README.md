@@ -51,3 +51,17 @@ http://localhost:8124/?data_url=http://localhost:8125/school_outcomes_data/
 
 Do not commit raw Revelio, row-level alumni data, or large generated data folders. The API should only return aggregate chart data. The `.gitignore` intentionally excludes data folders and Parquet/database files.
 
+## New Platform Precompute
+
+The Snowflake notebook now has a final cell, `CELL 13: API-ready platform Parquet export`, that writes:
+
+```text
+OUT_DIR/platform_parquet/base_fact/
+OUT_DIR/platform_parquet/current_students_fact/
+OUT_DIR/platform_parquet/aggregate_facts/
+OUT_DIR/platform_parquet/platform_manifest.json
+```
+
+The base fact is partitioned by `unitid`, `degree`, `grad_year`, and `horizon`, and includes hashed `person_key`, demographics, postgrad filters, employer flags, position weights, IPEDS calibration weights, and `final_weight`.
+
+The `early_2025` horizon is included as a partial earnings view. Do not label it as a complete 1-year outcome.
