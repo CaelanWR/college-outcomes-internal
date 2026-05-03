@@ -91,6 +91,34 @@ def _write_query_dataset(sf_client, query: str, root: Path, partition_cols: list
     return {"rows": row_count, "batches": batch_count, "partition_cols": partition_cols}
 
 
+def _write_query_file_parts(sf_client, query: str, root: Path) -> dict:
+    """Execute a Snowflake query and write one flat Parquet file per batch.
+
+    This is intentionally not hive-partitioned. Some download tools handle a
+    flat folder of part files more reliably than deeply nested partition trees.
+    DuckDB can still query the folder with a recursive glob.
+    """
+    _clean_dir(root)
+    conn = sf_client.connect()
+    cur = conn.cursor()
+    row_count = 0
+    batch_count = 0
+    try:
+        cur.execute(query)
+        for batch in cur.fetch_pandas_batches():
+            df = _normalize_platform_df(batch)
+            if df.empty:
+                continue
+            batch_count += 1
+            row_count += len(df)
+            target = root / f"part-{batch_count:05d}.parquet"
+            _write_df_parquet(df, target)
+    finally:
+        cur.close()
+        conn.close()
+    return {"rows": row_count, "batches": batch_count, "partition_cols": []}
+
+
 def _copy_aggregate_facts(out_dir: Path, aggregate_dir: Path) -> dict:
     """Copy existing current-demo facts into the platform bundle as Parquet."""
     _clean_dir(aggregate_dir)
@@ -474,19 +502,19 @@ def run_platform_parquet_export(platform_out_dir: Path | None = None) -> dict:
         cur.close()
         conn.close()
 
-    base_info = _write_query_dataset(
+    base_query = f"SELECT * FROM {SCRATCH}.SCHOOL_OUTCOMES_PLATFORM_BASE"
+    base_info = _write_query_file_parts(
         sfClient,
-        f"SELECT * FROM {SCRATCH}.SCHOOL_OUTCOMES_PLATFORM_BASE",
+        base_query,
         platform_dir / "base_fact",
-        ["unitid", "degree", "grad_year", "horizon"],
     )
     print(f"  base_fact: {base_info['rows']:,} rows")
 
-    current_students_info = _write_query_dataset(
+    current_students_query = _current_students_sql()
+    current_students_info = _write_query_file_parts(
         sfClient,
-        _current_students_sql(),
+        current_students_query,
         platform_dir / "current_students_fact",
-        ["unitid", "grad_year"],
     )
     print(f"  current_students_fact: {current_students_info['rows']:,} rows")
 
