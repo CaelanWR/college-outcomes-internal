@@ -39,6 +39,20 @@ If the data is not inside `site/school_outcomes_data`, pass a data URL:
 http://localhost:8124/?data_url=http://localhost:8125/school_outcomes_data/
 ```
 
+## Local API Smoke Test
+
+After downloading `platform_parquet`, install dependencies and run the API:
+
+```bash
+cd /Users/caelan/Downloads/Untitled/college_outcomes_platform
+python3 -m venv .venv
+.venv/bin/pip install -r api/requirements.txt
+OUTCOMES_PARQUET_ROOT=/Users/caelan/Downloads/school_outcomes_data_v4_3/platform_parquet/base_fact \
+  .venv/bin/uvicorn api.app:app --reload --port 8000
+```
+
+The validated local bundle currently has `6,086,227` base rows and `171,390` current-student rows.
+
 ## GitHub Pages Deployment
 
 1. Create a new private GitHub repository, for example `college-outcomes-internal`.

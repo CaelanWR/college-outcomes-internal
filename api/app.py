@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hmac
+import math
 import os
 from typing import Any, Optional
 
@@ -71,6 +72,27 @@ def _connect() -> duckdb.DuckDBPyConnection:
     return con
 
 
+def _json_safe(value: Any) -> Any:
+    if value is None:
+        return None
+    try:
+        if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+            return None
+    except TypeError:
+        pass
+    return value
+
+
+def _records_from_query(con: duckdb.DuckDBPyConnection, sql: str, params: list[Any]) -> list[dict[str, Any]]:
+    cols = None
+    out: list[dict[str, Any]] = []
+    result = con.execute(sql, params)
+    cols = [desc[0] for desc in result.description]
+    for row in result.fetchall():
+        out.append({col: _json_safe(value) for col, value in zip(cols, row)})
+    return out
+
+
 def _where(filters: QueryRequest) -> tuple[str, list[Any]]:
     clauses: list[str] = []
     params: list[Any] = []
@@ -124,7 +146,7 @@ def query(filters: QueryRequest, _: None = Depends(require_internal_password)) -
           school_name,
           grad_year,
           SUM(final_weight) AS alumni,
-          SUM(final_weight * salary) / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS weighted_median_proxy,
+          SUM(final_weight * salary) / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS avg_salary,
           SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight
         FROM read_parquet(?)
         {where_sql}
@@ -135,7 +157,7 @@ def query(filters: QueryRequest, _: None = Depends(require_internal_password)) -
 
     con = _connect()
     try:
-      rows = con.execute(sql, [path, *params, SUPPRESSION_THRESHOLD]).fetchdf().to_dict(orient="records")
+      rows = _records_from_query(con, sql, [path, *params, SUPPRESSION_THRESHOLD])
     finally:
       con.close()
 
