@@ -96,6 +96,7 @@ class QueryRequest(BaseModel):
     demographics: DemographicFilters = Field(default_factory=DemographicFilters)
     postgrad: PostgradFilters = Field(default_factory=PostgradFilters)
     include_current_students: bool = False
+    compare_mode: bool = False
     selected_employer: Optional[str] = None
     selected_postgrad_degree: Optional[str] = None
     top_n: int = 12
@@ -558,6 +559,50 @@ def _salary_trend_by_school(con: duckdb.DuckDBPyConnection) -> list[dict[str, An
         ORDER BY school_name, grad_year
         """,
         [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+    )
+
+
+def _alumni_trend_by_school(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    where_sql, params = _where(filters, include_horizon=False)
+    return _records_from_query(
+        con,
+        f"""
+        WITH deduped AS (
+          SELECT *
+          FROM (
+            SELECT
+              *,
+              ROW_NUMBER() OVER (
+                PARTITION BY person_key, unitid, degree, cip2, cip4, cip6, grad_year
+                ORDER BY CASE horizon
+                  WHEN '1yr' THEN 1
+                  WHEN '5yr' THEN 2
+                  WHEN '10yr' THEN 3
+                  WHEN 'early_2025' THEN 4
+                  ELSE 5
+                END
+              ) AS horizon_rank
+            FROM read_parquet(?)
+            {where_sql}
+          )
+          WHERE horizon_rank = 1
+        ),
+        by_year AS (
+          SELECT
+            unitid,
+            MAX(school_name) AS school_name,
+            grad_year,
+            COUNT(*) AS alumni
+          FROM deduped
+          WHERE grad_year IS NOT NULL
+          GROUP BY unitid, grad_year
+        )
+        SELECT unitid, school_name, grad_year, alumni
+        FROM by_year
+        WHERE alumni >= ?
+        ORDER BY school_name, grad_year
+        """,
+        [_dataset_glob("base_fact"), *params, SUPPRESSION_THRESHOLD],
     )
 
 
@@ -1230,6 +1275,7 @@ def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password
             "salary_trend": _salary_trend(con),
             "alumni_trend": _alumni_trend(con, filters),
             "salary_trend_by_school": _salary_trend_by_school(con),
+            "alumni_trend_by_school": _alumni_trend_by_school(con, filters) if filters.compare_mode else [],
             "school_comparison": _school_comparison(con),
             "top_majors": _top_majors(con, filters),
             "major_trend": _major_trend(con, filters, filters.include_current_students),

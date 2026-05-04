@@ -455,7 +455,7 @@
 
     .controls-main {
       display: grid;
-      grid-template-columns: minmax(320px, 1.5fr) minmax(180px, 0.72fr) max-content minmax(320px, 1.2fr) max-content max-content;
+      grid-template-columns: minmax(300px, 1.45fr) max-content minmax(170px, 0.7fr) max-content minmax(280px, 1.15fr) max-content max-content;
       gap: 14px 16px;
       width: 100%;
       align-items: end;
@@ -483,6 +483,7 @@
     .control-grow { flex: 1 1 320px; min-width: 280px; }
     .control-major { min-width: 280px; }
     .control-degree { min-width: 180px; }
+    .control-mode .btn { white-space: nowrap; }
     .control > select { width: 100%; }
     .control > .segmented { width: auto; }
     .control-years .segmented, .control-view .segmented { flex-wrap: nowrap; }
@@ -507,6 +508,9 @@
     }
     .advanced-grid .control { min-width: 160px; }
     .advanced-grid .control-wide { min-width: 260px; flex: 1 1 280px; }
+    .compare-only { display: none; }
+    body.compare-mode .compare-only { display: flex; }
+    body.compare-mode .tabs { display: none; }
 
     .content {
       width: auto;
@@ -623,6 +627,13 @@
         <label>School</label>
         <select id="school-select"></select>
       </div>
+      <div class="control control-mode">
+        <span class="control-label">Mode</span>
+        <span class="segmented" id="selection-toggle">
+          <button class="btn active" type="button" data-selection-mode="single">Single</button>
+          <button class="btn" type="button" data-selection-mode="compare">Compare</button>
+        </span>
+      </div>
       <div class="control control-degree">
         <label>Degree</label>
         <select id="degree-select"></select>
@@ -666,8 +677,8 @@
           <label>API</label>
           <button id="connect-btn" class="btn">Connect</button>
         </div>
-        <div class="control control-wide">
-          <label>Compare Schools</label>
+        <div class="control control-wide compare-only">
+          <label>Comparison Schools</label>
           <select id="compare-school-select" multiple></select>
         </div>
         <div class="control">
@@ -758,9 +769,11 @@
       data: null,
       tab: 'overview',
       viewMode: storage.getItem('outcomes.viewMode') || 'overtime',
+      selectionMode: storage.getItem('outcomes.selectionMode') || 'single',
       selectedEmployer: null,
       selectedPostgradDegree: null,
       loading: false,
+      pendingRefresh: null,
     };
 
     const $ = id => document.getElementById(id);
@@ -827,6 +840,7 @@
 
     function getSelectedSchools() {
       const primary = $('school-select').value ? [$('school-select').value] : [];
+      if (state.selectionMode !== 'compare') return primary;
       const compare = selectedValues($('compare-school-select'));
       return [...new Set([...primary, ...compare])].filter(Boolean);
     }
@@ -856,6 +870,7 @@
           no_further_education: noFurtherValue === '' ? null : noFurtherValue === 'true',
         },
         include_current_students: $('current-select').value === 'true',
+        compare_mode: state.selectionMode === 'compare',
         selected_employer: state.selectedEmployer,
         selected_postgrad_degree: state.selectedPostgradDegree,
         top_n: Number($('top-n-select').value || 12),
@@ -879,7 +894,14 @@
     function populateStaticControls(options) {
       const defaultSchool = options.schools.find(s => /Columbia University in the City of New York/i.test(s.name)) || options.schools[0];
       const existingPrimary = $('school-select').value || defaultSchool?.unitid || '';
-      const existingCompare = new Set(selectedValues($('compare-school-select')).map(String));
+      let savedCompare = [];
+      try {
+        savedCompare = JSON.parse(storage.getItem('outcomes.compareSchools') || '[]');
+      } catch {
+        savedCompare = [];
+      }
+      const currentCompare = selectedValues($('compare-school-select')).map(String);
+      const existingCompare = new Set((currentCompare.length ? currentCompare : savedCompare).map(String));
       populateSelect($('school-select'), options.schools, s => s.name, s => s.unitid, new Set([String(existingPrimary)]));
       populateSelect($('compare-school-select'), options.schools, s => s.name, s => s.unitid, existingCompare);
 
@@ -953,7 +975,13 @@
         setMessage('Enter the protected API URL and password, then connect.');
         return;
       }
-      if (state.loading) return;
+      if (state.loading) {
+        state.pendingRefresh = {
+          reloadOptions: Boolean(state.pendingRefresh?.reloadOptions || reloadOptions),
+          resetDrill: Boolean(state.pendingRefresh?.resetDrill || resetDrill),
+        };
+        return;
+      }
       state.loading = true;
       document.body.classList.add('loading');
       $('refresh-state')?.classList.add('is-visible');
@@ -975,6 +1003,11 @@
         state.loading = false;
         document.body.classList.remove('loading');
         $('refresh-state')?.classList.remove('is-visible');
+        if (state.pendingRefresh) {
+          const pending = state.pendingRefresh;
+          state.pendingRefresh = null;
+          refresh(pending);
+        }
       }
     }
 
@@ -992,6 +1025,10 @@
 
     function render() {
       if (!state.data) return;
+      if (state.selectionMode === 'compare') {
+        renderCompare();
+        return;
+      }
       const tab = state.tab;
       if (tab === 'overview') renderOverview();
       if (tab === 'earnings') renderEarnings();
@@ -1003,6 +1040,50 @@
       if (tab === 'coverage') renderCoverage();
     }
 
+    function renderCompare() {
+      const rows = state.data.school_comparison || [];
+      const o = state.data.overview || {};
+      if (rows.length < 2) {
+        $('content').innerHTML = [card('Comparison Mode', 'compare-empty', 12)].join('');
+        $('compare-empty').innerHTML = '<div class="empty">Pick at least one comparison school in Advanced Options.</div>';
+        return;
+      }
+
+      if (state.viewMode === 'snapshot') {
+        $('content').innerHTML = [
+          metric('Schools', num(rows.length), 3),
+          metric('Alumni', num(o.alumni), 3),
+          metric('Weighted Median Salary', money(o.median_salary), 3),
+          metric('Salary Observations', num(o.salary_weight), 3),
+          card('Median Salary by School', 'compare-salary', 6, true),
+          card('Alumni by School', 'compare-alumni', 6, true),
+          card('Further Education Rate by School', 'compare-postgrad', 6, true),
+          card('Comparison Table', 'compare-table', 6, true),
+        ].join('');
+        drawSchoolComparison('compare-salary');
+        drawSchoolAlumniComparison('compare-alumni');
+        drawSchoolFurtherEdComparison('compare-postgrad');
+        drawComparisonTable('compare-table');
+      } else {
+        $('content').innerHTML = [
+          metric('Schools', num(rows.length), 3),
+          metric('Alumni', num(o.alumni), 3),
+          metric('Weighted Median Salary', money(o.median_salary), 3),
+          metric('Salary Observations', num(o.salary_weight), 3),
+          card('Salary Trend by School', 'compare-salary-trend', 7, true),
+          card('Alumni Trend by School', 'compare-alumni-trend', 5, true),
+          card('Comparison Table', 'compare-table', 12),
+        ].join('');
+        drawSalaryTrend('compare-salary-trend', true);
+        drawTrendLines('compare-alumni-trend', state.data.alumni_trend_by_school || [], 'school_name', 'alumni', {
+          yTitle: 'Alumni',
+          hover: '%{y:,.0f}',
+          labelTransform: shortSchool,
+        });
+        drawComparisonTable('compare-table');
+      }
+    }
+
     function renderOverview() {
       const o = state.data.overview || {};
       if (state.viewMode === 'snapshot') {
@@ -1012,13 +1093,11 @@
           metric('Salary Observations', num(o.salary_weight), 4),
           card('Top Majors in Current Slice', 'overview-major-bars', 6, true),
           card('Top Career Employers', 'employer-bars', 6, true),
-          card('Median Earnings by City', 'overview-geo', 6),
-          card('School Comparison', 'school-compare', 6),
+          card('Median Earnings by City', 'overview-geo', 12),
         ].join('');
         drawTopMajorsVolume('overview-major-bars');
         drawEmployerBars('employer-bars');
         drawGeo('overview-geo', 'median_salary');
-        drawSchoolComparison('school-compare');
       } else {
         $('content').innerHTML = [
           metric('Weighted Median Salary', money(o.median_salary), 4),
@@ -1037,12 +1116,10 @@
     function renderEarnings() {
       if (state.viewMode === 'snapshot') {
         $('content').innerHTML = [
-          card('Top Majors by Median Salary', 'top-major-salary', 6, true),
-          card('School Salary Comparison', 'earn-school-compare', 6, true),
+          card('Top Majors by Median Salary', 'top-major-salary', 12, true),
           card('Current Slice Earnings Table', 'salary-table', 12),
         ].join('');
         drawMajorSalary('top-major-salary');
-        drawSchoolComparison('earn-school-compare');
         $('salary-table').innerHTML = table(['Major', 'Alumni', 'Salary observations', 'Median salary', 'Mean salary'], state.data.top_majors || [], row => [
           row.title, num(row.alumni), num(row.salary_weight), money(row.median_salary), money(row.weighted_mean_salary)
         ]);
@@ -1409,6 +1486,50 @@
       }], horizontalLayout(rows, '$'), plotConfig);
     }
 
+    function drawSchoolAlumniComparison(id) {
+      const rows = (state.data.school_comparison || []).filter(r => r.alumni).sort((a, b) => a.alumni - b.alumni);
+      if (!rows.length) return noData(id);
+      Plotly.newPlot(id, [{
+        type: 'bar',
+        orientation: 'h',
+        y: rows.map(r => shortSchool(r.school_name)),
+        x: rows.map(r => r.alumni),
+        text: rows.map(r => num(r.alumni)),
+        textposition: 'outside',
+        cliponaxis: false,
+        marker: { color: COLORS[1] },
+        hovertemplate: '%{y}<br>%{x:,.0f} alumni<extra></extra>',
+      }], horizontalLayout(rows), plotConfig);
+    }
+
+    function drawSchoolFurtherEdComparison(id) {
+      const rows = (state.data.school_comparison || []).filter(r => r.later_degree_pct !== null && r.later_degree_pct !== undefined).sort((a, b) => a.later_degree_pct - b.later_degree_pct);
+      if (!rows.length) return noData(id);
+      Plotly.newPlot(id, [{
+        type: 'bar',
+        orientation: 'h',
+        y: rows.map(r => shortSchool(r.school_name)),
+        x: rows.map(r => r.later_degree_pct),
+        text: rows.map(r => pct(r.later_degree_pct)),
+        textposition: 'outside',
+        cliponaxis: false,
+        marker: { color: COLORS[2] },
+        hovertemplate: '%{y}<br>%{x:.1f}% with later degree<extra></extra>',
+      }], horizontalLayout(rows, '%'), plotConfig);
+    }
+
+    function drawComparisonTable(id) {
+      const rows = state.data.school_comparison || [];
+      $(id).innerHTML = table(['School', 'Alumni', 'Salary obs', 'Median salary', 'Mean salary', 'Later ed'], rows, row => [
+        shortSchool(row.school_name),
+        num(row.alumni),
+        num(row.salary_weight),
+        money(row.median_salary),
+        money(row.weighted_mean_salary),
+        pct(row.later_degree_pct),
+      ]);
+    }
+
     function drawMajorSalary(id) {
       const rows = (state.data.top_majors || []).filter(r => r.median_salary).sort((a, b) => a.median_salary - b.median_salary);
       if (!rows.length) return noData(id);
@@ -1606,6 +1727,23 @@
         render();
       });
 
+      $('selection-toggle').addEventListener('click', event => {
+        const button = event.target.closest('[data-selection-mode]');
+        if (!button) return;
+        state.selectionMode = button.dataset.selectionMode;
+        storage.setItem('outcomes.selectionMode', state.selectionMode);
+        if (state.selectionMode === 'compare') {
+          $('advanced-panel').classList.add('open');
+          $('advanced-btn').textContent = 'Hide Advanced Options';
+        }
+        syncSelectionMode();
+        if (state.selectionMode === 'compare' && selectedValues($('compare-school-select')).length === 0) {
+          render();
+          return;
+        }
+        refresh({ resetDrill: true });
+      });
+
       $('horizon-toggle').addEventListener('click', event => {
         const button = event.target.closest('[data-horizon]');
         if (!button) return;
@@ -1615,7 +1753,12 @@
       });
 
       ['school-select', 'compare-school-select', 'degree-select', 'cip-level-select'].forEach(id => {
-        $(id).addEventListener('change', () => refresh({ reloadOptions: true, resetDrill: true }));
+        $(id).addEventListener('change', () => {
+          if (id === 'compare-school-select') {
+            storage.setItem('outcomes.compareSchools', JSON.stringify(selectedValues($('compare-school-select'))));
+          }
+          refresh({ reloadOptions: true, resetDrill: true });
+        });
       });
       ['horizon-select', 'from-year-select', 'to-year-select', 'major-select', 'gender-select', 'race-select', 'later-degree-filter', 'no-further-select', 'current-select', 'top-n-select'].forEach(id => {
         $(id).addEventListener('change', () => {
@@ -1640,6 +1783,13 @@
       });
     }
 
+    function syncSelectionMode() {
+      document.body.classList.toggle('compare-mode', state.selectionMode === 'compare');
+      document.querySelectorAll('[data-selection-mode]').forEach(button => {
+        button.classList.toggle('active', button.dataset.selectionMode === state.selectionMode);
+      });
+    }
+
     function syncHorizonToggle() {
       const horizon = $('horizon-select').value || '1yr';
       document.querySelectorAll('[data-horizon]').forEach(button => {
@@ -1652,6 +1802,11 @@
       $('api-password').value = storage.getItem('outcomes.apiPassword') || '';
       applyDefaultViewForTab(state.tab);
       syncViewToggle();
+      syncSelectionMode();
+      if (state.selectionMode === 'compare') {
+        $('advanced-panel').classList.add('open');
+        $('advanced-btn').textContent = 'Hide Advanced Options';
+      }
       syncHorizonToggle();
       bindEvents();
       if ($('api-url').value) connect();
