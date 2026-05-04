@@ -99,14 +99,14 @@
     }
 
     .filters {
-      grid-template-columns: minmax(290px, 1.35fr) minmax(170px, 0.72fr) minmax(160px, 0.7fr) minmax(150px, 0.62fr) minmax(115px, 0.45fr) minmax(115px, 0.45fr) minmax(300px, 1.25fr) max-content auto auto;
+      grid-template-columns: minmax(310px, 1.5fr) minmax(180px, 0.72fr) max-content minmax(320px, 1.25fr) max-content auto;
       margin-top: 0;
       align-items: end;
     }
 
     .advanced {
       display: none;
-      grid-template-columns: minmax(240px, 1.4fr) repeat(6, minmax(130px, 1fr));
+      grid-template-columns: minmax(240px, 1.4fr) repeat(7, minmax(130px, 1fr));
       gap: 12px 18px;
       margin-top: 12px;
       padding: 14px 16px;
@@ -143,6 +143,22 @@
       color: #fff;
       box-shadow: 0 8px 18px rgba(22,50,74,0.16);
     }
+
+    .refresh-state {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 40;
+      display: none;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: #16324a;
+      color: #fff;
+      font-weight: 900;
+      box-shadow: 0 12px 28px rgba(20,44,65,0.18);
+    }
+
+    .refresh-state.is-visible { display: block; }
 
     label {
       display: grid;
@@ -220,7 +236,7 @@
       box-shadow: none;
     }
 
-    .btn.active, #connect-btn, #refresh-btn {
+    .btn.active, #connect-btn {
       background: linear-gradient(135deg, #16324a 0%, #2e74d7 100%);
       color: white;
       border-color: transparent;
@@ -430,8 +446,30 @@
       <label>Degree
         <select id="degree-select"></select>
       </label>
-      <label>Horizon
-        <select id="horizon-select"></select>
+      <div class="control-field">
+        <span class="control-label">Years Out</span>
+        <span class="segmented" id="horizon-toggle">
+          <button class="btn active" type="button" data-horizon="1yr">1yr</button>
+          <button class="btn" type="button" data-horizon="5yr">5yr</button>
+          <button class="btn" type="button" data-horizon="10yr">10yr</button>
+        </span>
+      </div>
+      <label>Major
+        <select id="major-select"></select>
+      </label>
+      <div class="control-field">
+        <span class="control-label">View</span>
+        <span class="segmented" id="view-toggle">
+          <button class="btn" type="button" data-view-mode="snapshot">Snapshot</button>
+          <button class="btn active" type="button" data-view-mode="overtime">Over Time</button>
+        </span>
+      </div>
+      <button id="advanced-btn" class="btn secondary" type="button">Advanced Options</button>
+    </div>
+
+    <div id="advanced-panel" class="advanced">
+      <label>Compare Schools
+        <select id="compare-school-select" multiple></select>
       </label>
       <label>CIP Level
         <select id="cip-level-select">
@@ -446,23 +484,8 @@
       <label>To
         <select id="to-year-select"></select>
       </label>
-      <label>Major
-        <select id="major-select"></select>
-      </label>
-      <div class="control-field">
-        <span class="control-label">View</span>
-        <span class="segmented" id="view-toggle">
-          <button class="btn" type="button" data-view-mode="snapshot">Snapshot</button>
-          <button class="btn active" type="button" data-view-mode="overtime">Over Time</button>
-        </span>
-      </div>
-      <button id="refresh-btn" class="btn" type="button">Refresh</button>
-      <button id="advanced-btn" class="btn secondary" type="button">Advanced Options</button>
-    </div>
-
-    <div id="advanced-panel" class="advanced">
-      <label>Compare Schools
-        <select id="compare-school-select" multiple></select>
+      <label>Horizon Mode
+        <select id="horizon-select"></select>
       </label>
       <label>Gender
         <select id="gender-select"><option value="">All</option></select>
@@ -496,6 +519,7 @@
       </label>
     </div>
   </header>
+  <div id="refresh-state" class="refresh-state">Refreshing...</div>
 
   <main id="main">
     <nav class="tabs" id="tabs">
@@ -654,6 +678,7 @@
 
       populateSelect($('horizon-select'), options.horizons, h => h.label, h => h.value, new Set([$('horizon-select').value || '1yr']));
       if (!$('horizon-select').value) $('horizon-select').value = '1yr';
+      syncHorizonToggle();
 
       const years = options.grad_years || [];
       populateSelect($('from-year-select'), years, y => y, y => y, new Set([String($('from-year-select').value || years[0] || '')]));
@@ -720,6 +745,8 @@
       if (state.loading) return;
       state.loading = true;
       document.body.classList.add('loading');
+      $('refresh-state')?.classList.add('is-visible');
+      setStatus('', 'Refreshing');
       try {
         if (resetDrill) {
           state.selectedEmployer = null;
@@ -729,13 +756,14 @@
         state.data = await apiFetch('/api/dashboard', currentFilters());
         showContent();
         render();
-        setStatus('ok', `${state.data.meta?.data_version || 'Connected'} | ${state.data.meta?.partial_horizon ? 'partial 2025 horizon' : 'complete horizon'}`);
+        setStatus('ok', `${state.data.meta?.data_version || 'Connected'} | loaded ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}`);
       } catch (error) {
         setStatus('bad', 'Connection failed');
         setMessage(`<strong>Could not load data.</strong><br>${escapeHtml(error.message)}`, true);
       } finally {
         state.loading = false;
         document.body.classList.remove('loading');
+        $('refresh-state')?.classList.remove('is-visible');
       }
     }
 
@@ -1183,7 +1211,6 @@
 
     function bindEvents() {
       $('connect-btn').addEventListener('click', () => connect());
-      $('refresh-btn').addEventListener('click', () => refresh({ resetDrill: true }));
       $('advanced-btn').addEventListener('click', () => {
         $('advanced-panel').classList.toggle('open');
         $('advanced-btn').textContent = $('advanced-panel').classList.contains('open') ? 'Hide Advanced Options' : 'Advanced Options';
@@ -1207,11 +1234,22 @@
         render();
       });
 
+      $('horizon-toggle').addEventListener('click', event => {
+        const button = event.target.closest('[data-horizon]');
+        if (!button) return;
+        $('horizon-select').value = button.dataset.horizon;
+        syncHorizonToggle();
+        refresh({ resetDrill: true });
+      });
+
       ['school-select', 'compare-school-select', 'degree-select', 'cip-level-select'].forEach(id => {
         $(id).addEventListener('change', () => refresh({ reloadOptions: true, resetDrill: true }));
       });
       ['horizon-select', 'from-year-select', 'to-year-select', 'major-select', 'gender-select', 'race-select', 'later-degree-filter', 'no-further-select', 'current-select', 'top-n-select'].forEach(id => {
-        $(id).addEventListener('change', () => refresh({ resetDrill: true }));
+        $(id).addEventListener('change', () => {
+          if (id === 'horizon-select') syncHorizonToggle();
+          refresh({ resetDrill: true });
+        });
       });
     }
 
@@ -1230,11 +1268,19 @@
       });
     }
 
+    function syncHorizonToggle() {
+      const horizon = $('horizon-select').value || '1yr';
+      document.querySelectorAll('[data-horizon]').forEach(button => {
+        button.classList.toggle('active', button.dataset.horizon === horizon);
+      });
+    }
+
     function init() {
       $('api-url').value = storage.getItem('outcomes.apiUrl') || defaultApiUrl();
       $('api-password').value = storage.getItem('outcomes.apiPassword') || '';
       applyDefaultViewForTab(state.tab);
       syncViewToggle();
+      syncHorizonToggle();
       bindEvents();
       if ($('api-url').value) connect();
     }
