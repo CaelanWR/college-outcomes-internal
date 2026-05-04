@@ -455,10 +455,10 @@ def _overview(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
         """
         WITH cohort AS (
           SELECT
-            SUM(final_weight) AS alumni,
+            COUNT(DISTINCT person_key) AS alumni,
             COUNT(*) AS raw_rows,
-            SUM(CASE WHEN later_degree_type IS NOT NULL THEN final_weight ELSE 0 END) AS later_degree_n,
-            SUM(CASE WHEN no_further_education_flag = 1 THEN final_weight ELSE 0 END) AS no_further_n
+            COUNT(DISTINCT CASE WHEN later_degree_type IS NOT NULL THEN person_key END) AS later_degree_n,
+            COUNT(DISTINCT CASE WHEN no_further_education_flag = 1 THEN person_key END) AS no_further_n
           FROM cohort_slice
         ),
         outcomes AS (
@@ -524,7 +524,7 @@ def _alumni_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list
         con,
         """
         WITH by_year AS (
-          SELECT grad_year, SUM(final_weight) AS alumni
+          SELECT grad_year, COUNT(DISTINCT person_key) AS alumni
           FROM cohort_slice
           WHERE grad_year IS NOT NULL
           GROUP BY grad_year
@@ -581,7 +581,7 @@ def _alumni_trend_by_school(con: duckdb.DuckDBPyConnection, filters: QueryReques
             unitid,
             MAX(school_name) AS school_name,
             grad_year,
-            SUM(final_weight) AS alumni
+            COUNT(DISTINCT person_key) AS alumni
           FROM cohort_slice
           WHERE grad_year IS NOT NULL
           GROUP BY unitid, grad_year
@@ -630,8 +630,8 @@ def _school_comparison(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
           SELECT
             unitid,
             MAX(school_name) AS school_name,
-            SUM(final_weight) AS alumni,
-            SUM(CASE WHEN later_degree_type IS NOT NULL THEN final_weight ELSE 0 END) AS later_degree_n
+            COUNT(DISTINCT person_key) AS alumni,
+            COUNT(DISTINCT CASE WHEN later_degree_type IS NOT NULL THEN person_key END) AS later_degree_n
           FROM cohort_slice
           GROUP BY unitid
         ),
@@ -674,7 +674,7 @@ def _top_majors(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[d
           SELECT
             {cip_col} AS code,
             MAX(major_title) AS title,
-            SUM(final_weight) AS alumni
+            COUNT(DISTINCT person_key) AS alumni
           FROM cohort_slice
           WHERE {cip_col} IS NOT NULL
           GROUP BY {cip_col}
@@ -713,15 +713,15 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
     current_exists = include_current and _create_current_slice(con, filters)
 
     source_for_top = "current_slice" if current_exists else "cohort_slice"
-    weight_col = "final_weight"
+    weight_expr = "COUNT(DISTINCT person_key)"
     top_codes = _records_from_query(
         con,
         f"""
-        SELECT {cip_col} AS code, MAX(major_title) AS title, SUM({weight_col}) AS n
+        SELECT {cip_col} AS code, MAX(major_title) AS title, {weight_expr} AS n
         FROM {source_for_top}
         WHERE {cip_col} IS NOT NULL
         GROUP BY {cip_col}
-        HAVING SUM({weight_col}) >= ?
+        HAVING {weight_expr} >= ?
         ORDER BY n DESC
         LIMIT {limit}
         """,
@@ -736,13 +736,13 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
         con,
         f"""
         WITH by_major AS (
-          SELECT grad_year, {cip_col} AS code, MAX(major_title) AS title, SUM(final_weight) AS n
+          SELECT grad_year, {cip_col} AS code, MAX(major_title) AS title, COUNT(DISTINCT person_key) AS n
           FROM cohort_slice
           WHERE {cip_col} IN ({placeholders}) AND grad_year IS NOT NULL
           GROUP BY grad_year, {cip_col}
         ),
         totals AS (
-          SELECT grad_year, SUM(final_weight) AS total_n
+          SELECT grad_year, COUNT(DISTINCT person_key) AS total_n
           FROM cohort_slice
           WHERE grad_year IS NOT NULL
           GROUP BY grad_year
@@ -766,13 +766,13 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
             con,
             f"""
             WITH by_major AS (
-              SELECT grad_year, {cip_col} AS code, MAX(major_title) AS title, SUM(final_weight) AS n
+              SELECT grad_year, {cip_col} AS code, MAX(major_title) AS title, COUNT(DISTINCT person_key) AS n
               FROM current_slice
               WHERE {cip_col} IN ({placeholders}) AND grad_year IS NOT NULL
               GROUP BY grad_year, {cip_col}
             ),
             totals AS (
-              SELECT grad_year, SUM(final_weight) AS total_n
+              SELECT grad_year, COUNT(DISTINCT person_key) AS total_n
               FROM current_slice
               WHERE grad_year IS NOT NULL
               GROUP BY grad_year
