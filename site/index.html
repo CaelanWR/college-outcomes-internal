@@ -1456,6 +1456,7 @@
       const traces = codes.map((code, i) => {
         const historic = (trend.series || []).filter(r => r.code === code);
         const current = (trend.current_series || []).filter(r => r.code === code);
+        const currentBridge = historic.length && current.length ? [historic[historic.length - 1], ...current] : current;
         const title = (historic[0] || current[0] || {}).title || code;
         return [
           {
@@ -1472,12 +1473,15 @@
             type: 'scatter',
             mode: 'lines+markers',
             name: `${title} current`,
-            x: current.map(r => r.grad_year),
-            y: current.map(r => r.share_pct),
+            x: currentBridge.map(r => r.grad_year),
+            y: currentBridge.map(r => r.share_pct),
             line: { color: COLORS[i % COLORS.length], width: 3, dash: 'dot' },
-            marker: { size: 9, symbol: 'diamond' },
+            marker: {
+              size: currentBridge.map((_, idx) => historic.length && idx === 0 ? 0 : 9),
+              symbol: 'diamond',
+            },
             showlegend: false,
-            hovertemplate: `${title} current<br>%{x}<br>%{y:.1f}%<extra></extra>`,
+            hovertemplate: `${title}<br>Class of %{x}<br>%{y:.1f}%<extra></extra>`,
           } : null
         ].filter(Boolean);
       }).flat();
@@ -1492,7 +1496,7 @@
       Plotly.newPlot(id, traces, {
         ...layoutBase,
         margin: { ...layoutBase.margin, r: 90 },
-        yaxis: { title: 'Share of grads %', ticksuffix: '%', automargin: true },
+        yaxis: { title: trend.current_series?.length ? 'Share of class %' : 'Share of grads %', ticksuffix: '%', automargin: true },
         xaxis: { title: 'Graduation year', automargin: true, dtick: trend.current_series?.length ? 2 : 5 },
         legend: { orientation: 'h', y: 1.16 },
         shapes,
