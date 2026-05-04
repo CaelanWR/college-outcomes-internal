@@ -4,23 +4,25 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>College Outcomes Explorer</title>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="preconnect" href="https://cdn.plot.ly" />
   <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
   <style>
     :root {
-      --ink: #172a3a;
-      --muted: #66788f;
-      --line: #d9e3ee;
-      --panel: rgba(255, 255, 255, 0.92);
-      --paper: #f3f7fb;
-      --blue: #225ea8;
-      --blue-2: #3f7fca;
-      --green: #22a06b;
-      --orange: #f97316;
-      --red: #df4d5f;
-      --violet: #7c5fd6;
-      --shadow: 0 24px 70px rgba(23, 42, 58, 0.13);
-      --radius: 24px;
+      --ink: #243b53;
+      --muted: #6b7c93;
+      --line: #dde6ef;
+      --panel: #ffffff;
+      --panel-soft: #f7fafc;
+      --bg: #f3f7fb;
+      --blue: #2f80ed;
+      --blue-2: #2e74d7;
+      --green: #2bb673;
+      --gold: #f4b740;
+      --rose: #e55b7a;
+      --violet: #8b6fd6;
+      --shadow: 0 10px 30px rgba(36, 59, 83, 0.08);
+      --radius: 22px;
     }
 
     * { box-sizing: border-box; }
@@ -28,37 +30,38 @@
     body {
       margin: 0;
       color: var(--ink);
-      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background:
-        radial-gradient(circle at 15% 10%, rgba(34, 94, 168, 0.16), transparent 32rem),
-        radial-gradient(circle at 90% 8%, rgba(34, 160, 107, 0.14), transparent 30rem),
-        linear-gradient(180deg, #f8fbff 0%, #eef5fa 100%);
+      font-family: 'Source Sans 3', ui-sans-serif, system-ui, sans-serif;
+      background: radial-gradient(circle at top left, rgba(46,116,215,0.08), transparent 28%),
+        radial-gradient(circle at top right, rgba(33,166,117,0.08), transparent 24%),
+        linear-gradient(180deg, #f4f8fb 0%, #edf3f8 100%);
       min-height: 100vh;
     }
 
     header {
-      padding: 28px 4vw 18px;
-      border-bottom: 1px solid rgba(217, 227, 238, 0.8);
-      background: rgba(255, 255, 255, 0.74);
-      backdrop-filter: blur(16px);
+      padding: 14px 22px 16px;
+      border-bottom: 1px solid rgba(22,50,74,0.08);
+      background: rgba(255,255,255,0.86);
+      backdrop-filter: blur(18px);
       position: sticky;
       top: 0;
       z-index: 20;
+      box-shadow: 0 12px 32px rgba(20,44,65,0.08);
     }
 
     .topline {
       display: flex;
-      align-items: flex-end;
+      align-items: center;
       justify-content: space-between;
-      gap: 24px;
-      margin-bottom: 18px;
+      gap: 16px;
+      margin-bottom: 10px;
     }
 
     h1 {
       margin: 0;
-      font-size: clamp(30px, 4vw, 54px);
-      letter-spacing: -0.055em;
-      line-height: 0.95;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      font-weight: 900;
     }
 
     .status {
@@ -67,7 +70,7 @@
       align-items: center;
       color: var(--muted);
       font-weight: 800;
-      font-size: 13px;
+      font-size: 12px;
       text-transform: uppercase;
       letter-spacing: 0.08em;
       white-space: nowrap;
@@ -86,33 +89,41 @@
 
     .connection, .filters {
       display: grid;
-      grid-template-columns: minmax(260px, 1.5fr) minmax(220px, 1fr) auto auto;
-      gap: 12px;
+      grid-template-columns: minmax(300px, 1.1fr) minmax(220px, 0.8fr) auto;
+      gap: 10px 12px;
       align-items: end;
     }
 
+    .connection.connected {
+      display: none;
+    }
+
     .filters {
-      grid-template-columns: minmax(260px, 1.2fr) repeat(5, minmax(130px, 0.55fr)) minmax(230px, 1fr) auto;
-      margin-top: 12px;
+      grid-template-columns: minmax(290px, 1.35fr) minmax(170px, 0.72fr) minmax(160px, 0.7fr) minmax(150px, 0.62fr) minmax(115px, 0.45fr) minmax(115px, 0.45fr) minmax(300px, 1.25fr) auto auto;
+      margin-top: 0;
       align-items: end;
     }
 
     .advanced {
       display: none;
-      grid-template-columns: repeat(6, minmax(130px, 1fr));
-      gap: 12px;
+      grid-template-columns: minmax(240px, 1.4fr) repeat(6, minmax(130px, 1fr));
+      gap: 12px 18px;
       margin-top: 12px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel-soft);
     }
 
     .advanced.open { display: grid; }
 
     label {
       display: grid;
-      gap: 7px;
-      color: #63748b;
-      font-size: 12px;
-      font-weight: 900;
-      letter-spacing: 0.08em;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 0.76rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
       text-transform: uppercase;
     }
 
@@ -122,79 +133,88 @@
 
     input, select {
       width: 100%;
-      min-height: 48px;
+      min-height: 40px;
       border: 1px solid var(--line);
-      border-radius: 16px;
-      background: rgba(255, 255, 255, 0.78);
+      border-radius: 12px;
+      background: rgba(245,248,252,0.96);
       color: var(--ink);
-      padding: 10px 14px;
+      padding: 8px 12px;
       outline: none;
-      font-weight: 750;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+      font-weight: 700;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.85);
     }
 
     select[multiple] {
-      min-height: 118px;
-      padding: 10px;
+      min-height: 72px;
+      padding: 6px 10px;
     }
 
     input:focus, select:focus {
-      border-color: var(--blue-2);
-      box-shadow: 0 0 0 4px rgba(63, 127, 202, 0.13);
+      border-color: rgba(39,76,119,0.28);
+      box-shadow: 0 8px 18px rgba(20,44,65,0.08), inset 0 1px 0 rgba(255,255,255,0.92);
     }
 
     .btn {
-      min-height: 48px;
-      border: 0;
-      border-radius: 16px;
-      padding: 0 18px;
-      color: white;
-      background: linear-gradient(135deg, var(--blue), #143a69);
-      font-weight: 950;
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 8px 12px;
+      color: var(--ink);
+      background: rgba(245,248,252,0.96);
+      font-weight: 800;
       cursor: pointer;
-      box-shadow: 0 12px 32px rgba(34, 94, 168, 0.22);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.85);
       white-space: nowrap;
     }
 
+    .btn:hover, select:hover, input:hover {
+      border-color: rgba(39,76,119,0.24);
+      box-shadow: 0 8px 18px rgba(20,44,65,0.08), inset 0 1px 0 rgba(255,255,255,0.92);
+    }
+
     .btn.secondary {
-      background: rgba(255, 255, 255, 0.82);
+      background: rgba(255,255,255,0.9);
       color: var(--ink);
       border: 1px solid var(--line);
       box-shadow: none;
     }
 
-    .btn.active {
-      background: linear-gradient(135deg, var(--green), #167450);
+    .btn.active, #connect-btn, #refresh-btn {
+      background: linear-gradient(135deg, #16324a 0%, #2e74d7 100%);
       color: white;
+      border-color: transparent;
+      box-shadow: 0 10px 20px rgba(22,50,74,0.16);
     }
 
     main {
-      width: min(1840px, 96vw);
-      margin: 24px auto 64px;
+      width: min(1680px, calc(100vw - 44px));
+      margin: 14px auto 44px;
     }
 
     .tabs {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
-      margin: 0 0 18px;
+      gap: 8px;
+      margin: 0 0 14px;
+      overflow-x: auto;
     }
 
     .tab {
-      border: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.8);
+      border: 1px solid transparent;
+      background: rgba(255,255,255,0.62);
       border-radius: 999px;
-      padding: 12px 18px;
-      color: #52667e;
-      font-weight: 950;
+      padding: 10px 16px;
+      color: var(--muted);
+      font-weight: 800;
       cursor: pointer;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.85);
     }
 
     .tab.active {
       color: white;
       border-color: transparent;
-      background: linear-gradient(135deg, var(--blue), #173f70);
-      box-shadow: 0 14px 34px rgba(34, 94, 168, 0.18);
+      background: linear-gradient(135deg, #16324a 0%, #2e74d7 100%);
+      box-shadow: none;
     }
 
     .grid {
@@ -204,39 +224,41 @@
     }
 
     .card, .metric {
-      background: var(--panel);
-      border: 1px solid rgba(217, 227, 238, 0.9);
+      background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(247,250,252,0.94));
+      border: 1px solid rgba(22,50,74,0.08);
       border-radius: var(--radius);
-      box-shadow: var(--shadow);
+      box-shadow: 0 12px 28px rgba(20,44,65,0.06);
     }
 
     .metric {
-      padding: 24px;
-      min-height: 116px;
+      padding: 18px;
+      min-height: 94px;
       display: grid;
       align-content: center;
-      gap: 8px;
+      gap: 4px;
     }
 
     .metric strong {
       display: block;
-      font-size: clamp(30px, 3vw, 48px);
-      letter-spacing: -0.055em;
+      font-size: clamp(1.45rem, 2.6vw, 2rem);
+      letter-spacing: -0.03em;
       line-height: 1;
+      font-weight: 900;
     }
 
     .metric span {
       color: #6a7b91;
-      font-size: 12px;
-      font-weight: 950;
+      font-size: 0.75rem;
+      font-weight: 800;
       text-transform: uppercase;
-      letter-spacing: 0.09em;
+      letter-spacing: 0.04em;
     }
 
     .card {
-      padding: 24px;
-      min-height: 360px;
+      padding: 22px;
+      min-height: 340px;
       overflow: hidden;
+      margin-bottom: 0;
     }
 
     .card.compact { min-height: 260px; }
@@ -250,22 +272,23 @@
 
     h2, h3 {
       margin: 0 0 12px;
-      letter-spacing: -0.035em;
-      line-height: 1.02;
+      letter-spacing: -0.01em;
+      line-height: 1.25;
     }
 
     h2 { font-size: clamp(26px, 3vw, 42px); }
-    h3 { font-size: 24px; }
+    h3 { font-size: 1.08rem; }
 
     .subtle {
       color: var(--muted);
-      font-weight: 700;
+      font-size: 0.92rem;
+      font-weight: 600;
       line-height: 1.45;
     }
 
     .chart {
       width: 100%;
-      min-height: 320px;
+      min-height: 318px;
     }
 
     .chart.tall { min-height: 460px; }
@@ -273,44 +296,45 @@
     .table-wrap {
       overflow: auto;
       border-radius: 18px;
-      border: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.7);
+      border: 1px solid rgba(22,50,74,0.06);
+      background: rgba(255,255,255,0.72);
     }
 
     table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 14px;
+      font-size: 0.95rem;
     }
 
     th, td {
       text-align: left;
-      padding: 13px 14px;
-      border-bottom: 1px solid rgba(217, 227, 238, 0.84);
+      padding: 11px 12px;
+      border-bottom: 1px solid rgba(22,50,74,0.08);
       vertical-align: top;
     }
 
     th {
       color: #61738a;
-      font-size: 11px;
-      letter-spacing: 0.08em;
+      font-size: 0.74rem;
+      letter-spacing: 0.05em;
       text-transform: uppercase;
-      background: rgba(243, 247, 251, 0.84);
+      background: rgba(245,248,252,0.92);
       position: sticky;
       top: 0;
     }
 
     td {
-      font-weight: 750;
+      font-weight: 600;
     }
 
     .empty, .error {
-      padding: 34px;
-      border-radius: var(--radius);
-      background: rgba(255, 255, 255, 0.8);
-      border: 1px solid var(--line);
+      padding: 42px 18px;
+      text-align: center;
+      border-radius: 18px;
+      background: rgba(245,248,252,0.72);
+      border: 1px dashed rgba(22,50,74,0.12);
       color: var(--muted);
-      font-weight: 800;
+      font-weight: 700;
     }
 
     .error {
@@ -326,14 +350,16 @@
 
     @media (max-width: 1180px) {
       header { position: static; }
-      .connection, .filters, .advanced { grid-template-columns: 1fr 1fr; }
+      .connection, .filters, .advanced { grid-template-columns: repeat(2, minmax(260px, 1fr)); }
       .span-3, .span-4, .span-5, .span-6, .span-7, .span-8, .span-12 { grid-column: span 12; }
     }
 
     @media (max-width: 720px) {
-      .topline, .connection, .filters, .advanced { grid-template-columns: 1fr; display: grid; }
+      .topline, .connection, .filters { grid-template-columns: 1fr; display: grid; }
+      .advanced.open { grid-template-columns: 1fr; display: grid; }
       main { width: 94vw; }
       .metric, .card { padding: 18px; }
+      select[multiple] { min-height: 92px; }
     }
   </style>
 </head>
@@ -354,12 +380,11 @@
         <input id="api-password" type="password" placeholder="Required if API password is enabled" />
       </label>
       <button id="connect-btn" class="btn">Connect</button>
-      <button id="advanced-btn" class="btn secondary" type="button">Show Advanced</button>
     </div>
 
     <div class="filters" id="filters">
       <label>Schools
-        <select id="school-select" multiple></select>
+        <select id="school-select"></select>
       </label>
       <label>Degree
         <select id="degree-select"></select>
@@ -384,9 +409,13 @@
         <select id="major-select"></select>
       </label>
       <button id="refresh-btn" class="btn" type="button">Refresh</button>
+      <button id="advanced-btn" class="btn secondary" type="button">Advanced Options</button>
     </div>
 
     <div id="advanced-panel" class="advanced">
+      <label>Compare Schools
+        <select id="compare-school-select" multiple></select>
+      </label>
       <label>Gender
         <select id="gender-select"><option value="">All</option></select>
       </label>
@@ -457,11 +486,11 @@
     const pct = value => value === null || value === undefined ? 'No data' : `${Number(value).toFixed(1)}%`;
 
     const layoutBase = {
-      font: { family: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', color: '#172a3a', size: 14 },
+      font: { family: '"Source Sans 3", ui-sans-serif, system-ui, sans-serif', color: '#243b53', size: 13 },
       paper_bgcolor: 'rgba(0,0,0,0)',
       plot_bgcolor: 'rgba(0,0,0,0)',
-      margin: { l: 72, r: 28, t: 24, b: 70 },
-      hoverlabel: { bgcolor: '#172a3a', bordercolor: '#172a3a', font: { color: '#fff' } },
+      margin: { l: 72, r: 28, t: 20, b: 62 },
+      hoverlabel: { bgcolor: '#102a43', bordercolor: '#102a43', font: { family: '"Source Sans 3", ui-sans-serif, system-ui, sans-serif', color: '#fff', size: 13 } },
     };
     const plotConfig = { responsive: true, displayModeBar: false };
 
@@ -512,6 +541,12 @@
       return Array.from(select.selectedOptions || []).map(option => option.value).filter(Boolean);
     }
 
+    function getSelectedSchools() {
+      const primary = $('school-select').value ? [$('school-select').value] : [];
+      const compare = selectedValues($('compare-school-select'));
+      return [...new Set([...primary, ...compare])].filter(Boolean);
+    }
+
     function yearRange() {
       const all = state.options?.grad_years || [];
       const from = Number($('from-year-select').value || all[0]);
@@ -522,7 +557,7 @@
     function currentFilters(extra = {}) {
       const noFurtherValue = $('no-further-select').value;
       return {
-        schools: selectedValues($('school-select')),
+        schools: getSelectedSchools(),
         degree: $('degree-select').value || 'Bachelors',
         cip_level: $('cip-level-select').value || 'cip4',
         majors: $('major-select').value ? [$('major-select').value] : [],
@@ -559,9 +594,10 @@
 
     function populateStaticControls(options) {
       const defaultSchool = options.schools.find(s => /Columbia University in the City of New York/i.test(s.name)) || options.schools[0];
-      const existingSchools = new Set(selectedValues($('school-select')));
-      const selectedSchools = existingSchools.size ? existingSchools : new Set(defaultSchool ? [defaultSchool.unitid] : []);
-      populateSelect($('school-select'), options.schools, s => s.name, s => s.unitid, selectedSchools);
+      const existingPrimary = $('school-select').value || defaultSchool?.unitid || '';
+      const existingCompare = new Set(selectedValues($('compare-school-select')).map(String));
+      populateSelect($('school-select'), options.schools, s => s.name, s => s.unitid, new Set([String(existingPrimary)]));
+      populateSelect($('compare-school-select'), options.schools, s => s.name, s => s.unitid, existingCompare);
 
       const existingDegree = $('degree-select').value || 'Bachelors';
       populateSelect($('degree-select'), options.degrees, d => d.label, d => d.degree, new Set([existingDegree]));
@@ -571,8 +607,8 @@
       if (!$('horizon-select').value) $('horizon-select').value = '1yr';
 
       const years = options.grad_years || [];
-      populateSelect($('from-year-select'), years, y => y, y => y, new Set([$('from-year-select').value || years[0]]));
-      populateSelect($('to-year-select'), years, y => y, y => y, new Set([$('to-year-select').value || years[years.length - 1]]));
+      populateSelect($('from-year-select'), years, y => y, y => y, new Set([String($('from-year-select').value || years[0] || '')]));
+      populateSelect($('to-year-select'), years, y => y, y => y, new Set([String($('to-year-select').value || years[years.length - 1] || '')]));
       if (!$('from-year-select').value && years.length) $('from-year-select').value = years[0];
       if (!$('to-year-select').value && years.length) $('to-year-select').value = years[years.length - 1];
 
@@ -623,6 +659,7 @@
       $('api-url').value = state.apiUrl;
       setStatus('', 'Connecting');
       await loadOptions(true);
+      document.querySelector('.connection')?.classList.add('connected');
       await refresh();
     }
 
@@ -685,15 +722,17 @@
         metric('Alumni in slice', num(o.alumni)),
         metric('Salary observations', num(o.salary_weight)),
         metric('Later degree rate', pct(o.later_degree_pct)),
-        card('Salary Trend by Graduation Year', 'salary-trend', 6),
-        card('Top Majors Over Time', 'major-trend', 6),
+        card('Salary Trend by Graduation Year', 'salary-trend', 4),
+        card('Top Majors Over Time', 'major-trend', 4),
+        card('Top Career Employers', 'employer-bars', 4),
         card('School Comparison', 'school-compare', 6),
-        card('Top Career Employers', 'employer-bars', 6),
+        card('Median Earnings by City', 'overview-geo', 6),
       ].join('');
       drawSalaryTrend('salary-trend');
       drawMajorTrend('major-trend');
-      drawSchoolComparison('school-compare');
       drawEmployerBars('employer-bars');
+      drawSchoolComparison('school-compare');
+      drawGeo('overview-geo', 'median_salary');
     }
 
     function renderEarnings() {
@@ -783,8 +822,8 @@
     }
 
     function drawSalaryTrend(id, forceSchool = false) {
-      const selectedSchools = selectedValues($('school-select'));
-      const bySchool = forceSchool || selectedSchools.length > 1;
+      const schools = getSelectedSchools();
+      const bySchool = forceSchool || schools.length > 1;
       const rows = bySchool ? (state.data.salary_trend_by_school || []) : (state.data.salary_trend || []);
       if (!rows.length) return noData(id);
       let traces;
@@ -1013,9 +1052,9 @@
       const longest = Math.max(12, ...rows.map(r => String(r.label || r.title || r.employer || r.location || r.school_name || '').length));
       return {
         ...layoutBase,
-        margin: { l: Math.min(360, Math.max(140, longest * 7)), r: 92, t: 20, b: 56 },
+        margin: { l: Math.min(340, Math.max(136, longest * 7)), r: 96, t: 14, b: 52 },
         xaxis: { tickprefix: prefix === '$' ? '$' : '', ticksuffix: prefix === '%' ? '%' : '', automargin: true, rangemode: 'tozero' },
-        yaxis: { automargin: true },
+        yaxis: { automargin: true, tickfont: { size: 12 } },
       };
     }
 
@@ -1052,7 +1091,7 @@
       $('refresh-btn').addEventListener('click', () => refresh({ resetDrill: true }));
       $('advanced-btn').addEventListener('click', () => {
         $('advanced-panel').classList.toggle('open');
-        $('advanced-btn').textContent = $('advanced-panel').classList.contains('open') ? 'Hide Advanced' : 'Show Advanced';
+        $('advanced-btn').textContent = $('advanced-panel').classList.contains('open') ? 'Hide Advanced Options' : 'Advanced Options';
       });
       $('tabs').addEventListener('click', event => {
         const tab = event.target.closest('.tab');
@@ -1062,7 +1101,7 @@
         render();
       });
 
-      ['school-select', 'degree-select', 'cip-level-select'].forEach(id => {
+      ['school-select', 'compare-school-select', 'degree-select', 'cip-level-select'].forEach(id => {
         $(id).addEventListener('change', () => refresh({ reloadOptions: true, resetDrill: true }));
       });
       ['horizon-select', 'from-year-select', 'to-year-select', 'major-select', 'gender-select', 'race-select', 'later-degree-filter', 'no-further-select', 'current-select', 'top-n-select'].forEach(id => {
