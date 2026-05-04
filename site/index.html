@@ -99,7 +99,7 @@
     }
 
     .filters {
-      grid-template-columns: minmax(290px, 1.35fr) minmax(170px, 0.72fr) minmax(160px, 0.7fr) minmax(150px, 0.62fr) minmax(115px, 0.45fr) minmax(115px, 0.45fr) minmax(300px, 1.25fr) auto auto;
+      grid-template-columns: minmax(290px, 1.35fr) minmax(170px, 0.72fr) minmax(160px, 0.7fr) minmax(150px, 0.62fr) minmax(115px, 0.45fr) minmax(115px, 0.45fr) minmax(300px, 1.25fr) max-content auto auto;
       margin-top: 0;
       align-items: end;
     }
@@ -117,9 +117,50 @@
 
     .advanced.open { display: grid; }
 
+    .segmented {
+      display: inline-flex;
+      gap: 6px;
+      flex-wrap: nowrap;
+      padding: 2px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(245,248,252,0.96);
+      min-height: 40px;
+      align-items: center;
+    }
+
+    .segmented .btn {
+      min-height: 34px;
+      border-radius: 999px;
+      padding: 6px 12px;
+      border-color: transparent;
+      background: transparent;
+      box-shadow: none;
+    }
+
+    .segmented .btn.active {
+      background: linear-gradient(135deg, #16324a 0%, #2e74d7 100%);
+      color: #fff;
+      box-shadow: 0 8px 18px rgba(22,50,74,0.16);
+    }
+
     label {
       display: grid;
       gap: 6px;
+      color: var(--muted);
+      font-size: 0.76rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .control-field {
+      display: grid;
+      gap: 6px;
+      align-content: end;
+    }
+
+    .control-label {
       color: var(--muted);
       font-size: 0.76rem;
       font-weight: 800;
@@ -408,6 +449,13 @@
       <label>Major
         <select id="major-select"></select>
       </label>
+      <div class="control-field">
+        <span class="control-label">View</span>
+        <span class="segmented" id="view-toggle">
+          <button class="btn" type="button" data-view-mode="snapshot">Snapshot</button>
+          <button class="btn active" type="button" data-view-mode="overtime">Over Time</button>
+        </span>
+      </div>
       <button id="refresh-btn" class="btn" type="button">Refresh</button>
       <button id="advanced-btn" class="btn secondary" type="button">Advanced Options</button>
     </div>
@@ -474,6 +522,7 @@
       options: null,
       data: null,
       tab: 'overview',
+      viewMode: storage.getItem('outcomes.viewMode') || 'overtime',
       selectedEmployer: null,
       selectedPostgradDegree: null,
       loading: false,
@@ -717,35 +766,65 @@
 
     function renderOverview() {
       const o = state.data.overview || {};
-      $('content').innerHTML = [
-        metric('Median salary', money(o.median_salary)),
-        metric('Alumni in slice', num(o.alumni)),
-        metric('Salary observations', num(o.salary_weight)),
-        metric('Later degree rate', pct(o.later_degree_pct)),
-        card('Salary Trend by Graduation Year', 'salary-trend', 4),
-        card('Top Majors Over Time', 'major-trend', 4),
-        card('Top Career Employers', 'employer-bars', 4),
-        card('School Comparison', 'school-compare', 6),
-        card('Median Earnings by City', 'overview-geo', 6),
-      ].join('');
-      drawSalaryTrend('salary-trend');
-      drawMajorTrend('major-trend');
-      drawEmployerBars('employer-bars');
-      drawSchoolComparison('school-compare');
-      drawGeo('overview-geo', 'median_salary');
+      if (state.viewMode === 'snapshot') {
+        $('content').innerHTML = [
+          metric('Median salary', money(o.median_salary)),
+          metric('Alumni in slice', num(o.alumni)),
+          metric('Salary observations', num(o.salary_weight)),
+          metric('Later degree rate', pct(o.later_degree_pct)),
+          card('Top Majors in Current Slice', 'overview-major-bars', 6, true),
+          card('Top Career Employers', 'employer-bars', 6, true),
+          card('Median Earnings by City', 'overview-geo', 6),
+          card('School Comparison', 'school-compare', 6),
+        ].join('');
+        drawTopMajorsVolume('overview-major-bars');
+        drawEmployerBars('employer-bars');
+        drawGeo('overview-geo', 'median_salary');
+        drawSchoolComparison('school-compare');
+      } else {
+        $('content').innerHTML = [
+          metric('Median salary', money(o.median_salary)),
+          metric('Alumni in slice', num(o.alumni)),
+          metric('Salary observations', num(o.salary_weight)),
+          metric('Later degree rate', pct(o.later_degree_pct)),
+          card('Salary Trend by Graduation Year', 'salary-trend', 4),
+          card('Top Majors Over Time', 'major-trend', 4),
+          card('Top Career Employers', 'employer-bars', 4),
+          card('School Comparison', 'school-compare', 6),
+          card('Median Earnings by City', 'overview-geo', 6),
+        ].join('');
+        drawSalaryTrend('salary-trend');
+        drawMajorTrend('major-trend');
+        drawEmployerBars('employer-bars');
+        drawSchoolComparison('school-compare');
+        drawGeo('overview-geo', 'median_salary');
+      }
     }
 
     function renderEarnings() {
-      $('content').innerHTML = [
-        card('Salary Trend by Graduation Year', 'earn-salary-trend', 7, true),
-        card('Top Majors by Salary', 'top-major-salary', 5, true),
-        card('Cohort Salary Table', 'salary-table', 12),
-      ].join('');
-      drawSalaryTrend('earn-salary-trend', true);
-      drawMajorSalary('top-major-salary');
-      $('salary-table').innerHTML = table(['Year', 'Alumni', 'Salary observations', 'Median salary', 'Mean salary'], state.data.salary_trend || [], row => [
-        row.grad_year, num(row.alumni), num(row.salary_weight), money(row.median_salary), money(row.weighted_mean_salary)
-      ]);
+      if (state.viewMode === 'snapshot') {
+        $('content').innerHTML = [
+          card('Top Majors by Median Salary', 'top-major-salary', 6, true),
+          card('School Salary Comparison', 'earn-school-compare', 6, true),
+          card('Current Slice Earnings Table', 'salary-table', 12),
+        ].join('');
+        drawMajorSalary('top-major-salary');
+        drawSchoolComparison('earn-school-compare');
+        $('salary-table').innerHTML = table(['Major', 'Alumni', 'Salary observations', 'Median salary', 'Mean salary'], state.data.top_majors || [], row => [
+          row.title, num(row.alumni), num(row.salary_weight), money(row.median_salary), money(row.weighted_mean_salary)
+        ]);
+      } else {
+        $('content').innerHTML = [
+          card('Salary Trend by Graduation Year', 'earn-salary-trend', 7, true),
+          card('Top Majors by Salary', 'top-major-salary', 5, true),
+          card('Cohort Salary Table', 'salary-table', 12),
+        ].join('');
+        drawSalaryTrend('earn-salary-trend', true);
+        drawMajorSalary('top-major-salary');
+        $('salary-table').innerHTML = table(['Year', 'Alumni', 'Salary observations', 'Median salary', 'Mean salary'], state.data.salary_trend || [], row => [
+          row.grad_year, num(row.alumni), num(row.salary_weight), money(row.median_salary), money(row.weighted_mean_salary)
+        ]);
+      }
     }
 
     function renderEmployers() {
@@ -946,6 +1025,22 @@
       }], horizontalLayout(rows, '$'), plotConfig);
     }
 
+    function drawTopMajorsVolume(id) {
+      const rows = (state.data.top_majors || []).filter(r => r.alumni).slice().reverse();
+      if (!rows.length) return noData(id);
+      Plotly.newPlot(id, [{
+        type: 'bar',
+        orientation: 'h',
+        y: rows.map(r => r.title),
+        x: rows.map(r => r.alumni),
+        text: rows.map(r => num(r.alumni)),
+        textposition: 'outside',
+        cliponaxis: false,
+        marker: { color: COLORS[3] },
+        hovertemplate: '%{y}<br>%{x:,.0f} alumni<extra></extra>',
+      }], horizontalLayout(rows), plotConfig);
+    }
+
     function drawEmployerBars(id, clickable = false) {
       const rows = (state.data.employers?.top || []).slice().reverse();
       if (!rows.length) return noData(id);
@@ -1098,6 +1193,17 @@
         if (!tab) return;
         state.tab = tab.dataset.tab;
         document.querySelectorAll('.tab').forEach(node => node.classList.toggle('active', node === tab));
+        applyDefaultViewForTab(state.tab);
+        syncViewToggle();
+        render();
+      });
+
+      $('view-toggle').addEventListener('click', event => {
+        const button = event.target.closest('[data-view-mode]');
+        if (!button) return;
+        state.viewMode = button.dataset.viewMode;
+        storage.setItem('outcomes.viewMode', state.viewMode);
+        syncViewToggle();
         render();
       });
 
@@ -1109,9 +1215,26 @@
       });
     }
 
+    function applyDefaultViewForTab(tab) {
+      const overTimeTabs = new Set(['overview', 'earnings', 'geography', 'demographics']);
+      const nextMode = overTimeTabs.has(tab) ? 'overtime' : 'snapshot';
+      if (state.viewMode !== nextMode) {
+        state.viewMode = nextMode;
+        storage.setItem('outcomes.viewMode', state.viewMode);
+      }
+    }
+
+    function syncViewToggle() {
+      document.querySelectorAll('[data-view-mode]').forEach(button => {
+        button.classList.toggle('active', button.dataset.viewMode === state.viewMode);
+      });
+    }
+
     function init() {
       $('api-url').value = storage.getItem('outcomes.apiUrl') || defaultApiUrl();
       $('api-password').value = storage.getItem('outcomes.apiPassword') || '';
+      applyDefaultViewForTab(state.tab);
+      syncViewToggle();
       bindEvents();
       if ($('api-url').value) connect();
     }
