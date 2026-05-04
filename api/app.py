@@ -487,6 +487,46 @@ def _salary_trend(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
     )
 
 
+def _alumni_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    where_sql, params = _where(filters, include_horizon=False)
+    return _records_from_query(
+        con,
+        f"""
+        WITH deduped AS (
+          SELECT *
+          FROM (
+            SELECT
+              *,
+              ROW_NUMBER() OVER (
+                PARTITION BY person_key, unitid, degree, cip2, cip4, cip6, grad_year
+                ORDER BY CASE horizon
+                  WHEN '1yr' THEN 1
+                  WHEN '5yr' THEN 2
+                  WHEN '10yr' THEN 3
+                  WHEN 'early_2025' THEN 4
+                  ELSE 5
+                END
+              ) AS horizon_rank
+            FROM read_parquet(?)
+            {where_sql}
+          )
+          WHERE horizon_rank = 1
+        ),
+        by_year AS (
+          SELECT grad_year, COUNT(*) AS alumni
+          FROM deduped
+          WHERE grad_year IS NOT NULL
+          GROUP BY grad_year
+        )
+        SELECT grad_year, ROUND(alumni) AS alumni
+        FROM by_year
+        WHERE alumni >= ?
+        ORDER BY grad_year
+        """,
+        [_dataset_glob("base_fact"), *params, SUPPRESSION_THRESHOLD],
+    )
+
+
 def _salary_trend_by_school(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
     return _records_from_query(
         con,
@@ -1188,6 +1228,7 @@ def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password
             },
             "overview": _overview(con),
             "salary_trend": _salary_trend(con),
+            "alumni_trend": _alumni_trend(con, filters),
             "salary_trend_by_school": _salary_trend_by_school(con),
             "school_comparison": _school_comparison(con),
             "top_majors": _top_majors(con, filters),

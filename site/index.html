@@ -1024,9 +1024,9 @@
           metric('Weighted Median Salary', money(o.median_salary), 4),
           metric('Alumni', num(o.alumni), 4),
           metric('Salary Observations', num(o.salary_weight), 4),
-          card('Salary Trend by Graduation Year', 'salary-trend', 4),
-          card('Alumni by Graduation Year', 'alumni-trend', 4),
-          card('Top Majors Over Time', 'major-trend', 4),
+          card('Salary Trend by Graduation Year', 'salary-trend', 6),
+          card('Alumni by Graduation Year', 'alumni-trend', 6),
+          card('Top Majors Over Time', 'major-trend', 12, true),
         ].join('');
         drawSalaryTrend('salary-trend');
         drawAlumniTrend('alumni-trend');
@@ -1224,11 +1224,16 @@
           card('Salary Observation Rate', 'coverage-rate', 4, true),
         ].join('');
         const rows = state.data.salary_trend || [];
+        const alumniRows = state.data.alumni_trend || rows;
+        const alumniByYear = Object.fromEntries(alumniRows.map(row => [row.grad_year, row.alumni]));
         Plotly.newPlot('coverage-volume', [
-          { type: 'bar', x: rows.map(r => r.grad_year), y: rows.map(r => r.alumni), name: 'Alumni', marker: { color: 'rgba(34, 94, 168, 0.35)' } },
+          { type: 'bar', x: alumniRows.map(r => r.grad_year), y: alumniRows.map(r => r.alumni), name: 'Alumni', marker: { color: 'rgba(34, 94, 168, 0.35)' } },
           { type: 'bar', x: rows.map(r => r.grad_year), y: rows.map(r => r.salary_weight), name: 'Salary observations', marker: { color: 'rgba(34, 160, 107, 0.72)' } },
         ], { ...layoutBase, barmode: 'overlay', xaxis: { title: 'Graduation year' }, yaxis: { title: 'Count' }, legend: { orientation: 'h' } }, plotConfig);
-        const rateRows = rows.map(row => ({ ...row, rate: row.alumni ? 100 * row.salary_weight / row.alumni : null })).filter(row => row.rate !== null);
+        const rateRows = rows.map(row => {
+          const alumni = alumniByYear[row.grad_year] ?? row.alumni;
+          return { ...row, alumni, rate: alumni ? 100 * row.salary_weight / alumni : null };
+        }).filter(row => row.rate !== null);
         drawTrendLines('coverage-rate', rateRows, 'series', 'rate', {
           yTitle: 'Salary observations / alumni %',
           suffix: '%',
@@ -1280,7 +1285,7 @@
     }
 
     function drawAlumniTrend(id) {
-      const rows = state.data.salary_trend || [];
+      const rows = state.data.alumni_trend || state.data.salary_trend || [];
       if (!rows.length) return noData(id);
       Plotly.newPlot(id, [{
         type: 'bar',
