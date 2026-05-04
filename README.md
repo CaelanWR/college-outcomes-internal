@@ -33,21 +33,17 @@ Open:
 http://localhost:8124/
 ```
 
-If the data is not inside `site/school_outcomes_data`, pass a data URL:
-
-```text
-http://localhost:8124/?data_url=http://localhost:8125/school_outcomes_data/
-```
+For the public deployment, do not point the frontend directly at a data folder. Use the protected API instead.
 
 ## Local API Smoke Test
 
 After downloading `platform_parquet`, install dependencies and run the API:
 
 ```bash
-cd /Users/caelan/Downloads/Untitled/college_outcomes_platform
+cd /path/to/college_outcomes_platform
 python3 -m venv .venv
 .venv/bin/pip install -r api/requirements.txt
-OUTCOMES_PARQUET_ROOT=/Users/caelan/Downloads/school_outcomes_data_v4_3/platform_parquet/base_fact \
+OUTCOMES_PARQUET_ROOT=/path/to/platform_parquet/base_fact \
   .venv/bin/uvicorn api.app:app --reload --port 8000
 ```
 

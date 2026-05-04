@@ -300,10 +300,10 @@ function normalizeDataDir(dir) {
   return value.endsWith('/') ? value : `${value}/`;
 }
 const CONFIG_DATA_URL = typeof window !== 'undefined' && window.OUTCOMES_DATA_URL ? window.OUTCOMES_DATA_URL : '';
-const DATA_URL_OVERRIDE = normalizeDataDir(QUERY.get('data_url') || CONFIG_DATA_URL);
+const DATA_URL_OVERRIDE = normalizeDataDir(CONFIG_DATA_URL);
 const DATA_DIR_CANDIDATES = DATA_URL_OVERRIDE ? [DATA_URL_OVERRIDE] : DATASET_KEY === 'columbia_v4_3'
   ? ['./data/columbia_v4_3/']
-  : ['./school_outcomes_data/', './data/latest54_plus_teachers/', './data/latest_54/', './data/main_plus_columbia/'];
+  : [];
 const DEMO_UNITIDS = DATASET_KEY === 'columbia_v4_3'
   ? ["190150", "189097", "196468"]
   : null;
@@ -3977,7 +3977,7 @@ async function init() {
     document.getElementById('app').style.display = 'block';
     await refresh();
   } catch (err) {
-    document.getElementById('loading').innerHTML = `<div class="loading-card"><div style="font-weight:800;color:var(--rose);margin-bottom:8px;">Build failed</div><div class="subtle">${err.message}</div><div class="subtle" style="margin-top:10px;">Serve the folder over HTTP. Example: <code>cd /Users/caelan/Downloads && python3 -m http.server 8000</code></div></div>`;
+    document.getElementById('loading').innerHTML = `<div class="loading-card"><div style="font-weight:800;color:var(--rose);margin-bottom:8px;">Data not connected</div><div class="subtle">${err.message}</div><div class="subtle" style="margin-top:10px;">The public frontend must use the protected API. Do not publish raw data folders with GitHub Pages.</div></div>`;
   }
 }
 

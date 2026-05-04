@@ -35,7 +35,7 @@ Do not initialize it with a README because this local repo already has commits.
 From this folder:
 
 ```bash
-cd /Users/caelan/Downloads/Untitled/college_outcomes_platform
+cd /path/to/college_outcomes_platform
 ./scripts/publish_to_github.sh git@github.com:CaelanWR/college-outcomes-internal.git
 ```
 
@@ -74,7 +74,7 @@ The starter API is in `api/`.
 Local test:
 
 ```bash
-cd /Users/caelan/Downloads/Untitled/college_outcomes_platform/api
+cd /path/to/college_outcomes_platform/api
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
