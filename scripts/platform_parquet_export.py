@@ -23,6 +23,7 @@ import pyarrow.parquet as pq
 
 PLATFORM_EXPORT_VERSION = "2026-05-03-platform-v1"
 PLATFORM_SUPPRESSION_THRESHOLD = 25
+PLATFORM_ROWS_PER_PART = 5000
 
 
 def _normalize_platform_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -59,6 +60,20 @@ def _write_df_parquet(df: pd.DataFrame, path: Path) -> None:
     normalized = _normalize_platform_df(df)
     table = pa.Table.from_pandas(normalized, preserve_index=False)
     pq.write_table(table, path, compression="snappy")
+
+
+def _write_df_parquet_parts(df: pd.DataFrame, root: Path, rows_per_part: int = PLATFORM_ROWS_PER_PART) -> dict:
+    _clean_dir(root)
+    row_count = 0
+    part_count = 0
+    for start in range(0, len(df), rows_per_part):
+        chunk = df.iloc[start:start + rows_per_part]
+        if chunk.empty:
+            continue
+        part_count += 1
+        row_count += len(chunk)
+        _write_df_parquet(chunk, root / f"part-{part_count:05d}.parquet")
+    return {"rows": int(row_count), "parts": int(part_count), "rows_per_part": int(rows_per_part)}
 
 
 def _write_query_dataset(sf_client, query: str, root: Path, partition_cols: list[str]) -> dict:
@@ -105,18 +120,24 @@ def _write_query_file_parts(sf_client, query: str, root: Path) -> dict:
     batch_count = 0
     try:
         cur.execute(query)
+        part_count = 0
         for batch in cur.fetch_pandas_batches():
             df = _normalize_platform_df(batch)
             if df.empty:
                 continue
             batch_count += 1
             row_count += len(df)
-            target = root / f"part-{batch_count:05d}.parquet"
-            _write_df_parquet(df, target)
+            for start in range(0, len(df), PLATFORM_ROWS_PER_PART):
+                chunk = df.iloc[start:start + PLATFORM_ROWS_PER_PART]
+                if chunk.empty:
+                    continue
+                part_count += 1
+                target = root / f"part-{part_count:05d}.parquet"
+                _write_df_parquet(chunk, target)
     finally:
         cur.close()
         conn.close()
-    return {"rows": row_count, "batches": batch_count, "partition_cols": []}
+    return {"rows": row_count, "batches": batch_count, "parts": part_count, "rows_per_part": PLATFORM_ROWS_PER_PART, "partition_cols": []}
 
 
 def _copy_aggregate_facts(out_dir: Path, aggregate_dir: Path) -> dict:
@@ -146,9 +167,9 @@ def _copy_aggregate_facts(out_dir: Path, aggregate_dir: Path) -> dict:
         if not source.exists():
             continue
         df = pd.read_parquet(source)
-        target = aggregate_dir / filename
-        _write_df_parquet(df, target)
-        written[fact_name] = {"path": str(target.relative_to(aggregate_dir.parent)), "rows": int(len(df))}
+        target = aggregate_dir / fact_name
+        info = _write_df_parquet_parts(df, target)
+        written[fact_name] = {"path": str(target.relative_to(aggregate_dir.parent)), **info}
     return written
 
 

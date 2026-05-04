@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hmac
 import os
-from typing import Any
+from typing import Any, Optional
 
 import duckdb
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -32,13 +32,13 @@ if ALLOWED_ORIGINS:
 
 
 class DemographicFilters(BaseModel):
-    gender: str | None = None
-    race_ethnicity: str | None = None
+    gender: Optional[str] = None
+    race_ethnicity: Optional[str] = None
 
 
 class PostgradFilters(BaseModel):
-    later_degree_type: str | None = None
-    no_further_education: bool | None = None
+    later_degree_type: Optional[str] = None
+    no_further_education: Optional[bool] = None
 
 
 class QueryRequest(BaseModel):
@@ -53,7 +53,7 @@ class QueryRequest(BaseModel):
     tabs: list[str] = Field(default_factory=lambda: ["overview"])
 
 
-def require_internal_password(x_outcomes_password: str | None = Header(default=None)) -> None:
+def require_internal_password(x_outcomes_password: Optional[str] = Header(default=None)) -> None:
     """Fallback API password guard.
 
     Prefer real SSO or network-level access control in production. This protects
