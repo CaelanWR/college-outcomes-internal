@@ -606,6 +606,33 @@ def _alumni_trend_by_school(con: duckdb.DuckDBPyConnection, filters: QueryReques
     )
 
 
+def _current_student_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    if not filters.include_current_students or not (_platform_root() / "current_students_fact").exists():
+        return []
+    current_filters = filters.model_copy(deep=True)
+    current_filters.grad_years = []
+    where_sql, params = _where(current_filters, include_horizon=False, include_postgrad=False)
+    return _records_from_query(
+        con,
+        f"""
+        WITH current_students AS (
+          SELECT *
+          FROM read_parquet(?)
+          {where_sql}
+        )
+        SELECT
+          grad_year,
+          ROUND(SUM(final_weight)) AS current_students
+        FROM current_students
+        WHERE grad_year IS NOT NULL
+        GROUP BY grad_year
+        HAVING SUM(final_weight) >= ?
+        ORDER BY grad_year
+        """,
+        [_dataset_glob("current_students_fact"), *params, SUPPRESSION_THRESHOLD],
+    )
+
+
 def _school_comparison(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
     return _records_from_query(
         con,
@@ -678,7 +705,7 @@ def _top_majors(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[d
 
 def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_current: bool) -> dict[str, Any]:
     cip_col = _cip_col(filters)
-    limit = min(_safe_limit(filters.top_n), 8)
+    limit = min(_safe_limit(filters.top_n), 5)
     current_exists = include_current and _create_current_slice(con, filters)
 
     source_for_top = "current_slice" if current_exists else "slice"
@@ -880,7 +907,7 @@ def _employers(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[st
 
 
 def _geography_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
-    limit = min(_safe_limit(filters.top_n), 8)
+    limit = min(_safe_limit(filters.top_n), 5)
     location_expr = "REGEXP_REPLACE(COALESCE(location, city, 'Unknown'), '(?i)\\s+(non)?metropolitan area$', '')"
     return _records_from_query(
         con,
@@ -943,23 +970,35 @@ def _geography_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> l
 
 
 def _geography(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
-    limit = _safe_limit(filters.top_n)
+    limit = min(_safe_limit(filters.top_n), 8)
     return _records_from_query(
         con,
         f"""
+        WITH eligible AS (
+          SELECT
+            REGEXP_REPLACE(COALESCE(location, city, 'Unknown'), '(?i)\\s+(non)?metropolitan area$', '') AS location,
+            final_weight,
+            salary
+          FROM slice
+          WHERE COALESCE(location, city) IS NOT NULL
+            AND LOWER(COALESCE(location, city)) NOT IN ('empty', 'unknown')
+        ),
+        totals AS (
+          SELECT SUM(final_weight) AS total_n
+          FROM eligible
+        )
         SELECT
-          REGEXP_REPLACE(COALESCE(location, city, 'Unknown'), '(?i)\\s+(non)?metropolitan area$', '') AS location,
+          location,
           ROUND(SUM(final_weight)) AS n,
+          ROUND(100.0 * SUM(final_weight) / NULLIF((SELECT total_n FROM totals), 0), 2) AS share_pct,
           ROUND(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END)) AS salary_weight,
           ROUND(SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
             / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0)) AS weighted_mean_salary,
           quantile_cont(salary, 0.5) AS median_salary
-        FROM slice
-        WHERE COALESCE(location, city) IS NOT NULL
-          AND LOWER(COALESCE(location, city)) NOT IN ('empty', 'unknown')
+        FROM eligible
         GROUP BY 1
         HAVING SUM(final_weight) >= ?
-        ORDER BY SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) DESC
+        ORDER BY SUM(final_weight) DESC
         LIMIT {limit}
         """,
         [SUPPRESSION_THRESHOLD],
@@ -1276,6 +1315,7 @@ def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password
             "alumni_trend": _alumni_trend(con, filters),
             "salary_trend_by_school": _salary_trend_by_school(con),
             "alumni_trend_by_school": _alumni_trend_by_school(con, filters) if filters.compare_mode else [],
+            "current_student_trend": _current_student_trend(con, filters),
             "school_comparison": _school_comparison(con),
             "top_majors": _top_majors(con, filters),
             "major_trend": _major_trend(con, filters, filters.include_current_students),
