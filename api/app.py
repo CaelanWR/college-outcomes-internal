@@ -4,6 +4,7 @@ import hmac
 import json
 import math
 import os
+from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
@@ -132,6 +133,36 @@ def _dataset_glob(dataset: str) -> str:
     return str(path / "**" / "*.parquet")
 
 
+@lru_cache(maxsize=8)
+def _dataset_columns(dataset: str) -> frozenset[str]:
+    con = _connect()
+    try:
+        rows = con.execute("DESCRIBE SELECT * FROM read_parquet(?)", [_dataset_glob(dataset)]).fetchall()
+        return frozenset(str(row[0]).lower() for row in rows)
+    finally:
+        con.close()
+
+
+def _profile_weight_sql(columns: frozenset[str]) -> str:
+    candidates = [
+        "profile_weight",
+        "ipeds_calibration_weight",
+        "education_weight",
+        "individual_weight",
+        "representation_weight",
+        "universe_weight",
+        "final_weight",
+    ]
+    available = [column for column in candidates if column in columns]
+    if not available:
+        return "1.0"
+    return f"GREATEST(0.0, COALESCE({', '.join(available)}, 1.0))"
+
+
+def _source_star_without_profile(columns: frozenset[str]) -> str:
+    return "* EXCLUDE (profile_weight)" if "profile_weight" in columns else "*"
+
+
 def _manifest() -> dict[str, Any]:
     path = _platform_root() / "platform_manifest.json"
     if not path.exists():
@@ -152,6 +183,8 @@ def _connect() -> duckdb.DuckDBPyConnection:
 def _json_safe(value: Any) -> Any:
     if value is None:
         return None
+    if isinstance(value, Decimal):
+        return int(value) if value == value.to_integral_value() else float(value)
     try:
         if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
             return None
@@ -226,10 +259,13 @@ def _safe_limit(value: int) -> int:
 
 
 def _create_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> None:
+    base_columns = _dataset_columns("base_fact")
+    profile_weight_sql = _profile_weight_sql(base_columns)
+    source_star = _source_star_without_profile(base_columns)
     where_sql, params = _where(filters)
     con.execute(
         f"""
-        CREATE TEMP TABLE slice AS
+        CREATE OR REPLACE TEMP TABLE slice AS
         SELECT *
         FROM read_parquet(?)
         {where_sql}
@@ -239,11 +275,12 @@ def _create_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> None
     cohort_where_sql, cohort_params = _where(filters, include_horizon=False)
     con.execute(
         f"""
-        CREATE TEMP TABLE cohort_slice AS
+        CREATE OR REPLACE TEMP TABLE cohort_slice AS
         SELECT *
         FROM (
           SELECT
-            *,
+            {source_star},
+            {profile_weight_sql} AS profile_weight,
             ROW_NUMBER() OVER (
               PARTITION BY person_key, unitid, degree, cip2, cip4, cip6, grad_year
               ORDER BY CASE horizon
@@ -267,13 +304,16 @@ def _create_current_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest)
     current_path = _platform_root() / "current_students_fact"
     if not current_path.exists():
         return False
+    current_columns = _dataset_columns("current_students_fact")
+    profile_weight_sql = _profile_weight_sql(current_columns)
+    source_star = _source_star_without_profile(current_columns)
     current_filters = filters.model_copy(deep=True)
     current_filters.grad_years = []
     where_sql, params = _where(current_filters, include_horizon=False, include_postgrad=False)
     con.execute(
         f"""
-        CREATE TEMP TABLE current_slice AS
-        SELECT *
+        CREATE OR REPLACE TEMP TABLE current_slice AS
+        SELECT {source_star}, {profile_weight_sql} AS profile_weight
         FROM read_parquet(?)
         {where_sql}
         """,
@@ -286,25 +326,50 @@ def _create_current_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest)
 def _static_options() -> dict[str, Any]:
     con = _connect()
     try:
+        base_columns = _dataset_columns("base_fact")
+        profile_weight_sql = _profile_weight_sql(base_columns)
+        source_star = _source_star_without_profile(base_columns)
+        con.execute(
+            f"""
+            CREATE TEMP TABLE static_cohort AS
+            SELECT *
+            FROM (
+              SELECT
+                {source_star},
+                {profile_weight_sql} AS profile_weight,
+                ROW_NUMBER() OVER (
+                  PARTITION BY person_key, unitid, degree, cip2, cip4, cip6, grad_year
+                  ORDER BY CASE horizon
+                    WHEN '1yr' THEN 1
+                    WHEN '5yr' THEN 2
+                    WHEN '10yr' THEN 3
+                    WHEN 'early_2025' THEN 4
+                    ELSE 5
+                  END
+                ) AS cohort_rank
+              FROM read_parquet(?)
+            )
+            WHERE cohort_rank = 1
+            """,
+            [_dataset_glob("base_fact")],
+        )
         schools = _records_from_query(
             con,
             """
-            SELECT unitid, MAX(school_name) AS name, ROUND(SUM(final_weight)) AS alumni
-            FROM read_parquet(?)
+            SELECT unitid, MAX(school_name) AS name, ROUND(SUM(profile_weight)) AS alumni
+            FROM static_cohort
             GROUP BY unitid
             ORDER BY name
             """,
-            [_dataset_glob("base_fact")],
         )
         degree_rows = _records_from_query(
             con,
             """
-            SELECT degree, ROUND(SUM(final_weight)) AS alumni
-            FROM read_parquet(?)
+            SELECT degree, ROUND(SUM(profile_weight)) AS alumni
+            FROM static_cohort
             GROUP BY degree
             ORDER BY alumni DESC
             """,
-            [_dataset_glob("base_fact")],
         )
         grad_years = [
             int(row["grad_year"])
@@ -368,7 +433,35 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
     limit = 500
     con = _connect()
     try:
+        base_columns = _dataset_columns("base_fact")
+        profile_weight_sql = _profile_weight_sql(base_columns)
+        source_star = _source_star_without_profile(base_columns)
         where_sql, params = _where(filters, include_horizon=False, include_postgrad=False)
+        con.execute(
+            f"""
+            CREATE TEMP TABLE option_cohort AS
+            SELECT *
+            FROM (
+              SELECT
+                {source_star},
+                {profile_weight_sql} AS profile_weight,
+                ROW_NUMBER() OVER (
+                  PARTITION BY person_key, unitid, degree, cip2, cip4, cip6, grad_year
+                  ORDER BY CASE horizon
+                    WHEN '1yr' THEN 1
+                    WHEN '5yr' THEN 2
+                    WHEN '10yr' THEN 3
+                    WHEN 'early_2025' THEN 4
+                    ELSE 5
+                  END
+                ) AS cohort_rank
+              FROM read_parquet(?)
+              {where_sql}
+            )
+            WHERE cohort_rank = 1
+            """,
+            [_dataset_glob("base_fact"), *params],
+        )
         majors = _records_from_query(
             con,
             f"""
@@ -376,10 +469,9 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
               SELECT
                 {cip_col} AS code,
                 MAX(major_title) AS title,
-                ROUND(SUM(final_weight)) AS alumni
-              FROM read_parquet(?)
-              {where_sql}
-              AND {cip_col} IS NOT NULL
+                ROUND(SUM(profile_weight)) AS alumni
+              FROM option_cohort
+              WHERE {cip_col} IS NOT NULL
               GROUP BY {cip_col}
             )
             SELECT code, COALESCE(title, code) AS title, alumni
@@ -387,8 +479,8 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
             WHERE alumni >= ?
             ORDER BY alumni DESC, title
             LIMIT {limit}
-            """.replace(f"{where_sql}\n              AND", f"{where_sql} AND" if where_sql else "WHERE"),
-            [_dataset_glob("base_fact"), *params, SUPPRESSION_THRESHOLD],
+            """,
+            [SUPPRESSION_THRESHOLD],
         )
         demographics = {
             "gender": [
@@ -396,13 +488,12 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
                 for row in _records_from_query(
                     con,
                     """
-                    SELECT gender AS value, COUNT(*) AS n
-                    FROM read_parquet(?)
-                    WHERE gender IS NOT NULL AND gender <> ''
+                    SELECT gender AS value, SUM(profile_weight) AS n
+                    FROM option_cohort
+                    WHERE gender IS NOT NULL AND gender <> '' AND LOWER(gender) <> 'empty'
                     GROUP BY gender
                     ORDER BY n DESC
                     """,
-                    [_dataset_glob("base_fact")],
                 )
             ],
             "race_ethnicity": [
@@ -410,13 +501,12 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
                 for row in _records_from_query(
                     con,
                     """
-                    SELECT race_ethnicity AS value, COUNT(*) AS n
-                    FROM read_parquet(?)
-                    WHERE race_ethnicity IS NOT NULL AND race_ethnicity <> ''
+                    SELECT race_ethnicity AS value, SUM(profile_weight) AS n
+                    FROM option_cohort
+                    WHERE race_ethnicity IS NOT NULL AND race_ethnicity <> '' AND LOWER(race_ethnicity) <> 'empty'
                     GROUP BY race_ethnicity
                     ORDER BY n DESC
                     """,
-                    [_dataset_glob("base_fact")],
                 )
             ],
         }
@@ -425,13 +515,12 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
             for row in _records_from_query(
                 con,
                 """
-                SELECT later_degree_type, COUNT(*) AS n
-                FROM read_parquet(?)
+                SELECT later_degree_type, SUM(profile_weight) AS n
+                FROM option_cohort
                 WHERE later_degree_type IS NOT NULL AND later_degree_type <> ''
                 GROUP BY later_degree_type
                 ORDER BY n DESC
                 """,
-                [_dataset_glob("base_fact")],
             )
         ]
         static = _static_options()
@@ -455,10 +544,10 @@ def _overview(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
         """
         WITH cohort AS (
           SELECT
-            COUNT(DISTINCT person_key) AS alumni,
+            SUM(profile_weight) AS alumni,
             COUNT(*) AS raw_rows,
-            COUNT(DISTINCT CASE WHEN later_degree_type IS NOT NULL THEN person_key END) AS later_degree_n,
-            COUNT(DISTINCT CASE WHEN no_further_education_flag = 1 THEN person_key END) AS no_further_n
+            SUM(CASE WHEN later_degree_type IS NOT NULL THEN profile_weight ELSE 0 END) AS later_degree_n,
+            SUM(CASE WHEN no_further_education_flag = 1 THEN profile_weight ELSE 0 END) AS no_further_n
           FROM cohort_slice
         ),
         outcomes AS (
@@ -524,7 +613,7 @@ def _alumni_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list
         con,
         """
         WITH by_year AS (
-          SELECT grad_year, COUNT(DISTINCT person_key) AS alumni
+          SELECT grad_year, SUM(profile_weight) AS alumni
           FROM cohort_slice
           WHERE grad_year IS NOT NULL
           GROUP BY grad_year
@@ -581,7 +670,7 @@ def _alumni_trend_by_school(con: duckdb.DuckDBPyConnection, filters: QueryReques
             unitid,
             MAX(school_name) AS school_name,
             grad_year,
-            COUNT(DISTINCT person_key) AS alumni
+            SUM(profile_weight) AS alumni
           FROM cohort_slice
           WHERE grad_year IS NOT NULL
           GROUP BY unitid, grad_year
@@ -598,27 +687,21 @@ def _alumni_trend_by_school(con: duckdb.DuckDBPyConnection, filters: QueryReques
 def _current_student_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
     if not filters.include_current_students or not (_platform_root() / "current_students_fact").exists():
         return []
-    current_filters = filters.model_copy(deep=True)
-    current_filters.grad_years = []
-    where_sql, params = _where(current_filters, include_horizon=False, include_postgrad=False)
+    if not _create_current_slice(con, filters):
+        return []
     return _records_from_query(
         con,
-        f"""
-        WITH current_students AS (
-          SELECT *
-          FROM read_parquet(?)
-          {where_sql}
-        )
+        """
         SELECT
           grad_year,
-          ROUND(SUM(final_weight)) AS current_students
-        FROM current_students
+          ROUND(SUM(profile_weight)) AS current_students
+        FROM current_slice
         WHERE grad_year IS NOT NULL
         GROUP BY grad_year
-        HAVING SUM(final_weight) >= ?
+        HAVING SUM(profile_weight) >= ?
         ORDER BY grad_year
         """,
-        [_dataset_glob("current_students_fact"), *params, TREND_SUPPRESSION_THRESHOLD],
+        [TREND_SUPPRESSION_THRESHOLD],
     )
 
 
@@ -630,8 +713,8 @@ def _school_comparison(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
           SELECT
             unitid,
             MAX(school_name) AS school_name,
-            COUNT(DISTINCT person_key) AS alumni,
-            COUNT(DISTINCT CASE WHEN later_degree_type IS NOT NULL THEN person_key END) AS later_degree_n
+            SUM(profile_weight) AS alumni,
+            SUM(CASE WHEN later_degree_type IS NOT NULL THEN profile_weight ELSE 0 END) AS later_degree_n
           FROM cohort_slice
           GROUP BY unitid
         ),
@@ -674,7 +757,7 @@ def _top_majors(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[d
           SELECT
             {cip_col} AS code,
             MAX(major_title) AS title,
-            COUNT(DISTINCT person_key) AS alumni
+            SUM(profile_weight) AS alumni
           FROM cohort_slice
           WHERE {cip_col} IS NOT NULL
           GROUP BY {cip_col}
@@ -713,7 +796,7 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
     current_exists = include_current and _create_current_slice(con, filters)
 
     source_for_top = "current_slice" if current_exists else "cohort_slice"
-    weight_expr = "COUNT(DISTINCT person_key)"
+    weight_expr = "SUM(profile_weight)"
     top_codes = _records_from_query(
         con,
         f"""
@@ -736,13 +819,13 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
         con,
         f"""
         WITH by_major AS (
-          SELECT grad_year, {cip_col} AS code, MAX(major_title) AS title, COUNT(DISTINCT person_key) AS n
+          SELECT grad_year, {cip_col} AS code, MAX(major_title) AS title, SUM(profile_weight) AS n
           FROM cohort_slice
           WHERE {cip_col} IN ({placeholders}) AND grad_year IS NOT NULL
           GROUP BY grad_year, {cip_col}
         ),
         totals AS (
-          SELECT grad_year, COUNT(DISTINCT person_key) AS total_n
+          SELECT grad_year, SUM(profile_weight) AS total_n
           FROM cohort_slice
           WHERE grad_year IS NOT NULL
           GROUP BY grad_year
@@ -766,13 +849,13 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
             con,
             f"""
             WITH by_major AS (
-              SELECT grad_year, {cip_col} AS code, MAX(major_title) AS title, COUNT(DISTINCT person_key) AS n
+              SELECT grad_year, {cip_col} AS code, MAX(major_title) AS title, SUM(profile_weight) AS n
               FROM current_slice
               WHERE {cip_col} IN ({placeholders}) AND grad_year IS NOT NULL
               GROUP BY grad_year, {cip_col}
             ),
             totals AS (
-              SELECT grad_year, COUNT(DISTINCT person_key) AS total_n
+              SELECT grad_year, SUM(profile_weight) AS total_n
               FROM current_slice
               WHERE grad_year IS NOT NULL
               GROUP BY grad_year
@@ -1114,7 +1197,7 @@ def _demographic_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) ->
             con,
             f"""
             WITH eligible AS (
-              SELECT grad_year, {column} AS label, final_weight
+              SELECT grad_year, {column} AS label, profile_weight
               FROM cohort_slice
               WHERE grad_year IS NOT NULL
                 AND {column} IS NOT NULL
@@ -1122,10 +1205,10 @@ def _demographic_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) ->
                 AND LOWER({column}) <> 'empty'
             ),
             top_labels AS (
-              SELECT label, SUM(final_weight) AS total_n
+              SELECT label, SUM(profile_weight) AS total_n
               FROM eligible
               GROUP BY label
-              HAVING SUM(final_weight) >= ?
+              HAVING SUM(profile_weight) >= ?
               ORDER BY total_n DESC
               LIMIT {limit}
             ),
@@ -1133,13 +1216,13 @@ def _demographic_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) ->
               SELECT
                 e.grad_year,
                 e.label,
-                SUM(e.final_weight) AS n
+                SUM(e.profile_weight) AS n
               FROM eligible e
               JOIN top_labels t USING (label)
               GROUP BY e.grad_year, e.label
             ),
             totals AS (
-              SELECT grad_year, SUM(final_weight) AS total_n
+              SELECT grad_year, SUM(profile_weight) AS total_n
               FROM eligible
               GROUP BY grad_year
             )
@@ -1168,7 +1251,7 @@ def _demographics(con: duckdb.DuckDBPyConnection) -> dict[str, list[dict[str, An
             WITH cohort AS (
               SELECT
                 {column} AS label,
-                SUM(final_weight) AS n
+                SUM(profile_weight) AS n
               FROM cohort_slice
               WHERE {column} IS NOT NULL AND {column} <> '' AND LOWER({column}) <> 'empty'
               GROUP BY {column}
@@ -1211,27 +1294,27 @@ def _postgrad_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> li
           SELECT
             grad_year,
             COALESCE(later_degree_type, CASE WHEN no_further_education_flag = 1 THEN 'No further education' ELSE 'Unknown' END) AS degree_type,
-            final_weight
+            profile_weight
           FROM cohort_slice
           WHERE grad_year IS NOT NULL
         ),
         top_paths AS (
-          SELECT degree_type, SUM(final_weight) AS total_n
+          SELECT degree_type, SUM(profile_weight) AS total_n
           FROM eligible
           WHERE degree_type <> 'Unknown'
           GROUP BY degree_type
-          HAVING SUM(final_weight) >= ?
+          HAVING SUM(profile_weight) >= ?
           ORDER BY CASE WHEN degree_type = 'No further education' THEN 1 ELSE 0 END, total_n DESC
           LIMIT {limit}
         ),
         by_year AS (
-          SELECT e.grad_year, e.degree_type, SUM(e.final_weight) AS n
+          SELECT e.grad_year, e.degree_type, SUM(e.profile_weight) AS n
           FROM eligible e
           JOIN top_paths t USING (degree_type)
           GROUP BY e.grad_year, e.degree_type
         ),
         totals AS (
-          SELECT grad_year, SUM(final_weight) AS total_n
+          SELECT grad_year, SUM(profile_weight) AS total_n
           FROM eligible
           GROUP BY grad_year
         )
@@ -1269,12 +1352,12 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
         con,
         f"""
         WITH denom AS (
-          SELECT SUM(final_weight) AS total_n FROM cohort_slice
+          SELECT SUM(profile_weight) AS total_n FROM cohort_slice
         ),
         flows AS (
           SELECT
             COALESCE(later_degree_type, CASE WHEN no_further_education_flag = 1 THEN 'No further education' ELSE 'Unknown' END) AS degree_type,
-            SUM(final_weight) AS n
+            SUM(profile_weight) AS n
           FROM cohort_slice
           GROUP BY 1
         )
@@ -1302,14 +1385,14 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
             f"""
             SELECT
               later_school AS label,
-              ROUND(SUM(final_weight)) AS n
+              ROUND(SUM(profile_weight)) AS n
             FROM cohort_slice
             WHERE later_degree_type IN ({placeholders})
               AND later_school IS NOT NULL
               AND later_school <> ''
             GROUP BY later_school
-            HAVING SUM(final_weight) >= ?
-            ORDER BY SUM(final_weight) DESC
+            HAVING SUM(profile_weight) >= ?
+            ORDER BY SUM(profile_weight) DESC
             LIMIT {limit}
             """,
             [*selected_values, SUPPRESSION_THRESHOLD],
@@ -1320,14 +1403,14 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
                 f"""
                 SELECT
                   later_program AS label,
-                  ROUND(SUM(final_weight)) AS n
+                  ROUND(SUM(profile_weight)) AS n
                 FROM cohort_slice
                 WHERE later_degree_type IN ({placeholders})
                   AND later_program IS NOT NULL
                   AND later_program <> ''
                 GROUP BY later_program
-                HAVING SUM(final_weight) >= ?
-                ORDER BY SUM(final_weight) DESC
+                HAVING SUM(profile_weight) >= ?
+                ORDER BY SUM(profile_weight) DESC
                 LIMIT {limit}
                 """,
                 [*selected_values, SUPPRESSION_THRESHOLD],

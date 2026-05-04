@@ -456,7 +456,26 @@ def _current_students_sql() -> str:
         "CLIENT_STANDARD.REVELIO_INTERNAL.STANDARD_202303_INDIVIDUAL_USER",
     )
     education_columns = globals().get("EDUCATION_COLUMNS", set())
-    has_startdate = "startdate" in {str(c).lower() for c in education_columns}
+    education_column_names = {str(c).lower() for c in education_columns}
+    has_startdate = "startdate" in education_column_names
+    profile_weight_col = next(
+        (
+            col
+            for col in [
+                "profile_weight",
+                "individual_weight",
+                "representation_weight",
+                "universe_weight",
+            ]
+            if col in education_column_names
+        ),
+        None,
+    )
+    current_profile_weight_expr = (
+        f"GREATEST(0.0, COALESCE(e.{profile_weight_col}, 1.0))"
+        if profile_weight_col
+        else "1.0"
+    )
     projected_year_expr = f"""
         CASE
             WHEN e.enddate IS NOT NULL AND YEAR(e.enddate) BETWEEN 2026 AND 2029 THEN YEAR(e.enddate)
@@ -490,7 +509,8 @@ FROM (
         COALESCE(NULLIF(d.sex_predicted, ''), 'Unknown') AS gender,
         COALESCE(NULLIF(d.ethnicity_predicted, ''), 'Unknown') AS race_ethnicity,
         d.prestige,
-        1.0 AS final_weight,
+        {current_profile_weight_expr} AS profile_weight,
+        {current_profile_weight_expr} AS final_weight,
         e.cip_probability,
         CASE WHEN e.cip_probability >= 0.8 THEN 1 ELSE 0 END AS high_conf_major_flag
     FROM {EDUCATION_CIP} e
@@ -558,12 +578,12 @@ def run_platform_parquet_export(platform_out_dir: Path | None = None) -> dict:
         "base_fact": {
             "path": "base_fact",
             **base_info,
-            "notes": "Person-level API input with hashed person_key, final_weight, demographics, employer flags, postgrad filters, and early_2025 partial horizon.",
+            "notes": "Person-level API input with hashed person_key, IPEDS/profile calibration weights, final outcome weights, demographics, employer flags, postgrad filters, and early_2025 partial horizon.",
         },
         "current_students_fact": {
             "path": "current_students_fact",
             **current_students_info,
-            "notes": "Projected classes 2026-2029 for major growth only; no earnings fields.",
+            "notes": "Projected classes 2026-2029 for major growth only; uses profile weights when available and has no earnings fields.",
         },
         "aggregate_facts": aggregate_facts,
         "references": reference_facts,
