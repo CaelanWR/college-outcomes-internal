@@ -1243,27 +1243,19 @@
           card('Race/Ethnicity Mix', 'race-bars', 6, true),
           card('Demographics Table', 'demo-table', 12),
         ].join('');
-        drawDemoBars('gender-bars', state.data.demographics?.gender || []);
-        drawDemoBars('race-bars', state.data.demographics?.race_ethnicity || []);
+        drawDemoStackedSnapshot('gender-bars', state.data.demographics?.gender || [], 'Gender');
+        drawDemoStackedSnapshot('race-bars', state.data.demographics?.race_ethnicity || [], 'Race/Ethnicity');
         const rows = [...(state.data.demographics?.gender || []), ...(state.data.demographics?.race_ethnicity || [])];
         $('demo-table').innerHTML = table(['Group', 'Alumni', 'Share', 'Mean salary'], rows, row => [
           row.label, num(row.n), pct(row.share_pct), money(row.weighted_mean_salary)
         ]);
       } else {
         $('content').innerHTML = [
-          card('Gender Mix Over Time', 'gender-trend', 6, true),
-          card('Race/Ethnicity Mix Over Time', 'race-trend', 6, true),
+          card('Gender Mix Over Time', 'gender-trend', 12, true),
+          card('Race/Ethnicity Mix Over Time', 'race-trend', 12, true),
         ].join('');
-        drawTrendLines('gender-trend', state.data.demographic_trend?.gender || [], 'label', 'share_pct', {
-          yTitle: 'Share of known gender %',
-          suffix: '%',
-          hover: '%{y:.1f}%',
-        });
-        drawTrendLines('race-trend', state.data.demographic_trend?.race_ethnicity || [], 'label', 'share_pct', {
-          yTitle: 'Share of known race/ethnicity %',
-          suffix: '%',
-          hover: '%{y:.1f}%',
-        });
+        drawDemoStackedTrend('gender-trend', state.data.demographic_trend?.gender || [], 'Share of known gender %');
+        drawDemoStackedTrend('race-trend', state.data.demographic_trend?.race_ethnicity || [], 'Share of known race/ethnicity %');
       }
     }
 
@@ -1647,18 +1639,73 @@
       drawSimpleBars(id, rows.slice().reverse().map(r => ({ label: r.label, n: r.n })), 'n', title === 'Roles' ? COLORS[3] : COLORS[1]);
     }
 
-    function drawDemoBars(id, rows) {
+    function drawDemoStackedSnapshot(id, rows, title) {
       if (!rows.length) return noData(id);
-      Plotly.newPlot(id, [{
+      const cleanRows = rows.filter(row => row.share_pct !== null && row.share_pct !== undefined);
+      if (!cleanRows.length) return noData(id);
+      const traces = cleanRows.map((row, i) => ({
         type: 'bar',
-        x: rows.map(r => r.label),
-        y: rows.map(r => r.share_pct),
-        text: rows.map(r => pct(r.share_pct)),
-        textposition: 'outside',
-        cliponaxis: false,
-        marker: { color: COLORS.slice(0, rows.length) },
-        hovertemplate: '%{x}<br>%{y:.1f}%<extra></extra>',
-      }], { ...layoutBase, yaxis: { ticksuffix: '%', rangemode: 'tozero' }, xaxis: { automargin: true } }, plotConfig);
+        orientation: 'h',
+        name: row.label,
+        y: [title],
+        x: [row.share_pct],
+        text: [row.share_pct >= 6 ? `${row.label} ${pct(row.share_pct)}` : ''],
+        textposition: 'inside',
+        insidetextanchor: 'middle',
+        marker: { color: COLORS[i % COLORS.length] },
+        customdata: [[row.label, row.n, row.weighted_mean_salary]],
+        hovertemplate: '%{customdata[0]}<br>%{x:.1f}%<br>%{customdata[1]:,.0f} alumni<br>Mean salary %{customdata[2]:$,.0f}<extra></extra>',
+      }));
+      Plotly.newPlot(id, traces, {
+        ...layoutBase,
+        barmode: 'stack',
+        margin: { ...layoutBase.margin, l: 96, r: 34, t: 20, b: 58 },
+        xaxis: { title: 'Share %', range: [0, 100], ticksuffix: '%', automargin: true },
+        yaxis: { automargin: true },
+        legend: { orientation: 'h', y: 1.18 },
+        uniformtext: { mode: 'hide', minsize: 11 },
+      }, plotConfig);
+    }
+
+    function drawDemoStackedTrend(id, rows, yTitle) {
+      const cleanRows = (rows || []).filter(row => row.grad_year !== null && row.grad_year !== undefined && row.share_pct !== null && row.share_pct !== undefined);
+      if (!cleanRows.length) return noData(id);
+      const labels = [...new Set(cleanRows.map(row => row.label).filter(Boolean))]
+        .sort((a, b) => {
+          const totalA = cleanRows.filter(row => row.label === a).reduce((sum, row) => sum + Number(row.n || 0), 0);
+          const totalB = cleanRows.filter(row => row.label === b).reduce((sum, row) => sum + Number(row.n || 0), 0);
+          return totalB - totalA;
+        });
+      const years = [...new Set(cleanRows.map(row => row.grad_year))].sort((a, b) => a - b);
+      const traces = labels.map((label, i) => {
+        const byYear = new Map(cleanRows.filter(row => row.label === label).map(row => [row.grad_year, row]));
+        return {
+          type: 'bar',
+          name: label,
+          x: years,
+          y: years.map(year => byYear.get(year)?.share_pct || 0),
+          text: years.map(year => {
+            const value = byYear.get(year)?.share_pct || 0;
+            return value >= 9 ? pct(value) : '';
+          }),
+          textposition: 'inside',
+          marker: { color: COLORS[i % COLORS.length] },
+          customdata: years.map(year => {
+            const row = byYear.get(year) || {};
+            return [label, row.n || 0, row.weighted_mean_salary || null];
+          }),
+          hovertemplate: '%{customdata[0]}<br>Class of %{x}<br>%{y:.1f}%<br>%{customdata[1]:,.0f} alumni<extra></extra>',
+        };
+      });
+      Plotly.newPlot(id, traces, {
+        ...layoutBase,
+        barmode: 'stack',
+        margin: { ...layoutBase.margin, l: 86, r: 34, t: 22, b: 64 },
+        yaxis: { title: yTitle, range: [0, 100], ticksuffix: '%', automargin: true },
+        xaxis: { title: 'Graduation year', automargin: true, dtick: 2 },
+        legend: { orientation: 'h', y: 1.18 },
+        uniformtext: { mode: 'hide', minsize: 10 },
+      }, plotConfig);
     }
 
     function drawPostgradFlows(id) {
