@@ -25,7 +25,7 @@ For the current static HTML, `site/config.js` can point at a static aggregate da
 Create a private repo:
 
 ```text
-opencareer/college-outcomes-internal
+CaelanWR/college-outcomes-internal
 ```
 
 Do not initialize it with a README because this local repo already has commits.
@@ -36,13 +36,13 @@ From this folder:
 
 ```bash
 cd /Users/caelan/Downloads/Untitled/college_outcomes_platform
-./scripts/publish_to_github.sh git@github.com:opencareer/college-outcomes-internal.git
+./scripts/publish_to_github.sh git@github.com:CaelanWR/college-outcomes-internal.git
 ```
 
 If SSH is not configured, use HTTPS:
 
 ```bash
-./scripts/publish_to_github.sh https://github.com/opencareer/college-outcomes-internal.git
+./scripts/publish_to_github.sh https://github.com/CaelanWR/college-outcomes-internal.git
 ```
 
 ## Step 3: Enable GitHub Pages
@@ -61,7 +61,7 @@ For internal-only access, do not use a client-side JavaScript password. It is no
 
 Use one of:
 
-- GitHub Enterprise private Pages, if enabled for `opencareer`.
+- GitHub Enterprise private Pages, if enabled for your GitHub account or organization.
 - Cloudflare Access in front of the frontend and API. This is the recommended path if private GitHub Pages is unavailable.
 - Vercel/Render/Fly with organization SSO.
 
@@ -123,6 +123,5 @@ The frontend should not directly expose `base_fact`.
 ## Current Blockers
 
 - GitHub CLI is not installed on this machine.
-- No `origin` remote is configured.
 - The local shell currently cannot resolve `github.com` without network approval.
-- The GitHub connector can see `opencareer`, but does not expose repository creation.
+- This local repo is ready to push once the personal GitHub repo exists and the machine has GitHub authentication.
