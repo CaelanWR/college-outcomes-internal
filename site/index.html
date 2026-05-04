@@ -38,7 +38,7 @@
     }
 
     header {
-      padding: 14px 22px 16px;
+      padding: 0 22px 16px;
       border-bottom: 1px solid rgba(22,50,74,0.08);
       background: rgba(255,255,255,0.86);
       backdrop-filter: blur(18px);
@@ -53,12 +53,18 @@
       align-items: center;
       justify-content: space-between;
       gap: 16px;
-      margin-bottom: 10px;
+      margin: 0 -22px 14px;
+      padding: 22px 22px 20px;
+      color: white;
+      background:
+        radial-gradient(circle at 82% 18%, rgba(122, 195, 230, 0.28), transparent 26%),
+        linear-gradient(135deg, #112f47 0%, #245a7c 56%, #346f9a 100%);
+      box-shadow: inset 0 -1px 0 rgba(255,255,255,0.16);
     }
 
     h1 {
       margin: 0;
-      font-size: 18px;
+      font-size: clamp(24px, 2.2vw, 36px);
       letter-spacing: -0.02em;
       line-height: 1;
       font-weight: 900;
@@ -68,7 +74,7 @@
       display: flex;
       gap: 10px;
       align-items: center;
-      color: var(--muted);
+      color: rgba(255,255,255,0.82);
       font-weight: 800;
       font-size: 12px;
       text-transform: uppercase;
@@ -85,7 +91,7 @@
     }
 
     .dot.ok { background: var(--green); box-shadow: 0 0 0 5px rgba(34, 160, 107, 0.16); }
-    .dot.bad { background: var(--red); box-shadow: 0 0 0 5px rgba(223, 77, 95, 0.16); }
+    .dot.bad { background: var(--rose); box-shadow: 0 0 0 5px rgba(223, 77, 95, 0.16); }
 
     .connection, .filters {
       display: grid;
@@ -102,6 +108,7 @@
       grid-template-columns: minmax(310px, 1.5fr) minmax(180px, 0.72fr) max-content minmax(320px, 1.25fr) max-content auto;
       margin-top: 0;
       align-items: end;
+      padding: 0 2px;
     }
 
     .advanced {
@@ -258,11 +265,11 @@
 
     .tab {
       border: 1px solid transparent;
-      background: rgba(255,255,255,0.62);
+      background: rgba(255,255,255,0.78);
       border-radius: 999px;
-      padding: 10px 16px;
+      padding: 11px 18px;
       color: var(--muted);
-      font-weight: 800;
+      font-weight: 900;
       cursor: pointer;
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.85);
     }
@@ -281,10 +288,10 @@
     }
 
     .card, .metric {
-      background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(247,250,252,0.94));
+      background: linear-gradient(180deg, rgba(255,255,255,0.99), rgba(248,251,253,0.96));
       border: 1px solid rgba(22,50,74,0.08);
       border-radius: var(--radius);
-      box-shadow: 0 12px 28px rgba(20,44,65,0.06);
+      box-shadow: 0 16px 34px rgba(20,44,65,0.07);
     }
 
     .metric {
@@ -856,76 +863,181 @@
     }
 
     function renderEmployers() {
-      $('content').innerHTML = [
-        card('Top Career Employers', 'emp-top', 6, true),
-        card(`Top Roles at ${escapeHtml(state.data.employers?.selected_employer || 'Selected Employer')}`, 'emp-roles', 6, true),
-      ].join('');
-      drawEmployerBars('emp-top', true);
-      drawEmployerRoles('emp-roles');
+      if (state.viewMode === 'snapshot') {
+        $('content').innerHTML = [
+          card('Top Career Employers', 'emp-top', 6, true),
+          card(`Top Roles at ${escapeHtml(state.data.employers?.selected_employer || 'Selected Employer')}`, 'emp-roles', 6, true),
+        ].join('');
+        drawEmployerBars('emp-top', true);
+        drawEmployerRoles('emp-roles');
+      } else {
+        $('content').innerHTML = [
+          card('Career Employer Share Over Time', 'emp-trend', 8, true),
+          card(`Roles at ${escapeHtml(state.data.employers?.selected_employer || 'Top Employer')}`, 'emp-roles', 4, true),
+          card('Current Top Career Employers', 'emp-top', 12),
+        ].join('');
+        drawTrendLines('emp-trend', state.data.employer_trend || [], 'employer', 'share_pct', {
+          yTitle: 'Share of career employers %',
+          suffix: '%',
+          hover: '%{y:.1f}%',
+        });
+        drawEmployerRoles('emp-roles');
+        drawEmployerBars('emp-top', true);
+      }
     }
 
     function renderGeography() {
-      $('content').innerHTML = [
-        card('Median Earnings by City', 'geo-salary', 7, true),
-        card('Top Cities by Alumni', 'geo-volume', 5, true),
-      ].join('');
-      drawGeo('geo-salary', 'median_salary');
-      drawGeo('geo-volume', 'n');
+      if (state.viewMode === 'snapshot') {
+        $('content').innerHTML = [
+          card('Median Earnings by City', 'geo-salary', 7, true),
+          card('Top Cities by Alumni', 'geo-volume', 5, true),
+        ].join('');
+        drawGeo('geo-salary', 'median_salary');
+        drawGeo('geo-volume', 'n');
+      } else {
+        $('content').innerHTML = [
+          card('City Earnings Over Time', 'geo-salary-trend', 8, true),
+          card('City Share Over Time', 'geo-share-trend', 4, true),
+        ].join('');
+        drawTrendLines('geo-salary-trend', (state.data.geography_trend || []).filter(r => r.median_salary), 'location', 'median_salary', {
+          yTitle: 'Median salary',
+          prefix: '$',
+          hover: '%{y:$,.0f}',
+          labelTransform: titleCase,
+        });
+        drawTrendLines('geo-share-trend', state.data.geography_trend || [], 'location', 'share_pct', {
+          yTitle: 'Share of located alumni %',
+          suffix: '%',
+          hover: '%{y:.1f}%',
+          labelTransform: titleCase,
+        });
+      }
     }
 
     function renderRoles() {
-      $('content').innerHTML = [
-        card('Top Roles', 'role-bars', 6, true),
-        card('Top Industries', 'industry-bars', 6, true),
-      ].join('');
-      drawRoleBars('role-bars', state.data.roles?.roles || [], 'Roles');
-      drawRoleBars('industry-bars', state.data.roles?.industries || [], 'Industries');
+      if (state.viewMode === 'snapshot') {
+        $('content').innerHTML = [
+          card('Top Roles', 'role-bars', 6, true),
+          card('Top Industries', 'industry-bars', 6, true),
+        ].join('');
+        drawRoleBars('role-bars', state.data.roles?.roles || [], 'Roles');
+        drawRoleBars('industry-bars', state.data.roles?.industries || [], 'Industries');
+      } else {
+        $('content').innerHTML = [
+          card('Roles Over Time', 'role-trend', 6, true),
+          card('Industries Over Time', 'industry-trend', 6, true),
+        ].join('');
+        drawTrendLines('role-trend', state.data.role_trend?.roles || [], 'label', 'share_pct', {
+          yTitle: 'Share of alumni %',
+          suffix: '%',
+          hover: '%{y:.1f}%',
+        });
+        drawTrendLines('industry-trend', state.data.role_trend?.industries || [], 'label', 'share_pct', {
+          yTitle: 'Share of alumni %',
+          suffix: '%',
+          hover: '%{y:.1f}%',
+        });
+      }
     }
 
     function renderDemographics() {
-      $('content').innerHTML = [
-        card('Gender Mix', 'gender-bars', 6, true),
-        card('Race/Ethnicity Mix', 'race-bars', 6, true),
-        card('Demographics Table', 'demo-table', 12),
-      ].join('');
-      drawDemoBars('gender-bars', state.data.demographics?.gender || []);
-      drawDemoBars('race-bars', state.data.demographics?.race_ethnicity || []);
-      const rows = [...(state.data.demographics?.gender || []), ...(state.data.demographics?.race_ethnicity || [])];
-      $('demo-table').innerHTML = table(['Group', 'Alumni', 'Share', 'Mean salary'], rows, row => [
-        row.label, num(row.n), pct(row.share_pct), money(row.weighted_mean_salary)
-      ]);
+      if (state.viewMode === 'snapshot') {
+        $('content').innerHTML = [
+          card('Gender Mix', 'gender-bars', 6, true),
+          card('Race/Ethnicity Mix', 'race-bars', 6, true),
+          card('Demographics Table', 'demo-table', 12),
+        ].join('');
+        drawDemoBars('gender-bars', state.data.demographics?.gender || []);
+        drawDemoBars('race-bars', state.data.demographics?.race_ethnicity || []);
+        const rows = [...(state.data.demographics?.gender || []), ...(state.data.demographics?.race_ethnicity || [])];
+        $('demo-table').innerHTML = table(['Group', 'Alumni', 'Share', 'Mean salary'], rows, row => [
+          row.label, num(row.n), pct(row.share_pct), money(row.weighted_mean_salary)
+        ]);
+      } else {
+        $('content').innerHTML = [
+          card('Gender Mix Over Time', 'gender-trend', 6, true),
+          card('Race/Ethnicity Mix Over Time', 'race-trend', 6, true),
+        ].join('');
+        drawTrendLines('gender-trend', state.data.demographic_trend?.gender || [], 'label', 'share_pct', {
+          yTitle: 'Share of known gender %',
+          suffix: '%',
+          hover: '%{y:.1f}%',
+        });
+        drawTrendLines('race-trend', state.data.demographic_trend?.race_ethnicity || [], 'label', 'share_pct', {
+          yTitle: 'Share of known race/ethnicity %',
+          suffix: '%',
+          hover: '%{y:.1f}%',
+        });
+      }
     }
 
     function renderPostgrad() {
       const selected = state.data.postgrad?.selected_degree || 'Selected path';
-      $('content').innerHTML = [
-        card('Further Education Paths', 'postgrad-flow', 5, true),
-        card(`Top Schools for ${escapeHtml(selected)}`, 'postgrad-schools', 4, true),
-        card(`Top Programs for ${escapeHtml(selected)}`, 'postgrad-programs', 3, true),
-      ].join('');
-      drawPostgradFlows('postgrad-flow');
-      drawSimpleBars('postgrad-schools', state.data.postgrad?.schools || [], 'n', '#225ea8');
-      drawSimpleBars('postgrad-programs', state.data.postgrad?.programs || [], 'n', '#22a06b');
+      if (state.viewMode === 'snapshot') {
+        $('content').innerHTML = [
+          card('Further Education Paths', 'postgrad-flow', 5, true),
+          card(`Top Schools for ${escapeHtml(selected)}`, 'postgrad-schools', 4, true),
+          card(`Top Programs for ${escapeHtml(selected)}`, 'postgrad-programs', 3, true),
+        ].join('');
+        drawPostgradFlows('postgrad-flow');
+        drawSimpleBars('postgrad-schools', state.data.postgrad?.schools || [], 'n', '#225ea8');
+        drawSimpleBars('postgrad-programs', state.data.postgrad?.programs || [], 'n', '#22a06b');
+      } else {
+        $('content').innerHTML = [
+          card('Further Education Paths Over Time', 'postgrad-trend', 8, true),
+          card(`Top Schools for ${escapeHtml(selected)}`, 'postgrad-schools', 4, true),
+        ].join('');
+        drawTrendLines('postgrad-trend', state.data.postgrad_trend || [], 'degree_type', 'share_pct', {
+          yTitle: 'Share of alumni %',
+          suffix: '%',
+          hover: '%{y:.1f}%',
+          onClick: label => {
+            if (label === 'No further education') return;
+            state.selectedPostgradDegree = label;
+            refresh();
+          },
+        });
+        drawSimpleBars('postgrad-schools', state.data.postgrad?.schools || [], 'n', '#225ea8');
+      }
     }
 
     function renderCoverage() {
-      $('content').innerHTML = [
-        card('Alumni and Salary Observations by Year', 'coverage-volume', 7, true),
-        card('Current Slice Sample', 'coverage-cards', 5),
-      ].join('');
-      const rows = state.data.salary_trend || [];
-      Plotly.newPlot('coverage-volume', [
-        { type: 'bar', x: rows.map(r => r.grad_year), y: rows.map(r => r.alumni), name: 'Alumni', marker: { color: 'rgba(34, 94, 168, 0.35)' } },
-        { type: 'bar', x: rows.map(r => r.grad_year), y: rows.map(r => r.salary_weight), name: 'Salary observations', marker: { color: 'rgba(34, 160, 107, 0.72)' } },
-      ], { ...layoutBase, barmode: 'overlay', xaxis: { title: 'Graduation year' }, yaxis: { title: 'Count' }, legend: { orientation: 'h' } }, plotConfig);
       const o = state.data.overview || {};
-      $('coverage-cards').innerHTML = table(['Metric', 'Value'], [
-        ['Alumni in slice', num(o.alumni)],
-        ['Raw rows', num(o.raw_rows)],
-        ['Salary observations', num(o.salary_weight)],
-        ['Unique employers', num(o.unique_employers)],
-        ['Unique locations', num(o.unique_locations)],
-      ], row => row);
+      if (state.viewMode === 'snapshot') {
+        $('content').innerHTML = [
+          metric('Alumni in slice', num(o.alumni)),
+          metric('Salary observations', num(o.salary_weight)),
+          metric('Unique employers', num(o.unique_employers)),
+          metric('Unique locations', num(o.unique_locations)),
+          card('Top Majors in Current Slice', 'coverage-major-bars', 6, true),
+          card('Current Slice Sample', 'coverage-cards', 6),
+        ].join('');
+        drawTopMajorsVolume('coverage-major-bars');
+        $('coverage-cards').innerHTML = table(['Metric', 'Value'], [
+          ['Raw rows', num(o.raw_rows)],
+          ['Later degree alumni', num(o.later_degree_n)],
+          ['No later degree observed', num(o.no_further_n)],
+          ['Median salary', money(o.median_salary)],
+          ['Mean salary', money(o.weighted_mean_salary)],
+        ], row => row);
+      } else {
+        $('content').innerHTML = [
+          card('Alumni and Salary Observations by Year', 'coverage-volume', 8, true),
+          card('Salary Observation Rate', 'coverage-rate', 4, true),
+        ].join('');
+        const rows = state.data.salary_trend || [];
+        Plotly.newPlot('coverage-volume', [
+          { type: 'bar', x: rows.map(r => r.grad_year), y: rows.map(r => r.alumni), name: 'Alumni', marker: { color: 'rgba(34, 94, 168, 0.35)' } },
+          { type: 'bar', x: rows.map(r => r.grad_year), y: rows.map(r => r.salary_weight), name: 'Salary observations', marker: { color: 'rgba(34, 160, 107, 0.72)' } },
+        ], { ...layoutBase, barmode: 'overlay', xaxis: { title: 'Graduation year' }, yaxis: { title: 'Count' }, legend: { orientation: 'h' } }, plotConfig);
+        const rateRows = rows.map(row => ({ ...row, rate: row.alumni ? 100 * row.salary_weight / row.alumni : null })).filter(row => row.rate !== null);
+        drawTrendLines('coverage-rate', rateRows, 'series', 'rate', {
+          yTitle: 'Salary observations / alumni %',
+          suffix: '%',
+          hover: '%{y:.1f}%',
+          fixedLabel: 'Observation rate',
+        });
+      }
     }
 
     function drawSalaryTrend(id, forceSchool = false) {
@@ -967,6 +1079,47 @@
         xaxis: { title: 'Graduation year', automargin: true },
         legend: { orientation: 'h', y: 1.12 },
       }, plotConfig);
+    }
+
+    function drawTrendLines(id, rows, labelKey, valueKey, options = {}) {
+      const cleanRows = (rows || []).filter(row => row.grad_year !== null && row.grad_year !== undefined && row[valueKey] !== null && row[valueKey] !== undefined);
+      if (!cleanRows.length) return noData(id);
+      const labels = options.fixedLabel ? [options.fixedLabel] : [...new Set(cleanRows.map(row => row[labelKey]).filter(Boolean))];
+      const traces = labels.map((label, i) => {
+        const slice = options.fixedLabel ? cleanRows : cleanRows.filter(row => row[labelKey] === label);
+        const displayLabel = options.labelTransform ? options.labelTransform(label) : label;
+        return {
+          type: 'scatter',
+          mode: 'lines+markers',
+          name: displayLabel,
+          x: slice.map(row => row.grad_year),
+          y: slice.map(row => row[valueKey]),
+          line: { color: COLORS[i % COLORS.length], width: 3 },
+          marker: { size: 7 },
+          customdata: slice.map(() => label),
+          hovertemplate: `${displayLabel}<br>Class of %{x}<br>${options.hover || '%{y:,.1f}'}<extra></extra>`,
+        };
+      });
+      Plotly.newPlot(id, traces, {
+        ...layoutBase,
+        margin: { ...layoutBase.margin, l: 80, r: 36, t: 22, b: 62 },
+        xaxis: { title: 'Graduation year', automargin: true, dtick: 5 },
+        yaxis: {
+          title: options.yTitle || '',
+          tickprefix: options.prefix || '',
+          ticksuffix: options.suffix || '',
+          automargin: true,
+          rangemode: 'tozero',
+        },
+        legend: { orientation: 'h', y: 1.18, x: 0 },
+      }, plotConfig).then(plot => {
+        if (!options.onClick) return;
+        plot.on('plotly_click', event => {
+          const point = event.points?.[0];
+          const label = point?.customdata || point?.data?.name;
+          if (label) options.onClick(label);
+        });
+      });
     }
 
     function drawMajorTrend(id) {

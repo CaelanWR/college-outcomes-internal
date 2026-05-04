@@ -677,6 +677,55 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
     return {"top": top_codes, "series": base_series, "current_series": current_series}
 
 
+def _employer_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    limit = min(_safe_limit(filters.top_n), 8)
+    return _records_from_query(
+        con,
+        f"""
+        WITH eligible AS (
+          SELECT grad_year, employer, final_weight
+          FROM slice
+          WHERE grad_year IS NOT NULL
+            AND employer IS NOT NULL
+            AND employer <> ''
+            AND unknown_employer_flag = 0
+            AND named_employer_flag = 1
+            AND career_employer_flag = 1
+            {SAME_SCHOOL_EMPLOYER_FILTER}
+        ),
+        top_employers AS (
+          SELECT employer, SUM(final_weight) AS total_n
+          FROM eligible
+          GROUP BY employer
+          HAVING SUM(final_weight) >= ?
+          ORDER BY total_n DESC
+          LIMIT {limit}
+        ),
+        by_year AS (
+          SELECT e.grad_year, e.employer, SUM(e.final_weight) AS n
+          FROM eligible e
+          JOIN top_employers t USING (employer)
+          GROUP BY e.grad_year, e.employer
+        ),
+        totals AS (
+          SELECT grad_year, SUM(final_weight) AS total_n
+          FROM eligible
+          GROUP BY grad_year
+        )
+        SELECT
+          b.grad_year,
+          b.employer,
+          ROUND(b.n) AS n,
+          ROUND(100.0 * b.n / NULLIF(t.total_n, 0), 2) AS share_pct
+        FROM by_year b
+        JOIN totals t USING (grad_year)
+        WHERE b.n >= ?
+        ORDER BY b.employer, b.grad_year
+        """,
+        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+    )
+
+
 def _employers(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
     limit = _safe_limit(filters.top_n)
     employers = _records_from_query(
@@ -745,6 +794,69 @@ def _employers(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[st
     return {"top": employers, "selected_employer": employer, "roles": roles}
 
 
+def _geography_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    limit = min(_safe_limit(filters.top_n), 8)
+    location_expr = "REGEXP_REPLACE(COALESCE(location, city, 'Unknown'), '(?i)\\s+(non)?metropolitan area$', '')"
+    return _records_from_query(
+        con,
+        f"""
+        WITH eligible AS (
+          SELECT
+            grad_year,
+            {location_expr} AS location,
+            final_weight,
+            salary
+          FROM slice
+          WHERE grad_year IS NOT NULL
+            AND COALESCE(location, city) IS NOT NULL
+            AND LOWER(COALESCE(location, city)) NOT IN ('empty', 'unknown')
+        ),
+        top_locations AS (
+          SELECT
+            location,
+            SUM(final_weight) AS total_n,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight
+          FROM eligible
+          GROUP BY location
+          HAVING SUM(final_weight) >= ?
+          ORDER BY salary_weight DESC, total_n DESC
+          LIMIT {limit}
+        ),
+        by_year AS (
+          SELECT
+            e.grad_year,
+            e.location,
+            SUM(e.final_weight) AS n,
+            SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight ELSE 0 END) AS salary_weight,
+            SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight * e.salary ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight ELSE 0 END), 0) AS weighted_mean_salary,
+            quantile_cont(e.salary, 0.5) AS median_salary
+          FROM eligible e
+          JOIN top_locations t USING (location)
+          GROUP BY e.grad_year, e.location
+        ),
+        totals AS (
+          SELECT grad_year, SUM(final_weight) AS total_n
+          FROM eligible
+          GROUP BY grad_year
+        )
+        SELECT
+          b.grad_year,
+          b.location,
+          ROUND(b.n) AS n,
+          ROUND(b.salary_weight) AS salary_weight,
+          ROUND(100.0 * b.n / NULLIF(t.total_n, 0), 2) AS share_pct,
+          CASE WHEN b.salary_weight >= ? THEN ROUND(b.weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
+          CASE WHEN b.salary_weight >= ? THEN ROUND(b.median_salary) ELSE NULL END AS median_salary
+        FROM by_year b
+        JOIN totals t USING (grad_year)
+        WHERE b.n >= ?
+        ORDER BY b.location, b.grad_year
+        """,
+        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+    )
+
+
 def _geography(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
     limit = _safe_limit(filters.top_n)
     return _records_from_query(
@@ -767,6 +879,61 @@ def _geography(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[di
         """,
         [SUPPRESSION_THRESHOLD],
     )
+
+
+def _role_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, list[dict[str, Any]]]:
+    limit = min(_safe_limit(filters.top_n), 8)
+
+    def group(column: str, exclude_corporate_attorney: bool = False) -> list[dict[str, Any]]:
+        exclusion = "AND NOT (degree = 'Bachelors' AND horizon = '1yr' AND role_k50_v3 = 'Corporate Attorney')" if exclude_corporate_attorney else ""
+        return _records_from_query(
+            con,
+            f"""
+            WITH eligible AS (
+              SELECT grad_year, {column} AS label, final_weight
+              FROM slice
+              WHERE grad_year IS NOT NULL
+                AND {column} IS NOT NULL
+                AND {column} <> ''
+                {exclusion}
+            ),
+            top_labels AS (
+              SELECT label, SUM(final_weight) AS total_n
+              FROM eligible
+              GROUP BY label
+              HAVING SUM(final_weight) >= ?
+              ORDER BY total_n DESC
+              LIMIT {limit}
+            ),
+            by_year AS (
+              SELECT e.grad_year, e.label, SUM(e.final_weight) AS n
+              FROM eligible e
+              JOIN top_labels t USING (label)
+              GROUP BY e.grad_year, e.label
+            ),
+            totals AS (
+              SELECT grad_year, SUM(final_weight) AS total_n
+              FROM slice
+              WHERE grad_year IS NOT NULL
+              GROUP BY grad_year
+            )
+            SELECT
+              b.grad_year,
+              b.label,
+              ROUND(b.n) AS n,
+              ROUND(100.0 * b.n / NULLIF(t.total_n, 0), 2) AS share_pct
+            FROM by_year b
+            JOIN totals t USING (grad_year)
+            WHERE b.n >= ?
+            ORDER BY b.label, b.grad_year
+            """,
+            [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+        )
+
+    return {
+        "roles": group("role_k50_v3", exclude_corporate_attorney=True),
+        "industries": group("industry_k50"),
+    }
 
 
 def _roles(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
@@ -811,6 +978,63 @@ def _roles(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, A
     return {"roles": role_rows, "industries": industry_rows}
 
 
+def _demographic_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, list[dict[str, Any]]]:
+    limit = min(_safe_limit(filters.top_n), 8)
+
+    def group(column: str) -> list[dict[str, Any]]:
+        return _records_from_query(
+            con,
+            f"""
+            WITH eligible AS (
+              SELECT grad_year, {column} AS label, final_weight, salary
+              FROM slice
+              WHERE grad_year IS NOT NULL
+                AND {column} IS NOT NULL
+                AND {column} <> ''
+                AND LOWER({column}) <> 'empty'
+            ),
+            top_labels AS (
+              SELECT label, SUM(final_weight) AS total_n
+              FROM eligible
+              GROUP BY label
+              HAVING SUM(final_weight) >= ?
+              ORDER BY total_n DESC
+              LIMIT {limit}
+            ),
+            by_year AS (
+              SELECT
+                e.grad_year,
+                e.label,
+                SUM(e.final_weight) AS n,
+                SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight ELSE 0 END) AS salary_weight,
+                SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight * e.salary ELSE 0 END)
+                  / NULLIF(SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight ELSE 0 END), 0) AS weighted_mean_salary
+              FROM eligible e
+              JOIN top_labels t USING (label)
+              GROUP BY e.grad_year, e.label
+            ),
+            totals AS (
+              SELECT grad_year, SUM(final_weight) AS total_n
+              FROM eligible
+              GROUP BY grad_year
+            )
+            SELECT
+              b.grad_year,
+              b.label,
+              ROUND(b.n) AS n,
+              ROUND(100.0 * b.n / NULLIF(t.total_n, 0), 2) AS share_pct,
+              CASE WHEN b.salary_weight >= ? THEN ROUND(b.weighted_mean_salary) ELSE NULL END AS weighted_mean_salary
+            FROM by_year b
+            JOIN totals t USING (grad_year)
+            WHERE b.n >= ?
+            ORDER BY b.label, b.grad_year
+            """,
+            [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+        )
+
+    return {"gender": group("gender"), "race_ethnicity": group("race_ethnicity")}
+
+
 def _demographics(con: duckdb.DuckDBPyConnection) -> dict[str, list[dict[str, Any]]]:
     def group(column: str) -> list[dict[str, Any]]:
         return _records_from_query(
@@ -832,6 +1056,53 @@ def _demographics(con: duckdb.DuckDBPyConnection) -> dict[str, list[dict[str, An
         )
 
     return {"gender": group("gender"), "race_ethnicity": group("race_ethnicity")}
+
+
+def _postgrad_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    limit = min(_safe_limit(filters.top_n), 8)
+    return _records_from_query(
+        con,
+        f"""
+        WITH eligible AS (
+          SELECT
+            grad_year,
+            COALESCE(later_degree_type, CASE WHEN no_further_education_flag = 1 THEN 'No further education' ELSE 'Unknown' END) AS degree_type,
+            final_weight
+          FROM slice
+          WHERE grad_year IS NOT NULL
+        ),
+        top_paths AS (
+          SELECT degree_type, SUM(final_weight) AS total_n
+          FROM eligible
+          WHERE degree_type <> 'Unknown'
+          GROUP BY degree_type
+          HAVING SUM(final_weight) >= ?
+          ORDER BY CASE WHEN degree_type = 'No further education' THEN 1 ELSE 0 END, total_n DESC
+          LIMIT {limit}
+        ),
+        by_year AS (
+          SELECT e.grad_year, e.degree_type, SUM(e.final_weight) AS n
+          FROM eligible e
+          JOIN top_paths t USING (degree_type)
+          GROUP BY e.grad_year, e.degree_type
+        ),
+        totals AS (
+          SELECT grad_year, SUM(final_weight) AS total_n
+          FROM eligible
+          GROUP BY grad_year
+        )
+        SELECT
+          b.grad_year,
+          b.degree_type,
+          ROUND(b.n) AS n,
+          ROUND(100.0 * b.n / NULLIF(t.total_n, 0), 2) AS share_pct
+        FROM by_year b
+        JOIN totals t USING (grad_year)
+        WHERE b.n >= ?
+        ORDER BY b.degree_type, b.grad_year
+        """,
+        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+    )
 
 
 def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
@@ -922,10 +1193,15 @@ def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password
             "top_majors": _top_majors(con, filters),
             "major_trend": _major_trend(con, filters, filters.include_current_students),
             "employers": _employers(con, filters),
+            "employer_trend": _employer_trend(con, filters),
             "geography": _geography(con, filters),
+            "geography_trend": _geography_trend(con, filters),
             "roles": _roles(con, filters),
+            "role_trend": _role_trend(con, filters),
             "demographics": _demographics(con),
+            "demographic_trend": _demographic_trend(con, filters),
             "postgrad": _postgrad(con, filters),
+            "postgrad_trend": _postgrad_trend(con, filters),
         }
     finally:
         con.close()
