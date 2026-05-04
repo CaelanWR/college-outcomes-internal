@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 DATA_ROOT = Path(os.environ.get("OUTCOMES_PARQUET_ROOT", "./data/parquet")).expanduser()
 PLATFORM_ROOT = Path(os.environ.get("OUTCOMES_PLATFORM_ROOT", "")).expanduser() if os.environ.get("OUTCOMES_PLATFORM_ROOT") else None
 SUPPRESSION_THRESHOLD = int(os.environ.get("SUPPRESSION_THRESHOLD", "25"))
+TREND_SUPPRESSION_THRESHOLD = int(os.environ.get("TREND_SUPPRESSION_THRESHOLD", "5"))
 APP_PASSWORD = os.environ.get("OUTCOMES_APP_PASSWORD")
 ALLOWED_ORIGINS = [
     origin.strip()
@@ -213,7 +214,7 @@ def _where(filters: QueryRequest, *, include_horizon: bool = True, include_postg
         if filters.postgrad.later_degree_type:
             clauses.append("later_degree_type = ?")
             params.append(filters.postgrad.later_degree_type)
-        if filters.postgrad.no_further_education is not None:
+        elif filters.postgrad.no_further_education is not None:
             clauses.append("no_further_education_flag = ?")
             params.append(1 if filters.postgrad.no_further_education else 0)
 
@@ -234,6 +235,31 @@ def _create_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> None
         {where_sql}
         """,
         [_dataset_glob("base_fact"), *params],
+    )
+    cohort_where_sql, cohort_params = _where(filters, include_horizon=False)
+    con.execute(
+        f"""
+        CREATE TEMP TABLE cohort_slice AS
+        SELECT *
+        FROM (
+          SELECT
+            *,
+            ROW_NUMBER() OVER (
+              PARTITION BY person_key, unitid, degree, cip2, cip4, cip6, grad_year
+              ORDER BY CASE horizon
+                WHEN '1yr' THEN 1
+                WHEN '5yr' THEN 2
+                WHEN '10yr' THEN 3
+                WHEN 'early_2025' THEN 4
+                ELSE 5
+              END
+            ) AS cohort_rank
+          FROM read_parquet(?)
+          {cohort_where_sql}
+        )
+        WHERE cohort_rank = 1
+        """,
+        [_dataset_glob("base_fact"), *cohort_params],
     )
 
 
@@ -427,32 +453,37 @@ def _overview(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
     return _single_record(
         con,
         """
-        WITH totals AS (
+        WITH cohort AS (
           SELECT
             SUM(final_weight) AS alumni,
             COUNT(*) AS raw_rows,
+            SUM(CASE WHEN later_degree_type IS NOT NULL THEN final_weight ELSE 0 END) AS later_degree_n,
+            SUM(CASE WHEN no_further_education_flag = 1 THEN final_weight ELSE 0 END) AS no_further_n
+          FROM cohort_slice
+        ),
+        outcomes AS (
+          SELECT
             SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight,
             SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
               / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS weighted_mean_salary,
             quantile_cont(salary, 0.5) AS median_salary,
             COUNT(DISTINCT CASE WHEN employer IS NOT NULL AND employer <> '' AND unknown_employer_flag = 0 THEN employer END) AS unique_employers,
-            COUNT(DISTINCT CASE WHEN location IS NOT NULL AND location <> '' THEN location END) AS unique_locations,
-            SUM(CASE WHEN later_degree_type IS NOT NULL THEN final_weight ELSE 0 END) AS later_degree_n,
-            SUM(CASE WHEN no_further_education_flag = 1 THEN final_weight ELSE 0 END) AS no_further_n
+            COUNT(DISTINCT CASE WHEN location IS NOT NULL AND location <> '' THEN location END) AS unique_locations
           FROM slice
         )
         SELECT
-          ROUND(alumni) AS alumni,
-          raw_rows,
-          ROUND(salary_weight) AS salary_weight,
-          CASE WHEN salary_weight >= ? THEN ROUND(weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
-          CASE WHEN salary_weight >= ? THEN ROUND(median_salary) ELSE NULL END AS median_salary,
-          unique_employers,
-          unique_locations,
-          ROUND(later_degree_n) AS later_degree_n,
-          ROUND(no_further_n) AS no_further_n,
-          ROUND(100.0 * later_degree_n / NULLIF(alumni, 0), 1) AS later_degree_pct
-        FROM totals
+          ROUND(c.alumni) AS alumni,
+          c.raw_rows,
+          ROUND(o.salary_weight) AS salary_weight,
+          CASE WHEN o.salary_weight >= ? THEN ROUND(o.weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
+          CASE WHEN o.salary_weight >= ? THEN ROUND(o.median_salary) ELSE NULL END AS median_salary,
+          o.unique_employers,
+          o.unique_locations,
+          ROUND(c.later_degree_n) AS later_degree_n,
+          ROUND(c.no_further_n) AS no_further_n,
+          ROUND(100.0 * c.later_degree_n / NULLIF(c.alumni, 0), 1) AS later_degree_pct
+        FROM cohort c
+        CROSS JOIN outcomes o
         """,
         [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
     )
@@ -484,38 +515,17 @@ def _salary_trend(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
         WHERE alumni >= ?
         ORDER BY grad_year
         """,
-        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, TREND_SUPPRESSION_THRESHOLD],
     )
 
 
 def _alumni_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
-    where_sql, params = _where(filters, include_horizon=False)
     return _records_from_query(
         con,
-        f"""
-        WITH deduped AS (
-          SELECT *
-          FROM (
-            SELECT
-              *,
-              ROW_NUMBER() OVER (
-                PARTITION BY person_key, unitid, degree, cip2, cip4, cip6, grad_year
-                ORDER BY CASE horizon
-                  WHEN '1yr' THEN 1
-                  WHEN '5yr' THEN 2
-                  WHEN '10yr' THEN 3
-                  WHEN 'early_2025' THEN 4
-                  ELSE 5
-                END
-              ) AS horizon_rank
-            FROM read_parquet(?)
-            {where_sql}
-          )
-          WHERE horizon_rank = 1
-        ),
-        by_year AS (
-          SELECT grad_year, COUNT(*) AS alumni
-          FROM deduped
+        """
+        WITH by_year AS (
+          SELECT grad_year, SUM(final_weight) AS alumni
+          FROM cohort_slice
           WHERE grad_year IS NOT NULL
           GROUP BY grad_year
         )
@@ -524,7 +534,7 @@ def _alumni_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list
         WHERE alumni >= ?
         ORDER BY grad_year
         """,
-        [_dataset_glob("base_fact"), *params, SUPPRESSION_THRESHOLD],
+        [TREND_SUPPRESSION_THRESHOLD],
     )
 
 
@@ -558,51 +568,30 @@ def _salary_trend_by_school(con: duckdb.DuckDBPyConnection) -> list[dict[str, An
         WHERE alumni >= ?
         ORDER BY school_name, grad_year
         """,
-        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, TREND_SUPPRESSION_THRESHOLD],
     )
 
 
 def _alumni_trend_by_school(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
-    where_sql, params = _where(filters, include_horizon=False)
     return _records_from_query(
         con,
-        f"""
-        WITH deduped AS (
-          SELECT *
-          FROM (
-            SELECT
-              *,
-              ROW_NUMBER() OVER (
-                PARTITION BY person_key, unitid, degree, cip2, cip4, cip6, grad_year
-                ORDER BY CASE horizon
-                  WHEN '1yr' THEN 1
-                  WHEN '5yr' THEN 2
-                  WHEN '10yr' THEN 3
-                  WHEN 'early_2025' THEN 4
-                  ELSE 5
-                END
-              ) AS horizon_rank
-            FROM read_parquet(?)
-            {where_sql}
-          )
-          WHERE horizon_rank = 1
-        ),
-        by_year AS (
+        """
+        WITH by_year AS (
           SELECT
             unitid,
             MAX(school_name) AS school_name,
             grad_year,
-            COUNT(*) AS alumni
-          FROM deduped
+            SUM(final_weight) AS alumni
+          FROM cohort_slice
           WHERE grad_year IS NOT NULL
           GROUP BY unitid, grad_year
         )
-        SELECT unitid, school_name, grad_year, alumni
+        SELECT unitid, school_name, grad_year, ROUND(alumni) AS alumni
         FROM by_year
         WHERE alumni >= ?
         ORDER BY school_name, grad_year
         """,
-        [_dataset_glob("base_fact"), *params, SUPPRESSION_THRESHOLD],
+        [TREND_SUPPRESSION_THRESHOLD],
     )
 
 
@@ -629,7 +618,7 @@ def _current_student_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest
         HAVING SUM(final_weight) >= ?
         ORDER BY grad_year
         """,
-        [_dataset_glob("current_students_fact"), *params, SUPPRESSION_THRESHOLD],
+        [_dataset_glob("current_students_fact"), *params, TREND_SUPPRESSION_THRESHOLD],
     )
 
 
@@ -637,32 +626,39 @@ def _school_comparison(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
     return _records_from_query(
         con,
         """
-        WITH by_school AS (
+        WITH cohort AS (
           SELECT
             unitid,
             MAX(school_name) AS school_name,
             SUM(final_weight) AS alumni,
+            SUM(CASE WHEN later_degree_type IS NOT NULL THEN final_weight ELSE 0 END) AS later_degree_n
+          FROM cohort_slice
+          GROUP BY unitid
+        ),
+        outcomes AS (
+          SELECT
+            unitid,
             SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight,
             SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
               / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS weighted_mean_salary,
             quantile_cont(salary, 0.5) AS median_salary,
-            COUNT(DISTINCT CASE WHEN employer IS NOT NULL AND employer <> '' AND unknown_employer_flag = 0 THEN employer END) AS unique_employers,
-            SUM(CASE WHEN later_degree_type IS NOT NULL THEN final_weight ELSE 0 END) AS later_degree_n
+            COUNT(DISTINCT CASE WHEN employer IS NOT NULL AND employer <> '' AND unknown_employer_flag = 0 THEN employer END) AS unique_employers
           FROM slice
           GROUP BY unitid
         )
         SELECT
-          unitid,
-          school_name,
-          ROUND(alumni) AS alumni,
-          ROUND(salary_weight) AS salary_weight,
-          CASE WHEN salary_weight >= ? THEN ROUND(weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
-          CASE WHEN salary_weight >= ? THEN ROUND(median_salary) ELSE NULL END AS median_salary,
-          unique_employers,
-          ROUND(100.0 * later_degree_n / NULLIF(alumni, 0), 1) AS later_degree_pct
-        FROM by_school
-        WHERE alumni >= ?
-        ORDER BY weighted_mean_salary DESC NULLS LAST
+          c.unitid,
+          c.school_name,
+          ROUND(c.alumni) AS alumni,
+          ROUND(o.salary_weight) AS salary_weight,
+          CASE WHEN o.salary_weight >= ? THEN ROUND(o.weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
+          CASE WHEN o.salary_weight >= ? THEN ROUND(o.median_salary) ELSE NULL END AS median_salary,
+          o.unique_employers,
+          ROUND(100.0 * c.later_degree_n / NULLIF(c.alumni, 0), 1) AS later_degree_pct
+        FROM cohort c
+        LEFT JOIN outcomes o USING (unitid)
+        WHERE c.alumni >= ?
+        ORDER BY o.weighted_mean_salary DESC NULLS LAST, c.alumni DESC
         """,
         [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
     )
@@ -674,11 +670,18 @@ def _top_majors(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[d
     return _records_from_query(
         con,
         f"""
-        WITH by_major AS (
+        WITH cohort AS (
           SELECT
             {cip_col} AS code,
             MAX(major_title) AS title,
-            SUM(final_weight) AS alumni,
+            SUM(final_weight) AS alumni
+          FROM cohort_slice
+          WHERE {cip_col} IS NOT NULL
+          GROUP BY {cip_col}
+        ),
+        outcomes AS (
+          SELECT
+            {cip_col} AS code,
             SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight,
             SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
               / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS weighted_mean_salary,
@@ -688,15 +691,16 @@ def _top_majors(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[d
           GROUP BY {cip_col}
         )
         SELECT
-          code,
-          COALESCE(title, code) AS title,
-          ROUND(alumni) AS alumni,
-          ROUND(salary_weight) AS salary_weight,
-          CASE WHEN salary_weight >= ? THEN ROUND(weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
-          CASE WHEN salary_weight >= ? THEN ROUND(median_salary) ELSE NULL END AS median_salary
-        FROM by_major
-        WHERE alumni >= ?
-        ORDER BY alumni DESC
+          c.code,
+          COALESCE(c.title, c.code) AS title,
+          ROUND(c.alumni) AS alumni,
+          ROUND(o.salary_weight) AS salary_weight,
+          CASE WHEN o.salary_weight >= ? THEN ROUND(o.weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
+          CASE WHEN o.salary_weight >= ? THEN ROUND(o.median_salary) ELSE NULL END AS median_salary
+        FROM cohort c
+        LEFT JOIN outcomes o USING (code)
+        WHERE c.alumni >= ?
+        ORDER BY c.alumni DESC
         LIMIT {limit}
         """,
         [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
@@ -708,7 +712,7 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
     limit = min(_safe_limit(filters.top_n), 5)
     current_exists = include_current and _create_current_slice(con, filters)
 
-    source_for_top = "current_slice" if current_exists else "slice"
+    source_for_top = "current_slice" if current_exists else "cohort_slice"
     weight_col = "final_weight"
     top_codes = _records_from_query(
         con,
@@ -733,13 +737,13 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
         f"""
         WITH by_major AS (
           SELECT grad_year, {cip_col} AS code, MAX(major_title) AS title, SUM(final_weight) AS n
-          FROM slice
+          FROM cohort_slice
           WHERE {cip_col} IN ({placeholders}) AND grad_year IS NOT NULL
           GROUP BY grad_year, {cip_col}
         ),
         totals AS (
           SELECT grad_year, SUM(final_weight) AS total_n
-          FROM slice
+          FROM cohort_slice
           WHERE grad_year IS NOT NULL
           GROUP BY grad_year
         )
@@ -754,7 +758,7 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
         WHERE b.n >= ?
         ORDER BY b.grad_year, b.code
         """,
-        [*codes, SUPPRESSION_THRESHOLD],
+        [*codes, TREND_SUPPRESSION_THRESHOLD],
     )
     current_series: list[dict[str, Any]] = []
     if current_exists:
@@ -784,7 +788,7 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
             WHERE b.n >= ?
             ORDER BY b.grad_year, b.code
             """,
-            [*codes, SUPPRESSION_THRESHOLD],
+            [*codes, TREND_SUPPRESSION_THRESHOLD],
         )
     return {"top": top_codes, "series": base_series, "current_series": current_series}
 
@@ -834,7 +838,7 @@ def _employer_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> li
         WHERE b.n >= ?
         ORDER BY b.employer, b.grad_year
         """,
-        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+        [SUPPRESSION_THRESHOLD, TREND_SUPPRESSION_THRESHOLD],
     )
 
 
@@ -965,7 +969,7 @@ def _geography_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> l
         WHERE b.n >= ?
         ORDER BY b.location, b.grad_year
         """,
-        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, TREND_SUPPRESSION_THRESHOLD],
     )
 
 
@@ -1051,7 +1055,7 @@ def _role_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[s
             WHERE b.n >= ?
             ORDER BY b.label, b.grad_year
             """,
-            [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+            [SUPPRESSION_THRESHOLD, TREND_SUPPRESSION_THRESHOLD],
         )
 
     return {
@@ -1110,8 +1114,8 @@ def _demographic_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) ->
             con,
             f"""
             WITH eligible AS (
-              SELECT grad_year, {column} AS label, final_weight, salary
-              FROM slice
+              SELECT grad_year, {column} AS label, final_weight
+              FROM cohort_slice
               WHERE grad_year IS NOT NULL
                 AND {column} IS NOT NULL
                 AND {column} <> ''
@@ -1129,10 +1133,7 @@ def _demographic_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) ->
               SELECT
                 e.grad_year,
                 e.label,
-                SUM(e.final_weight) AS n,
-                SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight ELSE 0 END) AS salary_weight,
-                SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight * e.salary ELSE 0 END)
-                  / NULLIF(SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight ELSE 0 END), 0) AS weighted_mean_salary
+                SUM(e.final_weight) AS n
               FROM eligible e
               JOIN top_labels t USING (label)
               GROUP BY e.grad_year, e.label
@@ -1147,13 +1148,13 @@ def _demographic_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) ->
               b.label,
               ROUND(b.n) AS n,
               ROUND(100.0 * b.n / NULLIF(t.total_n, 0), 2) AS share_pct,
-              CASE WHEN b.salary_weight >= ? THEN ROUND(b.weighted_mean_salary) ELSE NULL END AS weighted_mean_salary
+              NULL AS weighted_mean_salary
             FROM by_year b
             JOIN totals t USING (grad_year)
             WHERE b.n >= ?
             ORDER BY b.label, b.grad_year
             """,
-            [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+            [SUPPRESSION_THRESHOLD, TREND_SUPPRESSION_THRESHOLD],
         )
 
     return {"gender": group("gender"), "race_ethnicity": group("race_ethnicity")}
@@ -1164,19 +1165,38 @@ def _demographics(con: duckdb.DuckDBPyConnection) -> dict[str, list[dict[str, An
         return _records_from_query(
             con,
             f"""
+            WITH cohort AS (
+              SELECT
+                {column} AS label,
+                SUM(final_weight) AS n
+              FROM cohort_slice
+              WHERE {column} IS NOT NULL AND {column} <> '' AND LOWER({column}) <> 'empty'
+              GROUP BY {column}
+            ),
+            salary AS (
+              SELECT
+                {column} AS label,
+                SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight,
+                SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+                  / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS weighted_mean_salary
+              FROM slice
+              WHERE {column} IS NOT NULL AND {column} <> '' AND LOWER({column}) <> 'empty'
+              GROUP BY {column}
+            ),
+            totals AS (
+              SELECT SUM(n) AS total_n FROM cohort
+            )
             SELECT
-              {column} AS label,
-              ROUND(SUM(final_weight)) AS n,
-              ROUND(100.0 * SUM(final_weight) / NULLIF((SELECT SUM(final_weight) FROM slice WHERE {column} IS NOT NULL AND {column} <> ''), 0), 2) AS share_pct,
-              ROUND(SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
-                / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0)) AS weighted_mean_salary
-            FROM slice
-            WHERE {column} IS NOT NULL AND {column} <> '' AND LOWER({column}) <> 'empty'
-            GROUP BY {column}
-            HAVING SUM(final_weight) >= ?
-            ORDER BY SUM(final_weight) DESC
+              c.label,
+              ROUND(c.n) AS n,
+              ROUND(100.0 * c.n / NULLIF((SELECT total_n FROM totals), 0), 2) AS share_pct,
+              CASE WHEN s.salary_weight >= ? THEN ROUND(s.weighted_mean_salary) ELSE NULL END AS weighted_mean_salary
+            FROM cohort c
+            LEFT JOIN salary s USING (label)
+            WHERE c.n >= ?
+            ORDER BY c.n DESC
             """,
-            [SUPPRESSION_THRESHOLD],
+            [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
         )
 
     return {"gender": group("gender"), "race_ethnicity": group("race_ethnicity")}
@@ -1192,7 +1212,7 @@ def _postgrad_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> li
             grad_year,
             COALESCE(later_degree_type, CASE WHEN no_further_education_flag = 1 THEN 'No further education' ELSE 'Unknown' END) AS degree_type,
             final_weight
-          FROM slice
+          FROM cohort_slice
           WHERE grad_year IS NOT NULL
         ),
         top_paths AS (
@@ -1225,7 +1245,7 @@ def _postgrad_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> li
         WHERE b.n >= ?
         ORDER BY b.degree_type, b.grad_year
         """,
-        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+        [SUPPRESSION_THRESHOLD, TREND_SUPPRESSION_THRESHOLD],
     )
 
 
@@ -1249,13 +1269,13 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
         con,
         f"""
         WITH denom AS (
-          SELECT SUM(final_weight) AS total_n FROM slice
+          SELECT SUM(final_weight) AS total_n FROM cohort_slice
         ),
         flows AS (
           SELECT
             COALESCE(later_degree_type, CASE WHEN no_further_education_flag = 1 THEN 'No further education' ELSE 'Unknown' END) AS degree_type,
             SUM(final_weight) AS n
-          FROM slice
+          FROM cohort_slice
           GROUP BY 1
         )
         SELECT
@@ -1283,7 +1303,7 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
             SELECT
               later_school AS label,
               ROUND(SUM(final_weight)) AS n
-            FROM slice
+            FROM cohort_slice
             WHERE later_degree_type IN ({placeholders})
               AND later_school IS NOT NULL
               AND later_school <> ''
@@ -1301,7 +1321,7 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
                 SELECT
                   later_program AS label,
                   ROUND(SUM(final_weight)) AS n
-                FROM slice
+                FROM cohort_slice
                 WHERE later_degree_type IN ({placeholders})
                   AND later_program IS NOT NULL
                   AND later_program <> ''

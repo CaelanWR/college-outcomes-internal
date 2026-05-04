@@ -944,14 +944,13 @@
 
     function populateMajorOptions(options, preserve = true) {
       const previous = preserve ? $('major-select').value : '';
+      const validCodes = new Set((options.major_options || []).map(row => String(row.code)));
+      const keepPrevious = previous && validCodes.has(String(previous));
       $('major-select').innerHTML = '<option value="">All majors</option>';
       (options.major_options || []).forEach(row => {
         const label = `${row.title} (${row.code})`;
-        $('major-select').appendChild(option(label, row.code, previous === row.code));
+        $('major-select').appendChild(option(label, row.code, keepPrevious && previous === row.code));
       });
-      if (previous && !$('major-select').value) {
-        $('major-select').appendChild(option(previous, previous, true));
-      }
     }
 
     async function loadOptions(preserveMajor = true) {
@@ -1851,6 +1850,8 @@
       ['horizon-select', 'from-year-select', 'to-year-select', 'major-select', 'gender-select', 'race-select', 'later-degree-filter', 'no-further-select', 'current-select', 'top-n-select'].forEach(id => {
         $(id).addEventListener('change', () => {
           if (id === 'horizon-select') syncHorizonToggle();
+          if (id === 'later-degree-filter' && $('later-degree-filter').value) $('no-further-select').value = 'false';
+          if (id === 'no-further-select' && $('no-further-select').value === 'true') $('later-degree-filter').value = '';
           refresh({ resetDrill: true });
         });
       });
