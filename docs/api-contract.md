@@ -1,5 +1,15 @@
 # API Contract
 
+## Endpoints
+
+```text
+GET /api/health
+POST /api/options
+POST /api/dashboard
+```
+
+`/api/options` and `/api/dashboard` require `X-Outcomes-Password` when `OUTCOMES_APP_PASSWORD` is set.
+
 ## Query Request
 
 ```json
@@ -18,26 +28,51 @@
     "later_degree_type": "LAW",
     "no_further_education": null
   },
-  "tabs": ["overview", "earnings", "employers", "geography", "roles", "demographics", "postgrad"]
+  "include_current_students": false,
+  "selected_employer": null,
+  "selected_postgrad_degree": null,
+  "top_n": 12
 }
 ```
 
-## Query Response
+## Dashboard Response
 
 ```json
 {
   "meta": {
-    "data_version": "2026-05-03-v1",
+    "data_version": "2026-05-03-platform-v1",
     "partial_horizon": false,
     "suppression_threshold": 25
   },
-  "overview": [],
-  "earnings": [],
-  "employers": [],
+  "overview": {},
+  "salary_trend": [],
+  "salary_trend_by_school": [],
+  "school_comparison": [],
+  "top_majors": [],
+  "major_trend": {
+    "series": [],
+    "current_series": []
+  },
+  "employers": {
+    "top": [],
+    "selected_employer": null,
+    "roles": []
+  },
   "geography": [],
-  "roles": [],
-  "demographics": [],
-  "postgrad": []
+  "roles": {
+    "roles": [],
+    "industries": []
+  },
+  "demographics": {
+    "gender": [],
+    "race_ethnicity": []
+  },
+  "postgrad": {
+    "flows": [],
+    "selected_degree": null,
+    "schools": [],
+    "programs": []
+  }
 }
 ```
 
@@ -45,6 +80,6 @@
 
 - Suppress cells below the minimum threshold before returning data.
 - Never return raw person-level records.
-- Every weighted metric should include the denominator used.
-- 2025 early earnings must be labeled as partial unless the full horizon has elapsed.
-
+- Every salary metric includes its denominator where relevant.
+- 2025 early earnings are labeled as a partial horizon.
+- The frontend must not fetch Parquet, CSV, or raw static data directly.

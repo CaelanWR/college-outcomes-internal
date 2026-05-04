@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import hmac
+import json
 import math
 import os
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, Optional
 
 import duckdb
@@ -11,7 +14,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 
-DATA_ROOT = os.environ.get("OUTCOMES_PARQUET_ROOT", "./data/parquet")
+DATA_ROOT = Path(os.environ.get("OUTCOMES_PARQUET_ROOT", "./data/parquet")).expanduser()
+PLATFORM_ROOT = Path(os.environ.get("OUTCOMES_PLATFORM_ROOT", "")).expanduser() if os.environ.get("OUTCOMES_PLATFORM_ROOT") else None
 SUPPRESSION_THRESHOLD = int(os.environ.get("SUPPRESSION_THRESHOLD", "25"))
 APP_PASSWORD = os.environ.get("OUTCOMES_APP_PASSWORD")
 ALLOWED_ORIGINS = [
@@ -19,6 +23,46 @@ ALLOWED_ORIGINS = [
     for origin in os.environ.get("OUTCOMES_ALLOWED_ORIGINS", "").split(",")
     if origin.strip()
 ]
+
+DOCTORATE_DEGREES = ["Research Doctorate", "Professional Doctorate", "Other Doctorate"]
+DEGREE_ALIASES = {
+    "All Doctorates": DOCTORATE_DEGREES,
+    "Doctorate": DOCTORATE_DEGREES,
+    "PhD": ["Research Doctorate"],
+    "Research Doctorate": ["Research Doctorate"],
+    "Professional Doctorate": ["Professional Doctorate"],
+    "Other Doctorate": ["Other Doctorate"],
+}
+CIP_COLUMNS = {"cip2", "cip4", "cip6"}
+HORIZON_ORDER = {"1yr": 1, "5yr": 5, "10yr": 10, "early_2025": 0}
+SAME_SCHOOL_EMPLOYER_FILTER = """
+AND NOT (
+  same_school_employer_flag = 1
+  OR (unitid IN ('190150', '196468') AND LOWER(employer) LIKE '%columbia university%')
+  OR (unitid = '189097' AND LOWER(employer) LIKE '%barnard%')
+  OR (unitid = '110635' AND (LOWER(employer) LIKE '%berkeley%' OR LOWER(employer) LIKE '%university of california%'))
+  OR (unitid = '110662' AND (LOWER(employer) LIKE '%ucla%' OR LOWER(employer) LIKE '%university of california%'))
+  OR (unitid = '170976' AND LOWER(employer) LIKE '%university of michigan%')
+  OR (unitid = '217156' AND LOWER(employer) LIKE '%brown university%')
+  OR (unitid = '243744' AND LOWER(employer) LIKE '%stanford university%')
+  OR (unitid = '166683' AND (LOWER(employer) LIKE '%massachusetts institute of technology%' OR LOWER(employer) LIKE '%mit%'))
+  OR (unitid = '166027' AND LOWER(employer) LIKE '%harvard%')
+  OR (unitid = '130794' AND LOWER(employer) LIKE '%yale%')
+  OR (unitid = '186131' AND LOWER(employer) LIKE '%princeton%')
+  OR (unitid = '215062' AND LOWER(employer) LIKE '%university of pennsylvania%')
+  OR (unitid = '190415' AND LOWER(employer) LIKE '%cornell%')
+  OR (unitid = '198419' AND LOWER(employer) LIKE '%duke university%')
+  OR (unitid = '147767' AND LOWER(employer) LIKE '%northwestern university%')
+  OR (unitid = '144050' AND LOWER(employer) LIKE '%university of chicago%')
+  OR (unitid = '193900' AND (LOWER(employer) LIKE '%new york university%' OR LOWER(employer) LIKE '%nyu%'))
+  OR (unitid = '123961' AND (LOWER(employer) LIKE '%university of southern california%' OR LOWER(employer) LIKE '%usc%'))
+  OR (unitid = '236948' AND LOWER(employer) LIKE '%university of washington%')
+  OR (unitid = '234076' AND LOWER(employer) LIKE '%university of virginia%')
+  OR (unitid = '199120' AND (LOWER(employer) LIKE '%university of north carolina%' OR LOWER(employer) LIKE '%unc%'))
+  OR (unitid = '139755' AND (LOWER(employer) LIKE '%georgia institute of technology%' OR LOWER(employer) LIKE '%georgia tech%'))
+  OR (unitid = '211440' AND LOWER(employer) LIKE '%carnegie mellon%')
+)
+"""
 
 app = FastAPI(title="College Outcomes API")
 
@@ -51,14 +95,17 @@ class QueryRequest(BaseModel):
     horizon: str = "1yr"
     demographics: DemographicFilters = Field(default_factory=DemographicFilters)
     postgrad: PostgradFilters = Field(default_factory=PostgradFilters)
-    tabs: list[str] = Field(default_factory=lambda: ["overview"])
+    include_current_students: bool = False
+    selected_employer: Optional[str] = None
+    selected_postgrad_degree: Optional[str] = None
+    top_n: int = 12
 
 
 def require_internal_password(x_outcomes_password: Optional[str] = Header(default=None)) -> None:
     """Fallback API password guard.
 
-    Prefer real SSO or network-level access control in production. This protects
-    the data API when a stronger gate is not available.
+    Prefer SSO or network-level access control in production. This protects the
+    data API when a stronger gate is not available.
     """
     if not APP_PASSWORD:
         return
@@ -66,9 +113,37 @@ def require_internal_password(x_outcomes_password: Optional[str] = Header(defaul
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
+def _platform_root() -> Path:
+    if PLATFORM_ROOT:
+        return PLATFORM_ROOT
+    if DATA_ROOT.name == "base_fact":
+        return DATA_ROOT.parent
+    return DATA_ROOT
+
+
+def _dataset_glob(dataset: str) -> str:
+    root = _platform_root()
+    if DATA_ROOT.name == dataset:
+        path = DATA_ROOT
+    else:
+        path = root / dataset
+    return str(path / "**" / "*.parquet")
+
+
+def _manifest() -> dict[str, Any]:
+    path = _platform_root() / "platform_manifest.json"
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return {}
+
+
 def _connect() -> duckdb.DuckDBPyConnection:
     con = duckdb.connect(database=":memory:")
     con.execute("SET enable_progress_bar=false")
+    con.execute("SET threads=4")
     return con
 
 
@@ -83,88 +158,774 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
-def _records_from_query(con: duckdb.DuckDBPyConnection, sql: str, params: list[Any]) -> list[dict[str, Any]]:
-    cols = None
-    out: list[dict[str, Any]] = []
-    result = con.execute(sql, params)
+def _records_from_query(con: duckdb.DuckDBPyConnection, sql: str, params: list[Any] | None = None) -> list[dict[str, Any]]:
+    result = con.execute(sql, params or [])
     cols = [desc[0] for desc in result.description]
-    for row in result.fetchall():
-        out.append({col: _json_safe(value) for col, value in zip(cols, row)})
-    return out
+    return [{col: _json_safe(value) for col, value in zip(cols, row)} for row in result.fetchall()]
 
 
-def _where(filters: QueryRequest) -> tuple[str, list[Any]]:
+def _single_record(con: duckdb.DuckDBPyConnection, sql: str, params: list[Any] | None = None) -> dict[str, Any]:
+    rows = _records_from_query(con, sql, params)
+    return rows[0] if rows else {}
+
+
+def _cip_col(filters: QueryRequest) -> str:
+    if filters.cip_level not in CIP_COLUMNS:
+        raise HTTPException(status_code=400, detail="cip_level must be cip2, cip4, or cip6")
+    return filters.cip_level
+
+
+def _degree_values(degree: str) -> list[str]:
+    if not degree or degree == "All":
+        return []
+    return DEGREE_ALIASES.get(degree, [degree])
+
+
+def _append_in_clause(clauses: list[str], params: list[Any], column: str, values: list[Any]) -> None:
+    if not values:
+        return
+    clauses.append(f"{column} IN (" + ",".join(["?"] * len(values)) + ")")
+    params.extend(values)
+
+
+def _where(filters: QueryRequest, *, include_horizon: bool = True, include_postgrad: bool = True) -> tuple[str, list[Any]]:
     clauses: list[str] = []
     params: list[Any] = []
 
-    if filters.schools:
-        clauses.append("unitid IN (" + ",".join(["?"] * len(filters.schools)) + ")")
-        params.extend(filters.schools)
-    if filters.degree and filters.degree != "All":
-        clauses.append("degree = ?")
-        params.append(filters.degree)
-    if filters.majors:
-        if filters.cip_level not in {"cip2", "cip4", "cip6"}:
-            raise HTTPException(status_code=400, detail="cip_level must be cip2, cip4, or cip6")
-        clauses.append(f"{filters.cip_level} IN (" + ",".join(["?"] * len(filters.majors)) + ")")
-        params.extend(filters.majors)
-    if filters.grad_years:
-        clauses.append("grad_year IN (" + ",".join(["?"] * len(filters.grad_years)) + ")")
-        params.extend(filters.grad_years)
-    if filters.horizon:
+    _append_in_clause(clauses, params, "unitid", filters.schools)
+    _append_in_clause(clauses, params, "degree", _degree_values(filters.degree))
+    _append_in_clause(clauses, params, _cip_col(filters), filters.majors)
+    _append_in_clause(clauses, params, "grad_year", filters.grad_years)
+
+    if include_horizon and filters.horizon:
         clauses.append("horizon = ?")
         params.append(filters.horizon)
+
     if filters.demographics.gender:
         clauses.append("gender = ?")
         params.append(filters.demographics.gender)
     if filters.demographics.race_ethnicity:
         clauses.append("race_ethnicity = ?")
         params.append(filters.demographics.race_ethnicity)
-    if filters.postgrad.later_degree_type:
-        clauses.append("later_degree_type = ?")
-        params.append(filters.postgrad.later_degree_type)
-    if filters.postgrad.no_further_education is not None:
-        clauses.append("no_further_education_flag = ?")
-        params.append(filters.postgrad.no_further_education)
+
+    if include_postgrad:
+        if filters.postgrad.later_degree_type:
+            clauses.append("later_degree_type = ?")
+            params.append(filters.postgrad.later_degree_type)
+        if filters.postgrad.no_further_education is not None:
+            clauses.append("no_further_education_flag = ?")
+            params.append(1 if filters.postgrad.no_further_education else 0)
 
     return (" WHERE " + " AND ".join(clauses)) if clauses else "", params
 
 
-@app.get("/api/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def _safe_limit(value: int) -> int:
+    return min(max(value, 5), 30)
 
 
-@app.post("/api/query")
-def query(filters: QueryRequest, _: None = Depends(require_internal_password)) -> dict[str, Any]:
+def _create_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> None:
     where_sql, params = _where(filters)
-    path = os.path.join(DATA_ROOT, "**", "*.parquet")
+    con.execute(
+        f"""
+        CREATE TEMP TABLE slice AS
+        SELECT *
+        FROM read_parquet(?)
+        {where_sql}
+        """,
+        [_dataset_glob("base_fact"), *params],
+    )
 
-    sql = f"""
+
+def _create_current_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> bool:
+    current_path = _platform_root() / "current_students_fact"
+    if not current_path.exists():
+        return False
+    current_filters = filters.model_copy(deep=True)
+    current_filters.grad_years = []
+    where_sql, params = _where(current_filters, include_horizon=False, include_postgrad=False)
+    con.execute(
+        f"""
+        CREATE TEMP TABLE current_slice AS
+        SELECT *
+        FROM read_parquet(?)
+        {where_sql}
+        """,
+        [_dataset_glob("current_students_fact"), *params],
+    )
+    return True
+
+
+@lru_cache(maxsize=1)
+def _static_options() -> dict[str, Any]:
+    con = _connect()
+    try:
+        schools = _records_from_query(
+            con,
+            """
+            SELECT unitid, MAX(school_name) AS name, ROUND(SUM(final_weight)) AS alumni
+            FROM read_parquet(?)
+            GROUP BY unitid
+            ORDER BY name
+            """,
+            [_dataset_glob("base_fact")],
+        )
+        degree_rows = _records_from_query(
+            con,
+            """
+            SELECT degree, ROUND(SUM(final_weight)) AS alumni
+            FROM read_parquet(?)
+            GROUP BY degree
+            ORDER BY alumni DESC
+            """,
+            [_dataset_glob("base_fact")],
+        )
+        grad_years = [
+            int(row["grad_year"])
+            for row in _records_from_query(
+                con,
+                """
+                SELECT DISTINCT grad_year
+                FROM read_parquet(?)
+                WHERE grad_year IS NOT NULL
+                ORDER BY grad_year
+                """,
+                [_dataset_glob("base_fact")],
+            )
+        ]
+        current_years = []
+        if (_platform_root() / "current_students_fact").exists():
+            current_years = [
+                int(row["grad_year"])
+                for row in _records_from_query(
+                    con,
+                    """
+                    SELECT DISTINCT grad_year
+                    FROM read_parquet(?)
+                    WHERE grad_year IS NOT NULL
+                    ORDER BY grad_year
+                    """,
+                    [_dataset_glob("current_students_fact")],
+                )
+            ]
+        return {
+            "schools": schools,
+            "degrees": [{"degree": "All", "label": "All"}]
+            + [{"degree": row["degree"], "label": row["degree"]} for row in degree_rows]
+            + [{"degree": "All Doctorates", "label": "All Doctorates"}],
+            "horizons": [
+                {"value": "1yr", "label": "1 year out"},
+                {"value": "5yr", "label": "5 years out"},
+                {"value": "10yr", "label": "10 years out"},
+                {"value": "early_2025", "label": "2025 early earnings"},
+            ],
+            "grad_years": grad_years,
+            "current_student_years": current_years,
+        }
+    finally:
+        con.close()
+
+
+@app.get("/api/health")
+def health() -> dict[str, Any]:
+    manifest = _manifest()
+    return {
+        "status": "ok",
+        "data_version": manifest.get("version"),
+        "base_fact_exists": (_platform_root() / "base_fact").exists() or DATA_ROOT.exists(),
+    }
+
+
+@app.post("/api/options")
+def options(filters: QueryRequest, _: None = Depends(require_internal_password)) -> dict[str, Any]:
+    cip_col = _cip_col(filters)
+    limit = 500
+    con = _connect()
+    try:
+        where_sql, params = _where(filters, include_horizon=False, include_postgrad=False)
+        majors = _records_from_query(
+            con,
+            f"""
+            WITH major_counts AS (
+              SELECT
+                {cip_col} AS code,
+                MAX(major_title) AS title,
+                ROUND(SUM(final_weight)) AS alumni
+              FROM read_parquet(?)
+              {where_sql}
+              AND {cip_col} IS NOT NULL
+              GROUP BY {cip_col}
+            )
+            SELECT code, COALESCE(title, code) AS title, alumni
+            FROM major_counts
+            WHERE alumni >= ?
+            ORDER BY alumni DESC, title
+            LIMIT {limit}
+            """.replace(f"{where_sql}\n              AND", f"{where_sql} AND" if where_sql else "WHERE"),
+            [_dataset_glob("base_fact"), *params, SUPPRESSION_THRESHOLD],
+        )
+        demographics = {
+            "gender": [
+                row["value"]
+                for row in _records_from_query(
+                    con,
+                    """
+                    SELECT gender AS value, COUNT(*) AS n
+                    FROM read_parquet(?)
+                    WHERE gender IS NOT NULL AND gender <> ''
+                    GROUP BY gender
+                    ORDER BY n DESC
+                    """,
+                    [_dataset_glob("base_fact")],
+                )
+            ],
+            "race_ethnicity": [
+                row["value"]
+                for row in _records_from_query(
+                    con,
+                    """
+                    SELECT race_ethnicity AS value, COUNT(*) AS n
+                    FROM read_parquet(?)
+                    WHERE race_ethnicity IS NOT NULL AND race_ethnicity <> ''
+                    GROUP BY race_ethnicity
+                    ORDER BY n DESC
+                    """,
+                    [_dataset_glob("base_fact")],
+                )
+            ],
+        }
+        later_degrees = [
+            row["later_degree_type"]
+            for row in _records_from_query(
+                con,
+                """
+                SELECT later_degree_type, COUNT(*) AS n
+                FROM read_parquet(?)
+                WHERE later_degree_type IS NOT NULL AND later_degree_type <> ''
+                GROUP BY later_degree_type
+                ORDER BY n DESC
+                """,
+                [_dataset_glob("base_fact")],
+            )
+        ]
+        static = _static_options()
+        return {
+            **static,
+            "major_options": majors,
+            "demographics": demographics,
+            "later_degrees": later_degrees,
+            "meta": {
+                "data_version": _manifest().get("version"),
+                "suppression_threshold": SUPPRESSION_THRESHOLD,
+            },
+        }
+    finally:
+        con.close()
+
+
+def _overview(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
+    return _single_record(
+        con,
+        """
+        WITH totals AS (
+          SELECT
+            SUM(final_weight) AS alumni,
+            COUNT(*) AS raw_rows,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS weighted_mean_salary,
+            quantile_cont(salary, 0.5) AS median_salary,
+            COUNT(DISTINCT CASE WHEN employer IS NOT NULL AND employer <> '' AND unknown_employer_flag = 0 THEN employer END) AS unique_employers,
+            COUNT(DISTINCT CASE WHEN location IS NOT NULL AND location <> '' THEN location END) AS unique_locations,
+            SUM(CASE WHEN later_degree_type IS NOT NULL THEN final_weight ELSE 0 END) AS later_degree_n,
+            SUM(CASE WHEN no_further_education_flag = 1 THEN final_weight ELSE 0 END) AS no_further_n
+          FROM slice
+        )
+        SELECT
+          ROUND(alumni) AS alumni,
+          raw_rows,
+          ROUND(salary_weight) AS salary_weight,
+          CASE WHEN salary_weight >= ? THEN ROUND(weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
+          CASE WHEN salary_weight >= ? THEN ROUND(median_salary) ELSE NULL END AS median_salary,
+          unique_employers,
+          unique_locations,
+          ROUND(later_degree_n) AS later_degree_n,
+          ROUND(no_further_n) AS no_further_n,
+          ROUND(100.0 * later_degree_n / NULLIF(alumni, 0), 1) AS later_degree_pct
+        FROM totals
+        """,
+        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+    )
+
+
+def _salary_trend(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
+    return _records_from_query(
+        con,
+        """
+        WITH by_year AS (
+          SELECT
+            grad_year,
+            SUM(final_weight) AS alumni,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS weighted_mean_salary,
+            quantile_cont(salary, 0.5) AS median_salary
+          FROM slice
+          WHERE grad_year IS NOT NULL
+          GROUP BY grad_year
+        )
+        SELECT
+          grad_year,
+          ROUND(alumni) AS alumni,
+          ROUND(salary_weight) AS salary_weight,
+          CASE WHEN salary_weight >= ? THEN ROUND(weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
+          CASE WHEN salary_weight >= ? THEN ROUND(median_salary) ELSE NULL END AS median_salary
+        FROM by_year
+        WHERE alumni >= ?
+        ORDER BY grad_year
+        """,
+        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+    )
+
+
+def _salary_trend_by_school(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
+    return _records_from_query(
+        con,
+        """
+        WITH by_year AS (
+          SELECT
+            unitid,
+            MAX(school_name) AS school_name,
+            grad_year,
+            SUM(final_weight) AS alumni,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS weighted_mean_salary,
+            quantile_cont(salary, 0.5) AS median_salary
+          FROM slice
+          WHERE grad_year IS NOT NULL
+          GROUP BY unitid, grad_year
+        )
         SELECT
           unitid,
           school_name,
           grad_year,
-          SUM(final_weight) AS alumni,
-          SUM(final_weight * salary) / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS avg_salary,
-          SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight
-        FROM read_parquet(?)
-        {where_sql}
-        GROUP BY unitid, school_name, grad_year
-        HAVING SUM(final_weight) >= ?
+          ROUND(alumni) AS alumni,
+          ROUND(salary_weight) AS salary_weight,
+          CASE WHEN salary_weight >= ? THEN ROUND(weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
+          CASE WHEN salary_weight >= ? THEN ROUND(median_salary) ELSE NULL END AS median_salary
+        FROM by_year
+        WHERE alumni >= ?
         ORDER BY school_name, grad_year
-    """
+        """,
+        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+    )
 
+
+def _school_comparison(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
+    return _records_from_query(
+        con,
+        """
+        WITH by_school AS (
+          SELECT
+            unitid,
+            MAX(school_name) AS school_name,
+            SUM(final_weight) AS alumni,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS weighted_mean_salary,
+            quantile_cont(salary, 0.5) AS median_salary,
+            COUNT(DISTINCT CASE WHEN employer IS NOT NULL AND employer <> '' AND unknown_employer_flag = 0 THEN employer END) AS unique_employers,
+            SUM(CASE WHEN later_degree_type IS NOT NULL THEN final_weight ELSE 0 END) AS later_degree_n
+          FROM slice
+          GROUP BY unitid
+        )
+        SELECT
+          unitid,
+          school_name,
+          ROUND(alumni) AS alumni,
+          ROUND(salary_weight) AS salary_weight,
+          CASE WHEN salary_weight >= ? THEN ROUND(weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
+          CASE WHEN salary_weight >= ? THEN ROUND(median_salary) ELSE NULL END AS median_salary,
+          unique_employers,
+          ROUND(100.0 * later_degree_n / NULLIF(alumni, 0), 1) AS later_degree_pct
+        FROM by_school
+        WHERE alumni >= ?
+        ORDER BY weighted_mean_salary DESC NULLS LAST
+        """,
+        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+    )
+
+
+def _top_majors(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    cip_col = _cip_col(filters)
+    limit = _safe_limit(filters.top_n)
+    return _records_from_query(
+        con,
+        f"""
+        WITH by_major AS (
+          SELECT
+            {cip_col} AS code,
+            MAX(major_title) AS title,
+            SUM(final_weight) AS alumni,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS weighted_mean_salary,
+            quantile_cont(salary, 0.5) AS median_salary
+          FROM slice
+          WHERE {cip_col} IS NOT NULL
+          GROUP BY {cip_col}
+        )
+        SELECT
+          code,
+          COALESCE(title, code) AS title,
+          ROUND(alumni) AS alumni,
+          ROUND(salary_weight) AS salary_weight,
+          CASE WHEN salary_weight >= ? THEN ROUND(weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
+          CASE WHEN salary_weight >= ? THEN ROUND(median_salary) ELSE NULL END AS median_salary
+        FROM by_major
+        WHERE alumni >= ?
+        ORDER BY alumni DESC
+        LIMIT {limit}
+        """,
+        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+    )
+
+
+def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_current: bool) -> dict[str, Any]:
+    cip_col = _cip_col(filters)
+    limit = min(_safe_limit(filters.top_n), 8)
+    current_exists = include_current and _create_current_slice(con, filters)
+
+    source_for_top = "current_slice" if current_exists else "slice"
+    weight_col = "final_weight"
+    top_codes = _records_from_query(
+        con,
+        f"""
+        SELECT {cip_col} AS code, MAX(major_title) AS title, SUM({weight_col}) AS n
+        FROM {source_for_top}
+        WHERE {cip_col} IS NOT NULL
+        GROUP BY {cip_col}
+        HAVING SUM({weight_col}) >= ?
+        ORDER BY n DESC
+        LIMIT {limit}
+        """,
+        [SUPPRESSION_THRESHOLD],
+    )
+    codes = [row["code"] for row in top_codes if row["code"]]
+    if not codes:
+        return {"series": [], "current_series": [], "top": []}
+
+    placeholders = ",".join(["?"] * len(codes))
+    base_series = _records_from_query(
+        con,
+        f"""
+        WITH by_major AS (
+          SELECT grad_year, {cip_col} AS code, MAX(major_title) AS title, SUM(final_weight) AS n
+          FROM slice
+          WHERE {cip_col} IN ({placeholders}) AND grad_year IS NOT NULL
+          GROUP BY grad_year, {cip_col}
+        ),
+        totals AS (
+          SELECT grad_year, SUM(final_weight) AS total_n
+          FROM slice
+          WHERE grad_year IS NOT NULL
+          GROUP BY grad_year
+        )
+        SELECT
+          b.grad_year,
+          b.code,
+          COALESCE(b.title, b.code) AS title,
+          ROUND(b.n) AS n,
+          ROUND(100.0 * b.n / NULLIF(t.total_n, 0), 2) AS share_pct
+        FROM by_major b
+        JOIN totals t USING (grad_year)
+        WHERE b.n >= ?
+        ORDER BY b.grad_year, b.code
+        """,
+        [*codes, SUPPRESSION_THRESHOLD],
+    )
+    current_series: list[dict[str, Any]] = []
+    if current_exists:
+        current_series = _records_from_query(
+            con,
+            f"""
+            WITH by_major AS (
+              SELECT grad_year, {cip_col} AS code, MAX(major_title) AS title, SUM(final_weight) AS n
+              FROM current_slice
+              WHERE {cip_col} IN ({placeholders}) AND grad_year IS NOT NULL
+              GROUP BY grad_year, {cip_col}
+            ),
+            totals AS (
+              SELECT grad_year, SUM(final_weight) AS total_n
+              FROM current_slice
+              WHERE grad_year IS NOT NULL
+              GROUP BY grad_year
+            )
+            SELECT
+              b.grad_year,
+              b.code,
+              COALESCE(b.title, b.code) AS title,
+              ROUND(b.n) AS n,
+              ROUND(100.0 * b.n / NULLIF(t.total_n, 0), 2) AS share_pct
+            FROM by_major b
+            JOIN totals t USING (grad_year)
+            WHERE b.n >= ?
+            ORDER BY b.grad_year, b.code
+            """,
+            [*codes, SUPPRESSION_THRESHOLD],
+        )
+    return {"top": top_codes, "series": base_series, "current_series": current_series}
+
+
+def _employers(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
+    limit = _safe_limit(filters.top_n)
+    employers = _records_from_query(
+        con,
+        f"""
+        WITH denom AS (
+          SELECT SUM(final_weight) AS total_n
+          FROM slice
+          WHERE career_employer_flag = 1
+            {SAME_SCHOOL_EMPLOYER_FILTER}
+        ),
+        by_employer AS (
+          SELECT
+            employer,
+            SUM(final_weight) AS n,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS weighted_mean_salary,
+            quantile_cont(salary, 0.5) AS median_salary
+          FROM slice
+          WHERE employer IS NOT NULL
+            AND employer <> ''
+            AND unknown_employer_flag = 0
+            AND named_employer_flag = 1
+            AND career_employer_flag = 1
+            {SAME_SCHOOL_EMPLOYER_FILTER}
+          GROUP BY employer
+        )
+        SELECT
+          employer,
+          ROUND(n) AS n,
+          ROUND(100.0 * n / NULLIF((SELECT total_n FROM denom), 0), 2) AS share_pct,
+          CASE WHEN salary_weight >= ? THEN ROUND(weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
+          CASE WHEN salary_weight >= ? THEN ROUND(median_salary) ELSE NULL END AS median_salary
+        FROM by_employer
+        WHERE n >= ?
+        ORDER BY n DESC
+        LIMIT {limit}
+        """,
+        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+    )
+    employer = filters.selected_employer or (employers[0]["employer"] if employers else None)
+    roles: list[dict[str, Any]] = []
+    if employer:
+        roles = _records_from_query(
+            con,
+            f"""
+            SELECT
+              COALESCE(role_k50_v3, role_k150_v3, role_k10_v3, 'Unknown role') AS role,
+              ROUND(SUM(final_weight)) AS n,
+              ROUND(100.0 * SUM(final_weight) / NULLIF((SELECT SUM(final_weight) FROM slice WHERE employer = ?), 0), 2) AS share_pct,
+              ROUND(SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+                / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0)) AS weighted_mean_salary
+            FROM slice
+            WHERE employer = ?
+              {SAME_SCHOOL_EMPLOYER_FILTER}
+              AND role_k50_v3 IS NOT NULL
+              AND role_k50_v3 <> ''
+            GROUP BY 1
+            HAVING SUM(final_weight) >= ?
+            ORDER BY SUM(final_weight) DESC
+            LIMIT {limit}
+            """,
+            [employer, employer, SUPPRESSION_THRESHOLD],
+        )
+    return {"top": employers, "selected_employer": employer, "roles": roles}
+
+
+def _geography(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    limit = _safe_limit(filters.top_n)
+    return _records_from_query(
+        con,
+        f"""
+        SELECT
+          REGEXP_REPLACE(COALESCE(location, city, 'Unknown'), '(?i)\\s+(non)?metropolitan area$', '') AS location,
+          ROUND(SUM(final_weight)) AS n,
+          ROUND(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END)) AS salary_weight,
+          ROUND(SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+            / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0)) AS weighted_mean_salary,
+          quantile_cont(salary, 0.5) AS median_salary
+        FROM slice
+        WHERE COALESCE(location, city) IS NOT NULL
+          AND LOWER(COALESCE(location, city)) NOT IN ('empty', 'unknown')
+        GROUP BY 1
+        HAVING SUM(final_weight) >= ?
+        ORDER BY SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) DESC
+        LIMIT {limit}
+        """,
+        [SUPPRESSION_THRESHOLD],
+    )
+
+
+def _roles(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
+    limit = _safe_limit(filters.top_n)
+    role_rows = _records_from_query(
+        con,
+        f"""
+        SELECT
+          role_k50_v3 AS label,
+          ROUND(SUM(final_weight)) AS n,
+          ROUND(100.0 * SUM(final_weight) / NULLIF((SELECT SUM(final_weight) FROM slice), 0), 2) AS share_pct,
+          ROUND(SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+            / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0)) AS weighted_mean_salary
+        FROM slice
+        WHERE role_k50_v3 IS NOT NULL AND role_k50_v3 <> ''
+          AND NOT (degree = 'Bachelors' AND horizon = '1yr' AND role_k50_v3 = 'Corporate Attorney')
+        GROUP BY role_k50_v3
+        HAVING SUM(final_weight) >= ?
+        ORDER BY SUM(final_weight) DESC
+        LIMIT {limit}
+        """,
+        [SUPPRESSION_THRESHOLD],
+    )
+    industry_rows = _records_from_query(
+        con,
+        f"""
+        SELECT
+          industry_k50 AS label,
+          ROUND(SUM(final_weight)) AS n,
+          ROUND(100.0 * SUM(final_weight) / NULLIF((SELECT SUM(final_weight) FROM slice), 0), 2) AS share_pct,
+          ROUND(SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+            / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0)) AS weighted_mean_salary
+        FROM slice
+        WHERE industry_k50 IS NOT NULL AND industry_k50 <> ''
+        GROUP BY industry_k50
+        HAVING SUM(final_weight) >= ?
+        ORDER BY SUM(final_weight) DESC
+        LIMIT {limit}
+        """,
+        [SUPPRESSION_THRESHOLD],
+    )
+    return {"roles": role_rows, "industries": industry_rows}
+
+
+def _demographics(con: duckdb.DuckDBPyConnection) -> dict[str, list[dict[str, Any]]]:
+    def group(column: str) -> list[dict[str, Any]]:
+        return _records_from_query(
+            con,
+            f"""
+            SELECT
+              {column} AS label,
+              ROUND(SUM(final_weight)) AS n,
+              ROUND(100.0 * SUM(final_weight) / NULLIF((SELECT SUM(final_weight) FROM slice WHERE {column} IS NOT NULL AND {column} <> ''), 0), 2) AS share_pct,
+              ROUND(SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+                / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0)) AS weighted_mean_salary
+            FROM slice
+            WHERE {column} IS NOT NULL AND {column} <> '' AND LOWER({column}) <> 'empty'
+            GROUP BY {column}
+            HAVING SUM(final_weight) >= ?
+            ORDER BY SUM(final_weight) DESC
+            """,
+            [SUPPRESSION_THRESHOLD],
+        )
+
+    return {"gender": group("gender"), "race_ethnicity": group("race_ethnicity")}
+
+
+def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
+    limit = _safe_limit(filters.top_n)
+    flows = _records_from_query(
+        con,
+        f"""
+        WITH denom AS (
+          SELECT SUM(final_weight) AS total_n FROM slice
+        ),
+        flows AS (
+          SELECT
+            COALESCE(later_degree_type, CASE WHEN no_further_education_flag = 1 THEN 'No further education' ELSE 'Unknown' END) AS degree_type,
+            SUM(final_weight) AS n
+          FROM slice
+          GROUP BY 1
+        )
+        SELECT
+          degree_type,
+          ROUND(n) AS n,
+          ROUND(100.0 * n / NULLIF((SELECT total_n FROM denom), 0), 2) AS share_pct
+        FROM flows
+        WHERE n >= ? AND degree_type <> 'Unknown'
+        ORDER BY CASE WHEN degree_type = 'No further education' THEN 1 ELSE 0 END, n DESC
+        LIMIT {limit}
+        """,
+        [SUPPRESSION_THRESHOLD],
+    )
+    selected = filters.selected_postgrad_degree
+    if not selected:
+        selected = next((row["degree_type"] for row in flows if row["degree_type"] != "No further education"), None)
+    schools: list[dict[str, Any]] = []
+    programs: list[dict[str, Any]] = []
+    if selected and selected != "No further education":
+        schools = _records_from_query(
+            con,
+            f"""
+            SELECT
+              later_school AS label,
+              ROUND(SUM(final_weight)) AS n
+            FROM slice
+            WHERE later_degree_type = ?
+              AND later_school IS NOT NULL
+              AND later_school <> ''
+            GROUP BY later_school
+            HAVING SUM(final_weight) >= ?
+            ORDER BY SUM(final_weight) DESC
+            LIMIT {limit}
+            """,
+            [selected, SUPPRESSION_THRESHOLD],
+        )
+        programs = _records_from_query(
+            con,
+            f"""
+            SELECT
+              later_program AS label,
+              ROUND(SUM(final_weight)) AS n
+            FROM slice
+            WHERE later_degree_type = ?
+              AND later_program IS NOT NULL
+              AND later_program <> ''
+            GROUP BY later_program
+            HAVING SUM(final_weight) >= ?
+            ORDER BY SUM(final_weight) DESC
+            LIMIT {limit}
+            """,
+            [selected, SUPPRESSION_THRESHOLD],
+        )
+    return {"flows": flows, "selected_degree": selected, "schools": schools, "programs": programs}
+
+
+@app.post("/api/dashboard")
+def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password)) -> dict[str, Any]:
     con = _connect()
     try:
-      rows = _records_from_query(con, sql, [path, *params, SUPPRESSION_THRESHOLD])
+        _create_slice(con, filters)
+        return {
+            "meta": {
+                "data_version": _manifest().get("version"),
+                "suppression_threshold": SUPPRESSION_THRESHOLD,
+                "partial_horizon": filters.horizon == "early_2025",
+                "filters": filters.model_dump(),
+            },
+            "overview": _overview(con),
+            "salary_trend": _salary_trend(con),
+            "salary_trend_by_school": _salary_trend_by_school(con),
+            "school_comparison": _school_comparison(con),
+            "top_majors": _top_majors(con, filters),
+            "major_trend": _major_trend(con, filters, filters.include_current_students),
+            "employers": _employers(con, filters),
+            "geography": _geography(con, filters),
+            "roles": _roles(con, filters),
+            "demographics": _demographics(con),
+            "postgrad": _postgrad(con, filters),
+        }
     finally:
-      con.close()
-
-    return {
-        "meta": {
-            "suppression_threshold": SUPPRESSION_THRESHOLD,
-            "partial_horizon": filters.horizon.lower() in {"early", "partial", "early_2025"},
-        },
-        "overview": rows,
-    }
+        con.close()

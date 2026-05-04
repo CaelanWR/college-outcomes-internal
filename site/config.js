@@ -1,5 +1,4 @@
-// Optional production data location.
-// Leave blank for public deployment. Data should come from a protected API.
+// Optional protected API location. Leave blank to let users enter it in the UI.
 // Example:
-// window.OUTCOMES_DATA_URL = "https://internal-data.example.com/school-outcomes/v2026-05-03";
-window.OUTCOMES_DATA_URL = "";
+// window.OUTCOMES_API_URL = "https://college-outcomes-api.example.com";
+window.OUTCOMES_API_URL = "";

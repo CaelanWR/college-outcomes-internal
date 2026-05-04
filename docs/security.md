@@ -25,7 +25,7 @@ Safe to publish in the frontend repo:
 Do not publish:
 
 - `platform_parquet/base_fact`.
-- Raw Revelio rows.
+- Raw source rows.
 - Any row-level alumni/person data.
 - Large generated JSON bundles.
 
@@ -55,4 +55,3 @@ Internal user -> SSO gate -> Outcomes API -> Parquet/Snowflake data
 ```
 
 Then leave `OUTCOMES_APP_PASSWORD` unset or keep it as a second layer.
-
