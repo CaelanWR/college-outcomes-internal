@@ -1231,6 +1231,20 @@ def _postgrad_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> li
 
 def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
     limit = _safe_limit(filters.top_n)
+
+    def detail_degree_values(degree_type: str) -> list[str]:
+        if degree_type in {"PhD", "Doctorate", "Research Doctorate"}:
+            return ["PhD", "Doctorate", "Research Doctorate"]
+        return [degree_type]
+
+    def detail_degree_label(degree_type: str | None) -> str | None:
+        if degree_type in {"PhD", "Doctorate", "Research Doctorate"}:
+            return "PhD / Doctorate"
+        return degree_type
+
+    def show_program_detail(degree_type: str | None) -> bool:
+        return degree_type in {"Masters", "PhD", "Doctorate", "Research Doctorate"}
+
     flows = _records_from_query(
         con,
         f"""
@@ -1261,6 +1275,8 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
     schools: list[dict[str, Any]] = []
     programs: list[dict[str, Any]] = []
     if selected and selected != "No further education":
+        selected_values = detail_degree_values(selected)
+        placeholders = ",".join(["?"] * len(selected_values))
         schools = _records_from_query(
             con,
             f"""
@@ -1268,7 +1284,7 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
               later_school AS label,
               ROUND(SUM(final_weight)) AS n
             FROM slice
-            WHERE later_degree_type = ?
+            WHERE later_degree_type IN ({placeholders})
               AND later_school IS NOT NULL
               AND later_school <> ''
             GROUP BY later_school
@@ -1276,26 +1292,34 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
             ORDER BY SUM(final_weight) DESC
             LIMIT {limit}
             """,
-            [selected, SUPPRESSION_THRESHOLD],
+            [*selected_values, SUPPRESSION_THRESHOLD],
         )
-        programs = _records_from_query(
-            con,
-            f"""
-            SELECT
-              later_program AS label,
-              ROUND(SUM(final_weight)) AS n
-            FROM slice
-            WHERE later_degree_type = ?
-              AND later_program IS NOT NULL
-              AND later_program <> ''
-            GROUP BY later_program
-            HAVING SUM(final_weight) >= ?
-            ORDER BY SUM(final_weight) DESC
-            LIMIT {limit}
-            """,
-            [selected, SUPPRESSION_THRESHOLD],
-        )
-    return {"flows": flows, "selected_degree": selected, "schools": schools, "programs": programs}
+        if show_program_detail(selected):
+            programs = _records_from_query(
+                con,
+                f"""
+                SELECT
+                  later_program AS label,
+                  ROUND(SUM(final_weight)) AS n
+                FROM slice
+                WHERE later_degree_type IN ({placeholders})
+                  AND later_program IS NOT NULL
+                  AND later_program <> ''
+                GROUP BY later_program
+                HAVING SUM(final_weight) >= ?
+                ORDER BY SUM(final_weight) DESC
+                LIMIT {limit}
+                """,
+                [*selected_values, SUPPRESSION_THRESHOLD],
+            )
+    return {
+        "flows": flows,
+        "selected_degree": selected,
+        "detail_degree": detail_degree_label(selected),
+        "show_program_detail": show_program_detail(selected),
+        "schools": schools,
+        "programs": programs,
+    }
 
 
 @app.post("/api/dashboard")

@@ -1261,19 +1261,24 @@
 
     function renderPostgrad() {
       const selected = state.data.postgrad?.selected_degree || 'Selected path';
+      const detailLabel = state.data.postgrad?.detail_degree || selected;
+      const showPrograms = Boolean(state.data.postgrad?.show_program_detail && (state.data.postgrad?.programs || []).length);
       if (state.viewMode === 'snapshot') {
-        $('content').innerHTML = [
-          card('Further Education Paths', 'postgrad-flow', 5, true),
-          card(`Top Schools for ${escapeHtml(selected)}`, 'postgrad-schools', 4, true),
-          card(`Top Programs for ${escapeHtml(selected)}`, 'postgrad-programs', 3, true),
-        ].join('');
+        const cards = [
+          card('Further Education Paths', 'postgrad-flow', showPrograms ? 5 : 6, true),
+          card(`Top Schools for ${escapeHtml(detailLabel)}`, 'postgrad-schools', showPrograms ? 4 : 6, true),
+        ];
+        if (showPrograms) {
+          cards.push(card(`Top Programs for ${escapeHtml(detailLabel)}`, 'postgrad-programs', 3, true));
+        }
+        $('content').innerHTML = cards.join('');
         drawPostgradFlows('postgrad-flow');
         drawSimpleBars('postgrad-schools', state.data.postgrad?.schools || [], 'n', '#225ea8');
-        drawSimpleBars('postgrad-programs', state.data.postgrad?.programs || [], 'n', '#22a06b');
+        if (showPrograms) drawSimpleBars('postgrad-programs', state.data.postgrad?.programs || [], 'n', '#22a06b');
       } else {
         $('content').innerHTML = [
           card('Further Education Paths Over Time', 'postgrad-trend', 8, true),
-          card(`Top Schools for ${escapeHtml(selected)}`, 'postgrad-schools', 4, true),
+          card(`Top Schools for ${escapeHtml(detailLabel)}`, 'postgrad-schools', 4, true),
         ].join('');
         drawTrendLines('postgrad-trend', state.data.postgrad_trend || [], 'degree_type', 'share_pct', {
           yTitle: 'Share of alumni %',
