@@ -290,7 +290,7 @@ def _where(filters: QueryRequest, *, include_horizon: bool = True, include_postg
 
 
 def _safe_limit(value: int) -> int:
-    return min(max(value, 5), 30)
+    return min(max(value, 5), 50)
 
 
 def _create_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> None:
@@ -1241,7 +1241,7 @@ def _role_industry_hierarchy(con: duckdb.DuckDBPyConnection, filters: QueryReque
     role_detail_expr = "NULLIF(TRIM(role_k150_v3), '')" if "role_k150_v3" in base_columns else "NULL"
     industry_expr = "TRIM(industry_k200)" if "industry_k200" in base_columns else "TRIM(industry_k50)"
     industry_detail_expr = "NULLIF(TRIM(industry_k400), '')" if "industry_k400" in base_columns else "NULL"
-    max_rows = max(600, _safe_limit(filters.top_n) * 90)
+    max_rows = max(5000, _safe_limit(filters.top_n) * 250)
     return _records_from_query(
         con,
         f"""
@@ -1264,11 +1264,10 @@ def _role_industry_hierarchy(con: duckdb.DuckDBPyConnection, filters: QueryReque
           AND LOWER({industry_expr}) NOT IN ('empty', 'unknown', 'other')
           AND NOT (degree = 'Bachelors' AND horizon = '1yr' AND role_k50_v3 = 'Corporate Attorney')
         GROUP BY role_k50_v3, role_k150_v3, industry_k200, industry_k400
-        HAVING SUM(final_weight) >= ?
+        HAVING SUM(final_weight) > 0
         ORDER BY SUM(final_weight) DESC
         LIMIT {max_rows}
         """,
-        [TREND_SUPPRESSION_THRESHOLD],
     )
 
 
