@@ -10,6 +10,7 @@ from pathlib import Path
 
 
 DATA_DIR = Path(os.environ.get("OUTCOMES_DATA_DIR", "/var/data/outcomes")).expanduser()
+ALLOW_EMPTY_STARTUP = os.environ.get("OUTCOMES_ALLOW_EMPTY_STARTUP", "0").lower() in {"1", "true", "yes"}
 
 
 def _has_parquet(path: Path) -> bool:
@@ -77,6 +78,15 @@ def _ensure_data() -> Path:
 
     archive_url = os.environ.get("OUTCOMES_DATA_ARCHIVE_URL")
     if not archive_url:
+        if ALLOW_EMPTY_STARTUP:
+            empty_root = DATA_DIR / "platform_parquet" / "base_fact"
+            empty_root.mkdir(parents=True, exist_ok=True)
+            print(
+                "No parquet data found. Starting anyway because OUTCOMES_ALLOW_EMPTY_STARTUP is enabled. "
+                f"Upload/extract platform_parquet under {DATA_DIR}, then redeploy.",
+                flush=True,
+            )
+            return empty_root
         raise RuntimeError(
             "No parquet data found. Set OUTCOMES_PARQUET_ROOT to a mounted base_fact path "
             "or set OUTCOMES_DATA_ARCHIVE_URL so the service can bootstrap its data disk."

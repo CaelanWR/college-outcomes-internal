@@ -69,6 +69,52 @@ You do not need to set `OUTCOMES_PARQUET_ROOT` if the archive contains `platform
 
 After the first successful boot, remove or rotate `OUTCOMES_DATA_ARCHIVE_URL` if your host keeps the persistent disk. The data will already be extracted on the disk.
 
+## Manual Upload Instead Of Object Storage
+
+If you do not have private S3/R2/GCS storage, use Render's disk-backed service shell to transfer the archive without creating a public URL.
+
+Set this temporary environment variable so the service can boot before data exists:
+
+```text
+OUTCOMES_ALLOW_EMPTY_STARTUP=true
+```
+
+Deploy the service. `/api/health` should respond, but dashboard queries will not work until data is uploaded.
+
+Open the service's **Shell** page in Render and run:
+
+```bash
+mkdir -p /var/data/outcomes
+cd /var/data/outcomes
+wormhole receive
+```
+
+On your laptop, send the archive:
+
+```bash
+wormhole send /Users/caelan/Downloads/Untitled/outcomes-platform.tar.gz
+```
+
+Enter the code shown by `wormhole send` into the Render shell. This transfers directly to the Render service; it does not publish the archive.
+
+Then, in the Render shell:
+
+```bash
+cd /var/data/outcomes
+tar -xzf outcomes-platform.tar.gz
+rm outcomes-platform.tar.gz
+find /var/data/outcomes/platform_parquet/base_fact -name '*.parquet' | head
+```
+
+After extraction succeeds:
+
+1. Remove `OUTCOMES_ALLOW_EMPTY_STARTUP` from Render.
+2. Leave `OUTCOMES_DATA_DIR=/var/data/outcomes`.
+3. Redeploy the service.
+4. Check `/api/health`.
+
+Render also supports SCP for disk-backed paid services after SSH setup. SCP is secure too, but Magic-Wormhole is usually faster to set up for a one-time data transfer.
+
 ## 3. Verify The API
 
 Open:
