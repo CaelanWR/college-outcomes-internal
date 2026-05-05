@@ -35,6 +35,8 @@
 
     * { box-sizing: border-box; }
 
+    html { scroll-behavior: smooth; }
+
     body {
       margin: 0;
       color: var(--ink);
@@ -43,6 +45,7 @@
         radial-gradient(circle at top right, rgba(33,166,117,0.08), transparent 24%),
         linear-gradient(180deg, #f4f8fb 0%, #edf3f8 100%);
       min-height: 100vh;
+      overflow-x: hidden;
     }
 
     header {
@@ -258,20 +261,22 @@
       box-shadow: 0 10px 20px rgba(22,50,74,0.16);
     }
 
-    main {
-      width: min(1680px, calc(100vw - 44px));
-      margin: 14px auto 44px;
-    }
-
     .tabs {
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       gap: 8px;
-      margin: 0 0 14px;
+      width: min(1680px, calc(100vw - 44px));
+      margin: 14px auto 10px;
+      padding: 2px 2px 8px;
       overflow-x: auto;
+      overscroll-behavior-x: contain;
+      scrollbar-width: none;
     }
 
+    .tabs::-webkit-scrollbar { display: none; }
+
     .tab {
+      flex: 0 0 auto;
       border: 1px solid transparent;
       background: rgba(255,255,255,0.78);
       border-radius: 999px;
@@ -292,7 +297,7 @@
     .grid {
       display: grid;
       grid-template-columns: repeat(12, 1fr);
-      gap: 18px;
+      gap: clamp(14px, 1.25vw, 22px);
     }
 
     .card, .metric {
@@ -439,6 +444,11 @@
     }
 
     .chart.tall { min-height: 460px; }
+
+    .chart .svg-container,
+    .treemap-plot .svg-container {
+      max-width: 100% !important;
+    }
 
     .table-wrap {
       overflow: auto;
@@ -599,7 +609,7 @@
       width: auto;
       max-width: 1680px;
       margin: 0 auto;
-      padding: 24px 22px 44px;
+      padding: 18px 22px 44px;
     }
 
     .api-connection.connected { display: none; }
@@ -607,7 +617,7 @@
     .content .grid {
       display: grid;
       grid-template-columns: repeat(12, minmax(0, 1fr));
-      gap: 18px;
+      gap: clamp(14px, 1.25vw, 22px);
     }
 
     .card {
@@ -615,9 +625,16 @@
       border: 1px solid rgba(22,50,74,0.08);
       border-radius: 22px;
       box-shadow: 0 12px 28px rgba(20,44,65,0.06);
-      padding: 22px;
-      margin-bottom: 18px;
+      padding: clamp(18px, 1.6vw, 24px);
+      margin-bottom: 0;
       min-height: 0;
+      transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+    }
+
+    .card:hover,
+    .metric:hover {
+      border-color: rgba(34, 94, 168, 0.16);
+      box-shadow: 0 18px 38px rgba(20,44,65,0.08);
     }
 
     .card h3 {
@@ -690,9 +707,12 @@
 
     @media (max-width: 1180px) {
       header { position: static; }
+      .controls { position: relative; top: auto; }
       .connection, .filters, .advanced { grid-template-columns: repeat(2, minmax(260px, 1fr)); }
       .controls-main { grid-template-columns: repeat(2, minmax(280px, 1fr)); }
       .span-3, .span-4, .span-5, .span-6, .span-7, .span-8, .span-12 { grid-column: span 12; }
+      .metric.span-3 { grid-column: span 6; }
+      .metric.span-4 { grid-column: span 4; }
     }
 
     @media (max-width: 720px) {
@@ -701,9 +721,20 @@
       .controls { padding: 10px 12px; }
       .controls-main { display: flex; flex-wrap: wrap; gap: 10px; }
       .advanced-toggle { margin-left: 0; }
-      main { width: 94vw; }
+      .tabs { width: calc(100vw - 20px); margin-top: 10px; }
+      .tab { padding: 10px 15px; }
+      .content { padding: 14px 10px 34px; }
       .metric, .card { padding: 18px; }
       select[multiple] { min-height: 92px; }
+    }
+
+    @media (max-width: 520px) {
+      .metric.span-3, .metric.span-4 { grid-column: span 12; }
+      .hero { padding: 34px 18px 24px; }
+      .api-status {
+        position: static;
+        margin-top: 14px;
+      }
     }
   </style>
 </head>
@@ -879,6 +910,7 @@
     const money = value => value === null || value === undefined ? 'No data' : `$${fmt.format(Math.round(value / 1000))}k`;
     const num = value => value === null || value === undefined ? 'No data' : fmt.format(Math.round(value));
     const pct = value => value === null || value === undefined ? 'No data' : `${Number(value).toFixed(1)}%`;
+    let resizeTimer = null;
 
     const layoutBase = {
       font: { family: '"Source Sans 3", ui-sans-serif, system-ui, sans-serif', color: '#243b53', size: 13 },
@@ -888,6 +920,55 @@
       hoverlabel: { bgcolor: '#102a43', bordercolor: '#102a43', font: { family: '"Source Sans 3", ui-sans-serif, system-ui, sans-serif', color: '#fff', size: 13 } },
     };
     const plotConfig = { responsive: true, displayModeBar: false };
+
+    function compactWindow() {
+      return window.innerWidth < 820;
+    }
+
+    function labelText(row) {
+      return String(row?.label || row?.title || row?.employer || row?.location || row?.school_name || row?.degree_type || row?.degree || row || '');
+    }
+
+    function wrapAxisLabel(value, maxChars = compactWindow() ? 20 : 28, maxLines = compactWindow() ? 3 : 2) {
+      const text = String(value ?? '').trim();
+      if (text.length <= maxChars) return escapeHtml(text);
+      const words = text.split(/\s+/);
+      const lines = [];
+      let line = '';
+      words.forEach(word => {
+        if (!line) {
+          line = word;
+          return;
+        }
+        if ((line + ' ' + word).length <= maxChars) {
+          line += ' ' + word;
+        } else {
+          lines.push(line);
+          line = word;
+        }
+      });
+      if (line) lines.push(line);
+      const visible = lines.slice(0, maxLines);
+      if (lines.length > maxLines) {
+        visible[visible.length - 1] = `${visible[visible.length - 1].replace(/[,.]$/, '')}...`;
+      }
+      return visible.map(escapeHtml).join('<br>');
+    }
+
+    function wrappedLabels(rows, key) {
+      return (rows || []).map(row => wrapAxisLabel(key ? row[key] : labelText(row)));
+    }
+
+    function queuePlotResize() {
+      window.requestAnimationFrame(() => {
+        document.querySelectorAll('.js-plotly-plot').forEach(plot => Plotly.Plots.resize(plot));
+      });
+    }
+
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(queuePlotResize, 140);
+    });
 
     function setStatus(kind, text) {
       $('status-dot').className = `dot ${kind || ''}`;
@@ -1287,6 +1368,7 @@
       if (!state.data) return;
       if (state.selectionMode === 'compare') {
         renderCompare();
+        queuePlotResize();
         return;
       }
       const tab = state.tab;
@@ -1298,6 +1380,7 @@
       if (tab === 'demographics') renderDemographics();
       if (tab === 'postgrad') renderPostgrad();
       if (tab === 'coverage') renderCoverage();
+      queuePlotResize();
     }
 
     function renderCompare() {
@@ -1657,7 +1740,7 @@
         .slice(0, limit)
         .reverse();
       if (!cleanRows.length) return noData(id);
-      const labels = cleanRows.map(row => row[labelKey]);
+      const labels = wrappedLabels(cleanRows, labelKey);
       Plotly.newPlot(id, [
         {
           type: 'bar',
@@ -1666,7 +1749,8 @@
           y: labels,
           x: cleanRows.map(row => row.ipeds_completions),
           marker: { color: 'rgba(148, 163, 184, 0.50)' },
-          hovertemplate: '%{y}<br>IPEDS %{x:,.0f}<extra></extra>',
+          customdata: cleanRows.map(row => row[labelKey]),
+          hovertemplate: '%{customdata}<br>IPEDS %{x:,.0f}<extra></extra>',
         },
         {
           type: 'bar',
@@ -1674,9 +1758,9 @@
           name: 'Revelio',
           y: labels,
           x: cleanRows.map(row => row.revelio_completions),
-          customdata: cleanRows.map(row => row.coverage_pct),
+          customdata: cleanRows.map(row => [row[labelKey], row.coverage_pct]),
           marker: { color: 'rgba(47, 128, 237, 0.72)' },
-          hovertemplate: '%{y}<br>Revelio %{x:,.0f}<br>Grad coverage %{customdata:.1f}%<extra></extra>',
+          hovertemplate: '%{customdata[0]}<br>Revelio %{x:,.0f}<br>Grad coverage %{customdata[1]:.1f}%<extra></extra>',
         },
       ], {
         ...horizontalLayout(cleanRows.map(row => ({ label: row[labelKey] }))),
@@ -1900,16 +1984,18 @@
     function drawSchoolComparison(id) {
       const rows = state.data.school_comparison || [];
       if (!rows.length) return noData(id);
+      const ordered = rows.slice().reverse();
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
-        y: rows.slice().reverse().map(r => shortSchool(r.school_name)),
-        x: rows.slice().reverse().map(r => r.median_salary),
-        text: rows.slice().reverse().map(r => money(r.median_salary)),
+        y: ordered.map(r => wrapAxisLabel(shortSchool(r.school_name))),
+        x: ordered.map(r => r.median_salary),
+        text: ordered.map(r => money(r.median_salary)),
         textposition: 'outside',
         cliponaxis: false,
+        customdata: ordered.map(r => shortSchool(r.school_name)),
         marker: { color: COLORS[0] },
-        hovertemplate: '%{y}<br>%{x:$,.0f}<extra></extra>',
+        hovertemplate: '%{customdata}<br>%{x:$,.0f}<extra></extra>',
       }], horizontalLayout(rows, '$'), plotConfig);
     }
 
@@ -1919,13 +2005,14 @@
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
-        y: rows.map(r => shortSchool(r.school_name)),
+        y: rows.map(r => wrapAxisLabel(shortSchool(r.school_name))),
         x: rows.map(r => r.alumni),
         text: rows.map(r => num(r.alumni)),
         textposition: 'outside',
         cliponaxis: false,
+        customdata: rows.map(r => shortSchool(r.school_name)),
         marker: { color: COLORS[1] },
-        hovertemplate: '%{y}<br>%{x:,.0f} alumni<extra></extra>',
+        hovertemplate: '%{customdata}<br>%{x:,.0f} alumni<extra></extra>',
       }], horizontalLayout(rows), plotConfig);
     }
 
@@ -1935,13 +2022,14 @@
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
-        y: rows.map(r => shortSchool(r.school_name)),
+        y: rows.map(r => wrapAxisLabel(shortSchool(r.school_name))),
         x: rows.map(r => r.later_degree_pct),
         text: rows.map(r => pct(r.later_degree_pct)),
         textposition: 'outside',
         cliponaxis: false,
+        customdata: rows.map(r => shortSchool(r.school_name)),
         marker: { color: COLORS[2] },
-        hovertemplate: '%{y}<br>%{x:.1f}% with later degree<extra></extra>',
+        hovertemplate: '%{customdata}<br>%{x:.1f}% with later degree<extra></extra>',
       }], horizontalLayout(rows, '%'), plotConfig);
     }
 
@@ -1963,13 +2051,14 @@
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
-        y: rows.map(r => r.title),
+        y: wrappedLabels(rows, 'title'),
         x: rows.map(r => r.median_salary),
         text: rows.map(r => money(r.median_salary)),
         textposition: 'outside',
         cliponaxis: false,
+        customdata: rows.map(r => r.title),
         marker: { color: COLORS[1] },
-        hovertemplate: '%{y}<br>%{x:$,.0f}<extra></extra>',
+        hovertemplate: '%{customdata}<br>%{x:$,.0f}<extra></extra>',
       }], horizontalLayout(rows, '$'), plotConfig);
     }
 
@@ -1979,13 +2068,14 @@
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
-        y: rows.map(r => r.title),
+        y: wrappedLabels(rows, 'title'),
         x: rows.map(r => r.alumni),
         text: rows.map(r => num(r.alumni)),
         textposition: 'outside',
         cliponaxis: false,
+        customdata: rows.map(r => r.title),
         marker: { color: COLORS[3] },
-        hovertemplate: '%{y}<br>%{x:,.0f} alumni<extra></extra>',
+        hovertemplate: '%{customdata}<br>%{x:,.0f} alumni<extra></extra>',
       }], horizontalLayout(rows), plotConfig);
     }
 
@@ -1995,19 +2085,20 @@
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
-        y: rows.map(r => r.employer),
+        y: wrappedLabels(rows, 'employer'),
         x: rows.map(r => r.n),
         text: rows.map(r => `${num(r.n)} (${pct(r.share_pct)})`),
         textposition: 'outside',
         cliponaxis: false,
+        customdata: rows.map(r => r.employer),
         marker: { color: COLORS[0] },
-        hovertemplate: '%{y}<br>%{x:,.0f} alumni<extra></extra>',
+        hovertemplate: '%{customdata}<br>%{x:,.0f} alumni<extra></extra>',
       }], horizontalLayout(rows), plotConfig).then(plot => {
         if (!clickable) return;
         plot.on('plotly_click', event => {
           const point = event.points?.[0];
           if (!point) return;
-          state.selectedEmployer = point.y;
+          state.selectedEmployer = point.customdata || point.y;
           refresh();
         });
       });
@@ -2026,13 +2117,14 @@
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
-        y: rows.map(r => titleCase(r.location)),
+        y: rows.map(r => wrapAxisLabel(titleCase(r.location))),
         x: rows.map(r => r[metric]),
         text: rows.map(r => isSalary ? money(r[metric]) : (isShare ? pct(r[metric]) : num(r[metric]))),
         textposition: 'outside',
         cliponaxis: false,
+        customdata: rows.map(r => titleCase(r.location)),
         marker: { color: isSalary ? COLORS[1] : COLORS[0] },
-        hovertemplate: isSalary ? '%{y}<br>%{x:$,.0f}<extra></extra>' : (isShare ? '%{y}<br>%{x:.1f}%<extra></extra>' : '%{y}<br>%{x:,.0f}<extra></extra>'),
+        hovertemplate: isSalary ? '%{customdata}<br>%{x:$,.0f}<extra></extra>' : (isShare ? '%{customdata}<br>%{x:.1f}%<extra></extra>' : '%{customdata}<br>%{x:,.0f}<extra></extra>'),
       }], horizontalLayout(rows, isSalary ? '$' : (isShare ? '%' : '')), plotConfig);
     }
 
@@ -2153,18 +2245,20 @@
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
-        y: rows.map(r => r.degree_type),
+        y: wrappedLabels(rows, 'degree_type'),
         x: rows.map(r => r.share_pct),
         text: rows.map(r => `${pct(r.share_pct)}`),
         textposition: 'outside',
         cliponaxis: false,
+        customdata: rows.map(r => r.degree_type),
         marker: { color: rows.map(r => r.degree_type === 'No further education' ? '#94a3b8' : COLORS[0]) },
-        hovertemplate: '%{y}<br>%{x:.1f}%<extra></extra>',
+        hovertemplate: '%{customdata}<br>%{x:.1f}%<extra></extra>',
       }], horizontalLayout(rows, '%'), plotConfig).then(plot => {
         plot.on('plotly_click', event => {
           const point = event.points?.[0];
-          if (!point || point.y === 'No further education') return;
-          state.selectedPostgradDegree = point.y;
+          const label = point?.customdata || point?.y;
+          if (!label || label === 'No further education') return;
+          state.selectedPostgradDegree = label;
           state.selectedPostgradSchool = null;
           state.selectedPostgradProgram = null;
           refresh();
@@ -2178,33 +2272,42 @@
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
-        y: cleanRows.map(r => r.label),
+        y: wrappedLabels(cleanRows, 'label'),
         x: cleanRows.map(r => r[metric]),
         text: cleanRows.map(r => num(r[metric])),
         textposition: 'outside',
         cliponaxis: false,
+        customdata: cleanRows.map(r => r.label),
         marker: {
           color: options.activeLabel
             ? cleanRows.map(row => row.label === options.activeLabel ? '#f97316' : color)
             : color,
         },
-        hovertemplate: '%{y}<br>%{x:,.0f}<extra></extra>',
+        hovertemplate: '%{customdata}<br>%{x:,.0f}<extra></extra>',
       }], horizontalLayout(cleanRows), plotConfig).then(plot => {
         if (!options.onClick) return;
         plot.on('plotly_click', event => {
-          const label = event.points?.[0]?.y;
+          const label = event.points?.[0]?.customdata || event.points?.[0]?.y;
           if (label) options.onClick(label);
         });
       });
     }
 
-    function horizontalLayout(rows, prefix = '') {
-      const longest = Math.max(12, ...rows.map(r => String(r.label || r.title || r.employer || r.location || r.school_name || '').length));
+    function horizontalLayout(rows, prefix = '', options = {}) {
+      const rowCount = Math.max(1, (rows || []).length);
+      const longest = Math.max(12, ...(rows || []).map(r => labelText(r).length));
+      const narrow = compactWindow();
+      const leftMargin = narrow
+        ? Math.min(230, Math.max(112, longest * 4.8))
+        : Math.min(360, Math.max(148, longest * 7));
+      const rightMargin = narrow ? 42 : 96;
+      const dynamicHeight = Math.max(narrow ? 360 : 330, Math.min(760, 142 + rowCount * (narrow ? 42 : 34)));
       return {
         ...layoutBase,
-        margin: { l: Math.min(340, Math.max(136, longest * 7)), r: 96, t: 14, b: 52 },
+        height: options.height || dynamicHeight,
+        margin: { l: leftMargin, r: rightMargin, t: 14, b: 52 },
         xaxis: { tickprefix: prefix === '$' ? '$' : '', ticksuffix: prefix === '%' ? '%' : '', automargin: true, rangemode: 'tozero' },
-        yaxis: { automargin: true, tickfont: { size: 12 } },
+        yaxis: { automargin: true, tickfont: { size: narrow ? 12 : 13 } },
       };
     }
 
