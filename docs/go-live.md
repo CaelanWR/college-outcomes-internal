@@ -70,6 +70,7 @@ If private Pages is not available, a private GitHub repo can still publish a pub
 ## Step 5: Deploy The API
 
 The starter API is in `api/`.
+For the paid hosted path with a private data archive and mounted disk, use `docs/paid-online-deploy.md`.
 
 Local test:
 

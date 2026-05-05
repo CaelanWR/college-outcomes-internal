@@ -14,6 +14,7 @@ The service:
 
 - Uses FastAPI and DuckDB over `platform_parquet`.
 - Reads `OUTCOMES_PARQUET_ROOT=/path/to/platform_parquet/base_fact`.
+- Can bootstrap a mounted data disk from `OUTCOMES_DATA_ARCHIVE_URL` when run through `api/start.py`.
 - Uses `OUTCOMES_APP_PASSWORD` as a fallback API password when configured.
 - Returns aggregate chart data only.
-- Suppresses small cells with `SUPPRESSION_THRESHOLD`.
+- Shows positive-weight aggregate cells by default. Raise `MIN_CELL_WEIGHT`, `EMPLOYER_ROW_MIN_WEIGHT`, `GEOGRAPHY_ROW_MIN_WEIGHT`, or `SALARY_MIN_WEIGHT` if you need stricter display thresholds.
