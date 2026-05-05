@@ -19,6 +19,8 @@ DATA_ROOT = Path(os.environ.get("OUTCOMES_PARQUET_ROOT", "./data/parquet")).expa
 PLATFORM_ROOT = Path(os.environ.get("OUTCOMES_PLATFORM_ROOT", "")).expanduser() if os.environ.get("OUTCOMES_PLATFORM_ROOT") else None
 SUPPRESSION_THRESHOLD = int(os.environ.get("SUPPRESSION_THRESHOLD", "25"))
 TREND_SUPPRESSION_THRESHOLD = int(os.environ.get("TREND_SUPPRESSION_THRESHOLD", "5"))
+EMPLOYER_ROW_MIN_WEIGHT = float(os.environ.get("EMPLOYER_ROW_MIN_WEIGHT", "0"))
+GEOGRAPHY_ROW_MIN_WEIGHT = float(os.environ.get("GEOGRAPHY_ROW_MIN_WEIGHT", "0"))
 APP_PASSWORD = os.environ.get("OUTCOMES_APP_PASSWORD")
 ALLOWED_ORIGINS = [
     origin.strip()
@@ -1099,7 +1101,7 @@ def _employer_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> li
           SELECT employer, SUM(final_weight) AS total_n
           FROM eligible
           GROUP BY employer
-          HAVING SUM(final_weight) >= ?
+          HAVING SUM(final_weight) > ?
           ORDER BY total_n DESC
           LIMIT {limit}
         ),
@@ -1121,10 +1123,10 @@ def _employer_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> li
           ROUND(100.0 * b.n / NULLIF(t.total_n, 0), 2) AS share_pct
         FROM by_year b
         JOIN totals t USING (grad_year)
-        WHERE b.n >= ?
+        WHERE b.n > ?
         ORDER BY b.employer, b.grad_year
         """,
-        [SUPPRESSION_THRESHOLD, TREND_SUPPRESSION_THRESHOLD],
+        [EMPLOYER_ROW_MIN_WEIGHT, EMPLOYER_ROW_MIN_WEIGHT],
     )
 
 
@@ -1163,11 +1165,11 @@ def _employers(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[st
           CASE WHEN salary_weight >= ? THEN ROUND(weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
           CASE WHEN salary_weight >= ? THEN ROUND(median_salary) ELSE NULL END AS median_salary
         FROM by_employer
-        WHERE n >= ?
+        WHERE n > ?
         ORDER BY n DESC
         LIMIT {limit}
         """,
-        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, EMPLOYER_ROW_MIN_WEIGHT],
     )
     employer = filters.selected_employer or (employers[0]["employer"] if employers else None)
     roles: list[dict[str, Any]] = []
@@ -1187,11 +1189,11 @@ def _employers(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[st
               AND role_k50_v3 IS NOT NULL
               AND role_k50_v3 <> ''
             GROUP BY 1
-            HAVING SUM(final_weight) >= ?
+            HAVING SUM(final_weight) > ?
             ORDER BY SUM(final_weight) DESC
             LIMIT {limit}
             """,
-            [employer, employer, SUPPRESSION_THRESHOLD],
+            [employer, employer, EMPLOYER_ROW_MIN_WEIGHT],
         )
     return {"top": employers, "selected_employer": employer, "roles": roles}
 
@@ -1220,7 +1222,7 @@ def _geography_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> l
             SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight
           FROM eligible
           GROUP BY location
-          HAVING SUM(final_weight) >= ?
+          HAVING SUM(final_weight) > ?
           ORDER BY salary_weight DESC, total_n DESC
           LIMIT {limit}
         ),
@@ -1252,10 +1254,10 @@ def _geography_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> l
           CASE WHEN b.salary_weight >= ? THEN ROUND(b.median_salary) ELSE NULL END AS median_salary
         FROM by_year b
         JOIN totals t USING (grad_year)
-        WHERE b.n >= ?
+        WHERE b.n > ?
         ORDER BY b.location, b.grad_year
         """,
-        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, TREND_SUPPRESSION_THRESHOLD],
+        [GEOGRAPHY_ROW_MIN_WEIGHT, SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, GEOGRAPHY_ROW_MIN_WEIGHT],
     )
 
 
@@ -1287,11 +1289,11 @@ def _geography(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[di
           quantile_cont(salary, 0.5) AS median_salary
         FROM eligible
         GROUP BY 1
-        HAVING SUM(final_weight) >= ?
+        HAVING SUM(final_weight) > ?
         ORDER BY SUM(final_weight) DESC
         LIMIT {limit}
         """,
-        [SUPPRESSION_THRESHOLD],
+        [GEOGRAPHY_ROW_MIN_WEIGHT],
     )
 
 
