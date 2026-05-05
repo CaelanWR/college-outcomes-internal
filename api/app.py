@@ -1770,8 +1770,6 @@ def _coverage(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
 
 
 def _demographic_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, list[dict[str, Any]]]:
-    limit = min(_safe_limit(filters.top_n), 8)
-
     def group(column: str) -> list[dict[str, Any]]:
         return _records_from_query(
             con,
@@ -1784,22 +1782,13 @@ def _demographic_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) ->
                 AND {column} <> ''
                 AND LOWER(TRIM({column})) NOT IN ('empty', 'unknown')
             ),
-            top_labels AS (
-              SELECT label, SUM(profile_weight) AS total_n
-              FROM eligible
-              GROUP BY label
-              HAVING SUM(profile_weight) > ?
-              ORDER BY total_n DESC
-              LIMIT {limit}
-            ),
             by_year AS (
               SELECT
-                e.grad_year,
-                e.label,
-                SUM(e.profile_weight) AS n
-              FROM eligible e
-              JOIN top_labels t USING (label)
-              GROUP BY e.grad_year, e.label
+                grad_year,
+                label,
+                SUM(profile_weight) AS n
+              FROM eligible
+              GROUP BY grad_year, label
             ),
             totals AS (
               SELECT grad_year, SUM(profile_weight) AS total_n
@@ -1810,14 +1799,14 @@ def _demographic_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) ->
               b.grad_year,
               b.label,
               ROUND(b.n, 2) AS n,
-              ROUND(100.0 * b.n / NULLIF(t.total_n, 0), 2) AS share_pct,
+              100.0 * b.n / NULLIF(t.total_n, 0) AS share_pct,
               NULL AS weighted_mean_salary
             FROM by_year b
             JOIN totals t USING (grad_year)
             WHERE b.n > ?
             ORDER BY b.label, b.grad_year
             """,
-            [MIN_CELL_WEIGHT, MIN_CELL_WEIGHT],
+            [MIN_CELL_WEIGHT],
         )
 
     return {"gender": group("gender"), "race_ethnicity": group("race_ethnicity")}
@@ -1855,8 +1844,8 @@ def _demographics(con: duckdb.DuckDBPyConnection) -> dict[str, list[dict[str, An
             )
             SELECT
               c.label,
-              ROUND(c.n) AS n,
-              ROUND(100.0 * c.n / NULLIF((SELECT total_n FROM totals), 0), 2) AS share_pct,
+              ROUND(c.n, 2) AS n,
+              100.0 * c.n / NULLIF((SELECT total_n FROM totals), 0) AS share_pct,
               CASE WHEN s.salary_weight > ? THEN ROUND(s.weighted_mean_salary) ELSE NULL END AS weighted_mean_salary
             FROM cohort c
             LEFT JOIN salary s USING (label)
