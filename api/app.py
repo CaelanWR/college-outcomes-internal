@@ -336,6 +336,10 @@ def _create_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> None
 
 
 def _create_current_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> bool:
+    return _create_current_slice_table(con, filters, "current_slice")
+
+
+def _create_current_slice_table(con: duckdb.DuckDBPyConnection, filters: QueryRequest, table_name: str) -> bool:
     current_path = _platform_root() / "current_students_fact"
     if not current_path.exists():
         return False
@@ -349,7 +353,7 @@ def _create_current_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest)
     where_sql, params = _where(current_filters, include_horizon=False, include_postgrad=False)
     con.execute(
         f"""
-        CREATE OR REPLACE TEMP TABLE current_slice AS
+        CREATE OR REPLACE TEMP TABLE {table_name} AS
         SELECT *
         FROM (
           SELECT
@@ -367,6 +371,38 @@ def _create_current_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest)
         [_dataset_glob("current_students_fact"), *params],
     )
     return True
+
+
+def _create_cohort_slice_table(con: duckdb.DuckDBPyConnection, filters: QueryRequest, table_name: str) -> None:
+    base_columns = _dataset_columns("base_fact")
+    profile_weight_sql = _cohort_profile_weight_sql(base_columns)
+    source_star = _source_star_without_profile(base_columns)
+    cohort_where_sql, cohort_params = _where(filters, include_horizon=False)
+    con.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE {table_name} AS
+        SELECT *
+        FROM (
+          SELECT
+            {source_star},
+            {profile_weight_sql} AS profile_weight,
+            ROW_NUMBER() OVER (
+              PARTITION BY person_key, unitid, degree, cip2, cip4, cip6, grad_year
+              ORDER BY CASE horizon
+                WHEN '1yr' THEN 1
+                WHEN '5yr' THEN 2
+                WHEN '10yr' THEN 3
+                WHEN 'early_2025' THEN 4
+                ELSE 5
+              END
+            ) AS cohort_rank
+          FROM read_parquet(?)
+          {cohort_where_sql}
+        )
+        WHERE cohort_rank = 1
+        """,
+        [_dataset_glob("base_fact"), *cohort_params],
+    )
 
 
 @lru_cache(maxsize=1)
@@ -926,22 +962,55 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
     cip_col = _cip_col(filters)
     limit = min(_safe_limit(filters.top_n), 5)
     current_exists = include_current and _create_current_slice(con, filters)
+    has_major_filter = bool(filters.majors)
 
-    source_for_top = "current_slice" if current_exists else "cohort_slice"
+    cohort_denominator_source = "cohort_slice"
+    current_denominator_source = "current_slice"
+    if has_major_filter:
+        denominator_filters = filters.model_copy(deep=True)
+        denominator_filters.majors = []
+        _create_cohort_slice_table(con, denominator_filters, "major_denominator_cohort_slice")
+        cohort_denominator_source = "major_denominator_cohort_slice"
+        if current_exists:
+            _create_current_slice_table(con, denominator_filters, "major_denominator_current_slice")
+            current_denominator_source = "major_denominator_current_slice"
+
     weight_expr = "SUM(profile_weight)"
-    top_codes = _records_from_query(
-        con,
-        f"""
-        SELECT {cip_col} AS code, MAX(major_title) AS title, {weight_expr} AS n
-        FROM {source_for_top}
-        WHERE {cip_col} IS NOT NULL
-        GROUP BY {cip_col}
-        HAVING {weight_expr} >= ?
-        ORDER BY n DESC
-        LIMIT {limit}
-        """,
-        [SUPPRESSION_THRESHOLD],
-    )
+    if has_major_filter:
+        top_sources = [
+            f"SELECT {cip_col} AS code, major_title AS title, profile_weight AS n FROM cohort_slice WHERE {cip_col} IS NOT NULL"
+        ]
+        if current_exists:
+            top_sources.append(
+                f"SELECT {cip_col} AS code, major_title AS title, profile_weight AS n FROM current_slice WHERE {cip_col} IS NOT NULL"
+            )
+        top_codes = _records_from_query(
+            con,
+            f"""
+            SELECT code, MAX(title) AS title, SUM(n) AS n
+            FROM ({' UNION ALL '.join(top_sources)})
+            GROUP BY code
+            HAVING SUM(n) >= ?
+            ORDER BY n DESC
+            LIMIT {limit}
+            """,
+            [SUPPRESSION_THRESHOLD],
+        )
+    else:
+        source_for_top = "current_slice" if current_exists else "cohort_slice"
+        top_codes = _records_from_query(
+            con,
+            f"""
+            SELECT {cip_col} AS code, MAX(major_title) AS title, {weight_expr} AS n
+            FROM {source_for_top}
+            WHERE {cip_col} IS NOT NULL
+            GROUP BY {cip_col}
+            HAVING {weight_expr} >= ?
+            ORDER BY n DESC
+            LIMIT {limit}
+            """,
+            [SUPPRESSION_THRESHOLD],
+        )
     codes = [row["code"] for row in top_codes if row["code"]]
     if not codes:
         return {"series": [], "current_series": [], "top": []}
@@ -958,7 +1027,7 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
         ),
         totals AS (
           SELECT grad_year, SUM(profile_weight) AS total_n
-          FROM cohort_slice
+          FROM {cohort_denominator_source}
           WHERE grad_year IS NOT NULL
           GROUP BY grad_year
         )
@@ -967,6 +1036,7 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
           b.code,
           COALESCE(b.title, b.code) AS title,
           ROUND(b.n) AS n,
+          ROUND(t.total_n) AS total_n,
           ROUND(100.0 * b.n / NULLIF(t.total_n, 0), 2) AS share_pct
         FROM by_major b
         JOIN totals t USING (grad_year)
@@ -988,7 +1058,7 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
             ),
             totals AS (
               SELECT grad_year, SUM(profile_weight) AS total_n
-              FROM current_slice
+              FROM {current_denominator_source}
               WHERE grad_year IS NOT NULL
               GROUP BY grad_year
             )
@@ -997,6 +1067,7 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
               b.code,
               COALESCE(b.title, b.code) AS title,
               ROUND(b.n) AS n,
+              ROUND(t.total_n) AS total_n,
               ROUND(100.0 * b.n / NULLIF(t.total_n, 0), 2) AS share_pct
             FROM by_major b
             JOIN totals t USING (grad_year)

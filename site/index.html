@@ -1944,7 +1944,8 @@
             y: historic.map(r => r.share_pct),
             line: { color: COLORS[i % COLORS.length], width: 3 },
             marker: { size: 7 },
-            hovertemplate: `${title}<br>%{x}<br>%{y:.1f}%<extra></extra>`,
+            customdata: historic.map(r => [r.n, r.total_n]),
+            hovertemplate: `${title}<br>Class of %{x}<br>%{y:.1f}% of total<br>%{customdata[0]:,.0f} of %{customdata[1]:,.0f}<extra></extra>`,
           },
           current.length ? {
             type: 'scatter',
@@ -1957,8 +1958,9 @@
               size: currentBridge.map((_, idx) => historic.length && idx === 0 ? 0 : 9),
               symbol: 'diamond',
             },
+            customdata: currentBridge.map(r => [r.n, r.total_n]),
             showlegend: false,
-            hovertemplate: `${title}<br>Class of %{x}<br>%{y:.1f}%<extra></extra>`,
+            hovertemplate: `${title}<br>Class of %{x}<br>%{y:.1f}% of total<br>%{customdata[0]:,.0f} of %{customdata[1]:,.0f}<extra></extra>`,
           } : null
         ].filter(Boolean);
       }).flat();
@@ -1973,7 +1975,7 @@
       Plotly.newPlot(id, traces, {
         ...layoutBase,
         margin: { ...layoutBase.margin, r: 90 },
-        yaxis: { title: trend.current_series?.length ? 'Share of class %' : 'Share of grads %', ticksuffix: '%', automargin: true },
+        yaxis: { title: trend.current_series?.length ? 'Share of total class %' : 'Share of total grads %', ticksuffix: '%', automargin: true },
         xaxis: { title: 'Graduation year', automargin: true, dtick: trend.current_series?.length ? 2 : 5 },
         legend: { orientation: 'h', y: 1.16 },
         shapes,
