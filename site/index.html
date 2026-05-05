@@ -1240,27 +1240,28 @@
     function renderDemographics() {
       if (state.viewMode === 'snapshot') {
         $('content').innerHTML = [
-          card('Gender Mix', 'gender-bars', 6, true),
-          card('Race/Ethnicity Mix', 'race-bars', 6, true),
+          card('Gender Mix', 'gender-bars', 6),
+          card('Race/Ethnicity Mix', 'race-bars', 6),
           card('Demographics Table', 'demo-table', 12),
         ].join('');
-        drawDemoStackedSnapshot('gender-bars', state.data.demographics?.gender || [], 'Gender');
-        drawDemoStackedSnapshot('race-bars', state.data.demographics?.race_ethnicity || [], 'Race/Ethnicity');
+        drawDemoStackedSnapshot('gender-bars', state.data.demographics?.gender || [], 'Gender', 260);
+        drawDemoStackedSnapshot('race-bars', state.data.demographics?.race_ethnicity || [], 'Race/Ethnicity', 260);
         const rows = [...(state.data.demographics?.gender || []), ...(state.data.demographics?.race_ethnicity || [])];
         $('demo-table').innerHTML = table(['Group', 'Alumni', 'Share', 'Mean salary'], rows, row => [
           row.label, num(row.n), pct(row.share_pct), money(row.weighted_mean_salary)
         ]);
       } else {
         $('content').innerHTML = [
-          card('Gender Mix Over Time', 'gender-trend', 12, true),
-          card('Race/Ethnicity Mix Over Time', 'race-trend', 12, true),
+          card('Gender Mix Over Time', 'gender-trend', 6),
+          card('Race/Ethnicity Mix Over Time', 'race-trend', 6),
         ].join('');
         drawTrendLines('gender-trend', state.data.demographic_trend?.gender || [], 'label', 'share_pct', {
           yTitle: 'Share of known gender %',
           suffix: '%',
           hover: '%{y:.1f}%',
+          height: 330,
         });
-        drawDemoStackedTrend('race-trend', state.data.demographic_trend?.race_ethnicity || [], 'Share of known race/ethnicity %');
+        drawDemoStackedTrend('race-trend', state.data.demographic_trend?.race_ethnicity || [], 'Share of known race/ethnicity %', 330);
       }
     }
 
@@ -1504,6 +1505,7 @@
       });
       Plotly.newPlot(id, traces, {
         ...layoutBase,
+        height: options.height || 420,
         margin: { ...layoutBase.margin, l: 80, r: 36, t: 22, b: 62 },
         xaxis: { title: 'Graduation year', automargin: true, dtick: 5 },
         yaxis: {
@@ -1783,7 +1785,7 @@
       }, plotConfig);
     }
 
-    function drawDemoStackedSnapshot(id, rows, title) {
+    function drawDemoStackedSnapshot(id, rows, title, height = 320) {
       if (!rows.length) return noData(id);
       const cleanRows = rows.filter(row => row.share_pct !== null && row.share_pct !== undefined);
       if (!cleanRows.length) return noData(id);
@@ -1799,16 +1801,17 @@
       }));
       Plotly.newPlot(id, traces, {
         ...layoutBase,
+        height,
         barmode: 'stack',
-        margin: { ...layoutBase.margin, l: 96, r: 34, t: 20, b: 58 },
+        margin: { ...layoutBase.margin, l: 80, r: 24, t: 12, b: 50 },
         xaxis: { title: 'Share %', range: [0, 100], ticksuffix: '%', automargin: true },
         yaxis: { automargin: true },
-        legend: { orientation: 'h', y: 1.18 },
+        legend: { orientation: 'h', y: 1.14 },
         uniformtext: { mode: 'hide', minsize: 11 },
       }, plotConfig);
     }
 
-    function drawDemoStackedTrend(id, rows, yTitle) {
+    function drawDemoStackedTrend(id, rows, yTitle, height = 420) {
       const cleanRows = (rows || []).filter(row => row.grad_year !== null && row.grad_year !== undefined && row.share_pct !== null && row.share_pct !== undefined);
       if (!cleanRows.length) return noData(id);
       const labels = [...new Set(cleanRows.map(row => row.label).filter(Boolean))]
@@ -1835,11 +1838,12 @@
       });
       Plotly.newPlot(id, traces, {
         ...layoutBase,
+        height,
         barmode: 'stack',
-        margin: { ...layoutBase.margin, l: 86, r: 34, t: 22, b: 64 },
+        margin: { ...layoutBase.margin, l: 70, r: 24, t: 18, b: 58 },
         yaxis: { title: yTitle, range: [0, 100], ticksuffix: '%', automargin: true },
-        xaxis: { title: 'Graduation year', automargin: true, dtick: 2 },
-        legend: { orientation: 'h', y: 1.18 },
+        xaxis: { title: 'Graduation year', automargin: true, dtick: 5 },
+        legend: { orientation: 'h', y: 1.14 },
         uniformtext: { mode: 'hide', minsize: 10 },
       }, plotConfig);
     }
