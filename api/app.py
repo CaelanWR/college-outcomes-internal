@@ -161,6 +161,39 @@ def _profile_weight_sql(columns: frozenset[str]) -> str:
     return f"GREATEST(0.0, COALESCE({', '.join(available)}, 1.0))"
 
 
+def _position_profile_weight_sql(columns: frozenset[str]) -> str:
+    candidates = [
+        "position_weight",
+        "profile_weight",
+        "education_weight",
+        "individual_weight",
+        "representation_weight",
+        "universe_weight",
+        "final_weight",
+    ]
+    available = [column for column in candidates if column in columns]
+    if not available:
+        return "1.0"
+    return f"GREATEST(0.0, COALESCE({', '.join(available)}, 1.0))"
+
+
+def _cohort_profile_weight_sql(columns: frozenset[str]) -> str:
+    calibrated_weight = _profile_weight_sql(columns)
+    position_weight = _position_profile_weight_sql(columns)
+    has_recent_calibration_fields = {"degree", "grad_year", "calibration_ipeds_completions"}.issubset(columns)
+    if not has_recent_calibration_fields:
+        return calibrated_weight
+    return f"""
+      CASE
+        WHEN degree = 'Bachelors'
+          AND grad_year >= 2023
+          AND calibration_ipeds_completions IS NULL
+        THEN {position_weight}
+        ELSE {calibrated_weight}
+      END
+    """
+
+
 def _source_star_without_profile(columns: frozenset[str]) -> str:
     return "* EXCLUDE (profile_weight)" if "profile_weight" in columns else "*"
 
@@ -262,7 +295,7 @@ def _safe_limit(value: int) -> int:
 
 def _create_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> None:
     base_columns = _dataset_columns("base_fact")
-    profile_weight_sql = _profile_weight_sql(base_columns)
+    profile_weight_sql = _cohort_profile_weight_sql(base_columns)
     source_star = _source_star_without_profile(base_columns)
     where_sql, params = _where(filters)
     con.execute(
@@ -329,7 +362,7 @@ def _static_options() -> dict[str, Any]:
     con = _connect()
     try:
         base_columns = _dataset_columns("base_fact")
-        profile_weight_sql = _profile_weight_sql(base_columns)
+        profile_weight_sql = _cohort_profile_weight_sql(base_columns)
         source_star = _source_star_without_profile(base_columns)
         con.execute(
             f"""
@@ -436,7 +469,7 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
     con = _connect()
     try:
         base_columns = _dataset_columns("base_fact")
-        profile_weight_sql = _profile_weight_sql(base_columns)
+        profile_weight_sql = _cohort_profile_weight_sql(base_columns)
         source_star = _source_star_without_profile(base_columns)
         where_sql, params = _where(filters, include_horizon=False, include_postgrad=False)
         con.execute(
