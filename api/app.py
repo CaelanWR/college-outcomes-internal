@@ -12,11 +12,13 @@ from typing import Any, Optional
 import duckdb
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 
 DATA_ROOT = Path(os.environ.get("OUTCOMES_PARQUET_ROOT", "./data/parquet")).expanduser()
 PLATFORM_ROOT = Path(os.environ.get("OUTCOMES_PLATFORM_ROOT", "")).expanduser() if os.environ.get("OUTCOMES_PLATFORM_ROOT") else None
+STATIC_ROOT = Path(__file__).resolve().parent / "static"
 MIN_CELL_WEIGHT = float(os.environ.get("MIN_CELL_WEIGHT", "0"))
 SALARY_MIN_WEIGHT = float(os.environ.get("SALARY_MIN_WEIGHT", "0"))
 EMPLOYER_ROW_MIN_WEIGHT = float(os.environ.get("EMPLOYER_ROW_MIN_WEIGHT", str(MIN_CELL_WEIGHT)))
@@ -2054,3 +2056,20 @@ def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password
         }
     finally:
         con.close()
+
+
+@app.get("/", include_in_schema=False)
+def frontend_index() -> FileResponse:
+    index_path = STATIC_ROOT / "index.html"
+    if not index_path.exists():
+        raise HTTPException(status_code=404, detail="Dashboard static files not installed")
+    return FileResponse(index_path)
+
+
+@app.get("/config.js", include_in_schema=False)
+def frontend_config() -> Response:
+    # Same-origin hosting avoids CORS and keeps data access behind the API password.
+    return Response(
+        'window.OUTCOMES_API_URL = window.location.origin;\n',
+        media_type="application/javascript",
+    )
