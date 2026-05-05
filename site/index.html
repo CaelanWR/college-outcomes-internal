@@ -1253,7 +1253,11 @@
           card('Gender Mix Over Time', 'gender-trend', 12, true),
           card('Race/Ethnicity Mix Over Time', 'race-trend', 12, true),
         ].join('');
-        drawDemoStackedTrend('gender-trend', state.data.demographic_trend?.gender || [], 'Share of known gender %');
+        drawTrendLines('gender-trend', state.data.demographic_trend?.gender || [], 'label', 'share_pct', {
+          yTitle: 'Share of known gender %',
+          suffix: '%',
+          hover: '%{y:.1f}%',
+        });
         drawDemoStackedTrend('race-trend', state.data.demographic_trend?.race_ethnicity || [], 'Share of known race/ethnicity %');
       }
     }
@@ -1656,9 +1660,6 @@
         name: row.label,
         y: [title],
         x: [row.share_pct],
-        text: [row.share_pct >= 6 ? `${row.label} ${pct(row.share_pct)}` : ''],
-        textposition: 'inside',
-        insidetextanchor: 'middle',
         marker: { color: COLORS[i % COLORS.length] },
         customdata: [[row.label, row.n, row.weighted_mean_salary]],
         hovertemplate: '%{customdata[0]}<br>%{x:.1f}%<br>%{customdata[1]:,.0f} alumni<br>Mean salary %{customdata[2]:$,.0f}<extra></extra>',
@@ -1691,11 +1692,6 @@
           name: label,
           x: years,
           y: years.map(year => byYear.get(year)?.share_pct || 0),
-          text: years.map(year => {
-            const value = byYear.get(year)?.share_pct || 0;
-            return value >= 9 ? pct(value) : '';
-          }),
-          textposition: 'inside',
           marker: { color: COLORS[i % COLORS.length] },
           customdata: years.map(year => {
             const row = byYear.get(year) || {};

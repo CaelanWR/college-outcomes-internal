@@ -490,7 +490,9 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
                     """
                     SELECT gender AS value, SUM(profile_weight) AS n
                     FROM option_cohort
-                    WHERE gender IS NOT NULL AND gender <> '' AND LOWER(gender) <> 'empty'
+                    WHERE gender IS NOT NULL
+                      AND gender <> ''
+                      AND LOWER(TRIM(gender)) NOT IN ('empty', 'unknown')
                     GROUP BY gender
                     ORDER BY n DESC
                     """,
@@ -503,7 +505,9 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
                     """
                     SELECT race_ethnicity AS value, SUM(profile_weight) AS n
                     FROM option_cohort
-                    WHERE race_ethnicity IS NOT NULL AND race_ethnicity <> '' AND LOWER(race_ethnicity) <> 'empty'
+                    WHERE race_ethnicity IS NOT NULL
+                      AND race_ethnicity <> ''
+                      AND LOWER(TRIM(race_ethnicity)) NOT IN ('empty', 'unknown')
                     GROUP BY race_ethnicity
                     ORDER BY n DESC
                     """,
@@ -1202,7 +1206,7 @@ def _demographic_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) ->
               WHERE grad_year IS NOT NULL
                 AND {column} IS NOT NULL
                 AND {column} <> ''
-                AND LOWER({column}) <> 'empty'
+                AND LOWER(TRIM({column})) NOT IN ('empty', 'unknown')
             ),
             top_labels AS (
               SELECT label, SUM(profile_weight) AS total_n
@@ -1253,7 +1257,9 @@ def _demographics(con: duckdb.DuckDBPyConnection) -> dict[str, list[dict[str, An
                 {column} AS label,
                 SUM(profile_weight) AS n
               FROM cohort_slice
-              WHERE {column} IS NOT NULL AND {column} <> '' AND LOWER({column}) <> 'empty'
+              WHERE {column} IS NOT NULL
+                AND {column} <> ''
+                AND LOWER(TRIM({column})) NOT IN ('empty', 'unknown')
               GROUP BY {column}
             ),
             salary AS (
@@ -1263,7 +1269,9 @@ def _demographics(con: duckdb.DuckDBPyConnection) -> dict[str, list[dict[str, An
                 SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
                   / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS weighted_mean_salary
               FROM slice
-              WHERE {column} IS NOT NULL AND {column} <> '' AND LOWER({column}) <> 'empty'
+              WHERE {column} IS NOT NULL
+                AND {column} <> ''
+                AND LOWER(TRIM({column})) NOT IN ('empty', 'unknown')
               GROUP BY {column}
             ),
             totals AS (
