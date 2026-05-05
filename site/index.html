@@ -781,6 +781,8 @@
       selectionMode: storage.getItem('outcomes.selectionMode') || 'single',
       selectedEmployer: null,
       selectedPostgradDegree: null,
+      selectedPostgradSchool: null,
+      selectedPostgradProgram: null,
       loading: false,
       pendingRefresh: null,
     };
@@ -882,6 +884,8 @@
         compare_mode: state.selectionMode === 'compare',
         selected_employer: state.selectedEmployer,
         selected_postgrad_degree: state.selectedPostgradDegree,
+        selected_postgrad_school: state.selectedPostgradSchool,
+        selected_postgrad_program: state.selectedPostgradProgram,
         top_n: Number($('top-n-select').value || 12),
         ...extra,
       };
@@ -998,6 +1002,8 @@
         if (resetDrill) {
           state.selectedEmployer = null;
           state.selectedPostgradDegree = null;
+          state.selectedPostgradSchool = null;
+          state.selectedPostgradProgram = null;
         }
         if (reloadOptions || !state.options) await loadOptions(true);
         state.data = await apiFetch('/api/dashboard', currentFilters());
@@ -1269,22 +1275,44 @@
       const selected = state.data.postgrad?.selected_degree || 'Selected path';
       const detailLabel = state.data.postgrad?.detail_degree || selected;
       const showPrograms = Boolean(state.data.postgrad?.show_program_detail && (state.data.postgrad?.programs || []).length);
+      const selectedSchool = state.data.postgrad?.selected_school || null;
+      const selectedProgram = state.data.postgrad?.selected_program || null;
+      const schoolTitle = selectedProgram
+        ? `Top Schools for ${escapeHtml(selectedProgram)}`
+        : `Top Schools for ${escapeHtml(detailLabel)}`;
+      const programTitle = selectedSchool
+        ? `Top Programs at ${escapeHtml(selectedSchool)}`
+        : `Top Programs for ${escapeHtml(detailLabel)}`;
       if (state.viewMode === 'snapshot') {
         const cards = [
-          card('Further Education Paths', 'postgrad-flow', showPrograms ? 5 : 6, true),
-          card(`Top Schools for ${escapeHtml(detailLabel)}`, 'postgrad-schools', showPrograms ? 4 : 6, true),
+          card('Further Education Paths', 'postgrad-flow', showPrograms ? 4 : 6, true),
+          card(schoolTitle, 'postgrad-schools', showPrograms ? 4 : 6, true),
         ];
         if (showPrograms) {
-          cards.push(card(`Top Programs for ${escapeHtml(detailLabel)}`, 'postgrad-programs', 3, true));
+          cards.push(card(programTitle, 'postgrad-programs', 4, true));
         }
         $('content').innerHTML = cards.join('');
         drawPostgradFlows('postgrad-flow');
-        drawSimpleBars('postgrad-schools', state.data.postgrad?.schools || [], 'n', '#225ea8');
-        if (showPrograms) drawSimpleBars('postgrad-programs', state.data.postgrad?.programs || [], 'n', '#22a06b');
+        drawSimpleBars('postgrad-schools', state.data.postgrad?.schools || [], 'n', '#225ea8', {
+          activeLabel: selectedSchool,
+          onClick: label => {
+            state.selectedPostgradSchool = state.selectedPostgradSchool === label ? null : label;
+            state.selectedPostgradProgram = null;
+            refresh();
+          },
+        });
+        if (showPrograms) drawSimpleBars('postgrad-programs', state.data.postgrad?.programs || [], 'n', '#22a06b', {
+          activeLabel: selectedProgram,
+          onClick: label => {
+            state.selectedPostgradProgram = state.selectedPostgradProgram === label ? null : label;
+            state.selectedPostgradSchool = null;
+            refresh();
+          },
+        });
       } else {
         $('content').innerHTML = [
           card('Further Education Paths Over Time', 'postgrad-trend', 8, true),
-          card(`Top Schools for ${escapeHtml(detailLabel)}`, 'postgrad-schools', 4, true),
+          card(schoolTitle, 'postgrad-schools', 4, true),
         ].join('');
         drawTrendLines('postgrad-trend', state.data.postgrad_trend || [], 'degree_type', 'share_pct', {
           yTitle: 'Share of alumni %',
@@ -1293,10 +1321,19 @@
           onClick: label => {
             if (label === 'No further education') return;
             state.selectedPostgradDegree = label;
+            state.selectedPostgradSchool = null;
+            state.selectedPostgradProgram = null;
             refresh();
           },
         });
-        drawSimpleBars('postgrad-schools', state.data.postgrad?.schools || [], 'n', '#225ea8');
+        drawSimpleBars('postgrad-schools', state.data.postgrad?.schools || [], 'n', '#225ea8', {
+          activeLabel: selectedSchool,
+          onClick: label => {
+            state.selectedPostgradSchool = state.selectedPostgradSchool === label ? null : label;
+            state.selectedPostgradProgram = null;
+            refresh();
+          },
+        });
       }
     }
 
@@ -1866,12 +1903,14 @@
           const point = event.points?.[0];
           if (!point || point.y === 'No further education') return;
           state.selectedPostgradDegree = point.y;
+          state.selectedPostgradSchool = null;
+          state.selectedPostgradProgram = null;
           refresh();
         });
       });
     }
 
-    function drawSimpleBars(id, rows, metric = 'n', color = COLORS[0]) {
+    function drawSimpleBars(id, rows, metric = 'n', color = COLORS[0], options = {}) {
       if (!rows.length) return noData(id);
       const cleanRows = rows.filter(r => r.label).slice();
       Plotly.newPlot(id, [{
@@ -1882,9 +1921,19 @@
         text: cleanRows.map(r => num(r[metric])),
         textposition: 'outside',
         cliponaxis: false,
-        marker: { color },
+        marker: {
+          color: options.activeLabel
+            ? cleanRows.map(row => row.label === options.activeLabel ? '#f97316' : color)
+            : color,
+        },
         hovertemplate: '%{y}<br>%{x:,.0f}<extra></extra>',
-      }], horizontalLayout(cleanRows), plotConfig);
+      }], horizontalLayout(cleanRows), plotConfig).then(plot => {
+        if (!options.onClick) return;
+        plot.on('plotly_click', event => {
+          const label = event.points?.[0]?.y;
+          if (label) options.onClick(label);
+        });
+      });
     }
 
     function horizontalLayout(rows, prefix = '') {

@@ -101,6 +101,8 @@ class QueryRequest(BaseModel):
     compare_mode: bool = False
     selected_employer: Optional[str] = None
     selected_postgrad_degree: Optional[str] = None
+    selected_postgrad_school: Optional[str] = None
+    selected_postgrad_program: Optional[str] = None
     top_n: int = 12
 
 
@@ -1664,6 +1666,11 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
     if selected and selected != "No further education":
         selected_values = detail_degree_values(selected)
         placeholders = ",".join(["?"] * len(selected_values))
+        school_filter_sql = ""
+        school_filter_params: list[Any] = []
+        if filters.selected_postgrad_program:
+            school_filter_sql = "AND later_program = ?"
+            school_filter_params.append(filters.selected_postgrad_program)
         schools = _records_from_query(
             con,
             f"""
@@ -1674,35 +1681,43 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
             WHERE later_degree_type IN ({placeholders})
               AND later_school IS NOT NULL
               AND later_school <> ''
+              {school_filter_sql}
             GROUP BY later_school
             HAVING SUM(profile_weight) >= ?
             ORDER BY SUM(profile_weight) DESC
             LIMIT {limit}
             """,
-            [*selected_values, SUPPRESSION_THRESHOLD],
+            [*selected_values, *school_filter_params, SUPPRESSION_THRESHOLD],
         )
-        if show_program_detail(selected):
-            programs = _records_from_query(
-                con,
-                f"""
-                SELECT
-                  later_program AS label,
-                  ROUND(SUM(profile_weight)) AS n
-                FROM cohort_slice
-                WHERE later_degree_type IN ({placeholders})
-                  AND later_program IS NOT NULL
-                  AND later_program <> ''
-                GROUP BY later_program
-                HAVING SUM(profile_weight) >= ?
-                ORDER BY SUM(profile_weight) DESC
-                LIMIT {limit}
-                """,
-                [*selected_values, SUPPRESSION_THRESHOLD],
-            )
+        program_filter_sql = ""
+        program_filter_params: list[Any] = []
+        if filters.selected_postgrad_school:
+            program_filter_sql = "AND later_school = ?"
+            program_filter_params.append(filters.selected_postgrad_school)
+        programs = _records_from_query(
+            con,
+            f"""
+            SELECT
+              later_program AS label,
+              ROUND(SUM(profile_weight)) AS n
+            FROM cohort_slice
+            WHERE later_degree_type IN ({placeholders})
+              AND later_program IS NOT NULL
+              AND later_program <> ''
+              {program_filter_sql}
+            GROUP BY later_program
+            HAVING SUM(profile_weight) >= ?
+            ORDER BY SUM(profile_weight) DESC
+            LIMIT {limit}
+            """,
+            [*selected_values, *program_filter_params, SUPPRESSION_THRESHOLD],
+        )
     return {
         "flows": flows,
         "selected_degree": selected,
         "detail_degree": detail_degree_label(selected),
+        "selected_school": filters.selected_postgrad_school,
+        "selected_program": filters.selected_postgrad_program,
         "show_program_detail": show_program_detail(selected),
         "schools": schools,
         "programs": programs,
