@@ -1324,6 +1324,151 @@ def _role_tree(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[di
     return nodes
 
 
+def _coverage_filters(
+    filters: QueryRequest,
+    *,
+    ignore_degree: bool = False,
+    ignore_major: bool = False,
+    force_degree: str | None = None,
+) -> tuple[str, list[Any]]:
+    coverage_filters = filters.model_copy(deep=True)
+    coverage_filters.demographics = DemographicFilters()
+    coverage_filters.postgrad = PostgradFilters()
+    if ignore_degree:
+        coverage_filters.degree = "All"
+    if force_degree:
+        coverage_filters.degree = force_degree
+    if ignore_major:
+        coverage_filters.majors = []
+    return _where(coverage_filters, include_horizon=False, include_postgrad=False)
+
+
+def _create_coverage_groups(
+    con: duckdb.DuckDBPyConnection,
+    table_name: str,
+    filters: QueryRequest,
+    *,
+    ignore_degree: bool = False,
+    ignore_major: bool = False,
+    force_degree: str | None = None,
+) -> None:
+    where_sql, params = _coverage_filters(
+        filters,
+        ignore_degree=ignore_degree,
+        ignore_major=ignore_major,
+        force_degree=force_degree,
+    )
+    con.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE {table_name} AS
+        SELECT
+          unitid,
+          MAX(school_name) AS school_name,
+          degree,
+          grad_year,
+          cip4 AS code,
+          MAX(major_title) AS title,
+          MAX(calibration_observed_completions) AS revelio_completions,
+          MAX(calibration_ipeds_completions) AS ipeds_completions
+        FROM read_parquet(?)
+        {where_sql}
+        GROUP BY unitid, degree, grad_year, cip4
+        HAVING grad_year IS NOT NULL
+          AND cip4 IS NOT NULL
+          AND MAX(calibration_observed_completions) IS NOT NULL
+        """,
+        [_dataset_glob("base_fact"), *params],
+    )
+
+
+def _coverage(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
+    _create_coverage_groups(con, "coverage_selected", filters)
+    _create_coverage_groups(con, "coverage_scope", filters, ignore_degree=True, ignore_major=True)
+    _create_coverage_groups(con, "coverage_bachelors", filters, force_degree="Bachelors", ignore_major=True)
+
+    coverage_expr = """
+      CASE
+        WHEN SUM(COALESCE(ipeds_completions, 0)) > 0
+        THEN ROUND(100.0 * SUM(COALESCE(revelio_completions, 0)) / SUM(COALESCE(ipeds_completions, 0)), 1)
+        ELSE NULL
+      END
+    """
+    degree_rows = _records_from_query(
+        con,
+        f"""
+        SELECT
+          degree,
+          ROUND(SUM(COALESCE(revelio_completions, 0))) AS revelio_completions,
+          ROUND(SUM(COALESCE(ipeds_completions, 0))) AS ipeds_completions,
+          {coverage_expr} AS coverage_pct
+        FROM coverage_scope
+        GROUP BY degree
+        HAVING SUM(COALESCE(revelio_completions, 0)) >= ?
+            OR SUM(COALESCE(ipeds_completions, 0)) >= ?
+        ORDER BY revelio_completions DESC
+        """,
+        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+    )
+    bachelor_major_rows = _records_from_query(
+        con,
+        f"""
+        SELECT
+          code,
+          COALESCE(MAX(title), code) AS title,
+          ROUND(SUM(COALESCE(revelio_completions, 0))) AS revelio_completions,
+          ROUND(SUM(COALESCE(ipeds_completions, 0))) AS ipeds_completions,
+          {coverage_expr} AS coverage_pct
+        FROM coverage_bachelors
+        GROUP BY code
+        HAVING SUM(COALESCE(revelio_completions, 0)) >= ?
+            OR SUM(COALESCE(ipeds_completions, 0)) >= ?
+        ORDER BY revelio_completions DESC
+        LIMIT 30
+        """,
+        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+    )
+    school_rows = _records_from_query(
+        con,
+        f"""
+        SELECT
+          unitid,
+          MAX(school_name) AS school_name,
+          ROUND(SUM(COALESCE(revelio_completions, 0))) AS revelio_completions,
+          ROUND(SUM(COALESCE(ipeds_completions, 0))) AS ipeds_completions,
+          {coverage_expr} AS coverage_pct
+        FROM coverage_selected
+        GROUP BY unitid
+        HAVING SUM(COALESCE(revelio_completions, 0)) >= ?
+            OR SUM(COALESCE(ipeds_completions, 0)) >= ?
+        ORDER BY revelio_completions DESC
+        """,
+        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD],
+    )
+    trend_rows = _records_from_query(
+        con,
+        f"""
+        SELECT
+          grad_year,
+          ROUND(SUM(COALESCE(revelio_completions, 0))) AS revelio_completions,
+          ROUND(SUM(COALESCE(ipeds_completions, 0))) AS ipeds_completions,
+          {coverage_expr} AS coverage_pct
+        FROM coverage_selected
+        WHERE grad_year IS NOT NULL
+        GROUP BY grad_year
+        HAVING SUM(COALESCE(revelio_completions, 0)) >= ?
+            OR SUM(COALESCE(ipeds_completions, 0)) >= ?
+        ORDER BY grad_year
+        """,
+        [TREND_SUPPRESSION_THRESHOLD, TREND_SUPPRESSION_THRESHOLD],
+    )
+    return {
+        "degree": degree_rows,
+        "bachelor_majors": bachelor_major_rows,
+        "schools": school_rows,
+        "trend": trend_rows,
+    }
+
+
 def _demographic_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, list[dict[str, Any]]]:
     limit = min(_safe_limit(filters.top_n), 8)
 
@@ -1591,6 +1736,7 @@ def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password
             "geography_trend": _geography_trend(con, filters),
             "roles": _roles(con, filters),
             "role_trend": _role_trend(con, filters),
+            "coverage": _coverage(con, filters),
             "demographics": _demographics(con),
             "demographic_trend": _demographic_trend(con, filters),
             "postgrad": _postgrad(con, filters),

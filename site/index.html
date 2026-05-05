@@ -1300,46 +1300,117 @@
     }
 
     function renderCoverage() {
-      const o = state.data.overview || {};
+      const coverage = state.data.coverage || {};
+      const isCompare = state.selectionMode === 'compare';
       if (state.viewMode === 'snapshot') {
+        if (isCompare) {
+          $('content').innerHTML = [
+            card('IPEDS vs Revelio Completions by School', 'coverage-school-bars', 7, true),
+            card('School Coverage Table', 'coverage-school-table', 5),
+          ].join('');
+          drawCoverageOverlayBars('coverage-school-bars', coverage.schools || [], 'school_name', 16);
+          $('coverage-school-table').innerHTML = coverageTable(coverage.schools || [], 'School', 'school_name', 24);
+          return;
+        }
         $('content').innerHTML = [
-          metric('Alumni in slice', num(o.alumni)),
-          metric('Salary observations', num(o.salary_weight)),
-          metric('Unique employers', num(o.unique_employers)),
-          metric('Unique locations', num(o.unique_locations)),
-          card('Top Majors in Current Slice', 'coverage-major-bars', 6, true),
-          card('Current Slice Sample', 'coverage-cards', 6),
+          card('Coverage by Degree Level vs IPEDS', 'coverage-degree-bars', 6, true),
+          card('Degree Coverage Table', 'coverage-degree-table', 6),
+          card('Bachelor Major Coverage vs IPEDS', 'coverage-major-bars', 7, true),
+          card('Bachelor Major Coverage Table', 'coverage-major-table', 5),
         ].join('');
-        drawTopMajorsVolume('coverage-major-bars');
-        $('coverage-cards').innerHTML = table(['Metric', 'Value'], [
-          ['Later degree alumni', num(o.later_degree_n)],
-          ['No later degree observed', num(o.no_further_n)],
-          ['Median salary', money(o.median_salary)],
-          ['Mean salary', money(o.weighted_mean_salary)],
-        ], row => row);
+        drawCoverageOverlayBars('coverage-degree-bars', coverage.degree || [], 'degree', 12);
+        $('coverage-degree-table').innerHTML = coverageTable(coverage.degree || [], 'Degree', 'degree', 20);
+        drawCoverageOverlayBars('coverage-major-bars', coverage.bachelor_majors || [], 'title', 14);
+        $('coverage-major-table').innerHTML = coverageTable(coverage.bachelor_majors || [], 'Major', 'title', 30);
       } else {
         $('content').innerHTML = [
-          card('Alumni and Salary Observations by Year', 'coverage-volume', 8, true),
-          card('Salary Observation Rate', 'coverage-rate', 4, true),
+          card('IPEDS vs Revelio Completions by Graduation Year', 'coverage-trend-bars', 8, true),
+          card('Grad Coverage by Graduation Year', 'coverage-trend-line', 4, true),
         ].join('');
-        const rows = state.data.salary_trend || [];
-        const alumniRows = state.data.alumni_trend || rows;
-        const alumniByYear = Object.fromEntries(alumniRows.map(row => [row.grad_year, row.alumni]));
-        Plotly.newPlot('coverage-volume', [
-          { type: 'bar', x: alumniRows.map(r => r.grad_year), y: alumniRows.map(r => r.alumni), name: 'Alumni', marker: { color: 'rgba(34, 94, 168, 0.35)' } },
-          { type: 'bar', x: rows.map(r => r.grad_year), y: rows.map(r => r.salary_weight), name: 'Salary observations', marker: { color: 'rgba(34, 160, 107, 0.72)' } },
-        ], { ...layoutBase, barmode: 'overlay', xaxis: { title: 'Graduation year' }, yaxis: { title: 'Count' }, legend: { orientation: 'h' } }, plotConfig);
-        const rateRows = rows.map(row => {
-          const alumni = alumniByYear[row.grad_year] ?? row.alumni;
-          return { ...row, alumni, rate: alumni ? 100 * row.salary_weight / alumni : null };
-        }).filter(row => row.rate !== null);
-        drawTrendLines('coverage-rate', rateRows, 'series', 'rate', {
-          yTitle: 'Salary observations / alumni %',
+        drawCoverageTrendBars('coverage-trend-bars', coverage.trend || []);
+        drawTrendLines('coverage-trend-line', (coverage.trend || []).map(row => ({ ...row, series: 'Grad coverage' })), 'series', 'coverage_pct', {
+          yTitle: 'Grad coverage %',
           suffix: '%',
           hover: '%{y:.1f}%',
-          fixedLabel: 'Observation rate',
+          fixedLabel: 'Grad coverage',
         });
       }
+    }
+
+    function coverageTable(rows, labelHeader, labelKey, limit = 24) {
+      const cleanRows = (rows || []).filter(row => (row.revelio_completions || row.ipeds_completions)).slice(0, limit);
+      return table([labelHeader, 'Revelio', 'IPEDS', 'Grad coverage'], cleanRows, row => [
+        row[labelKey],
+        num(row.revelio_completions),
+        num(row.ipeds_completions),
+        pct(row.coverage_pct),
+      ]);
+    }
+
+    function drawCoverageOverlayBars(id, rows, labelKey, limit = 14) {
+      const cleanRows = (rows || [])
+        .filter(row => (row.revelio_completions || row.ipeds_completions) && row[labelKey])
+        .slice(0, limit)
+        .reverse();
+      if (!cleanRows.length) return noData(id);
+      const labels = cleanRows.map(row => row[labelKey]);
+      Plotly.newPlot(id, [
+        {
+          type: 'bar',
+          orientation: 'h',
+          name: 'IPEDS',
+          y: labels,
+          x: cleanRows.map(row => row.ipeds_completions),
+          marker: { color: 'rgba(148, 163, 184, 0.50)' },
+          hovertemplate: '%{y}<br>IPEDS %{x:,.0f}<extra></extra>',
+        },
+        {
+          type: 'bar',
+          orientation: 'h',
+          name: 'Revelio',
+          y: labels,
+          x: cleanRows.map(row => row.revelio_completions),
+          customdata: cleanRows.map(row => row.coverage_pct),
+          marker: { color: 'rgba(47, 128, 237, 0.72)' },
+          hovertemplate: '%{y}<br>Revelio %{x:,.0f}<br>Grad coverage %{customdata:.1f}%<extra></extra>',
+        },
+      ], {
+        ...horizontalLayout(cleanRows.map(row => ({ label: row[labelKey] }))),
+        barmode: 'overlay',
+        xaxis: { title: 'Completions', automargin: true, rangemode: 'tozero' },
+        legend: { orientation: 'h', y: 1.14, x: 0 },
+      }, plotConfig);
+    }
+
+    function drawCoverageTrendBars(id, rows) {
+      const cleanRows = (rows || []).filter(row => row.grad_year !== null && row.grad_year !== undefined);
+      if (!cleanRows.length) return noData(id);
+      Plotly.newPlot(id, [
+        {
+          type: 'bar',
+          x: cleanRows.map(row => row.grad_year),
+          y: cleanRows.map(row => row.ipeds_completions),
+          name: 'IPEDS',
+          marker: { color: 'rgba(148, 163, 184, 0.50)' },
+          hovertemplate: 'Class of %{x}<br>IPEDS %{y:,.0f}<extra></extra>',
+        },
+        {
+          type: 'bar',
+          x: cleanRows.map(row => row.grad_year),
+          y: cleanRows.map(row => row.revelio_completions),
+          name: 'Revelio',
+          customdata: cleanRows.map(row => row.coverage_pct),
+          marker: { color: 'rgba(47, 128, 237, 0.72)' },
+          hovertemplate: 'Class of %{x}<br>Revelio %{y:,.0f}<br>Grad coverage %{customdata:.1f}%<extra></extra>',
+        },
+      ], {
+        ...layoutBase,
+        barmode: 'overlay',
+        margin: { ...layoutBase.margin, l: 78, r: 28, t: 20, b: 62 },
+        xaxis: { title: 'Graduation year', automargin: true, dtick: 2 },
+        yaxis: { title: 'Completions', automargin: true, rangemode: 'tozero' },
+        legend: { orientation: 'h', y: 1.14, x: 0 },
+      }, plotConfig);
     }
 
     function drawSalaryTrend(id, forceSchool = false) {
