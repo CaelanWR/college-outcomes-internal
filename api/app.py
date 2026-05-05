@@ -1190,7 +1190,138 @@ def _roles(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, A
         """,
         [SUPPRESSION_THRESHOLD],
     )
-    return {"roles": role_rows, "industries": industry_rows}
+    tree_rows = _role_tree(con, filters)
+    return {"roles": role_rows, "industries": industry_rows, "tree": tree_rows}
+
+
+def _role_tree(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    """Hierarchy for the zoomable role/industry treemap."""
+    industry_limit = min(_safe_limit(filters.top_n), 8)
+    role_limit = min(_safe_limit(filters.top_n), 12)
+    base_columns = _dataset_columns("base_fact")
+    detail_expr = "NULLIF(TRIM(role_k150_v3), '')" if "role_k150_v3" in base_columns else "NULL"
+    leaf_rows = _records_from_query(
+        con,
+        f"""
+        WITH eligible AS (
+          SELECT
+            TRIM(industry_k50) AS industry,
+            TRIM(role_k50_v3) AS role,
+            COALESCE({detail_expr}, TRIM(role_k50_v3)) AS detail_role,
+            final_weight,
+            salary
+          FROM slice
+          WHERE industry_k50 IS NOT NULL
+            AND role_k50_v3 IS NOT NULL
+            AND TRIM(industry_k50) <> ''
+            AND TRIM(role_k50_v3) <> ''
+            AND LOWER(TRIM(industry_k50)) NOT IN ('empty', 'unknown')
+            AND LOWER(TRIM(role_k50_v3)) NOT IN ('empty', 'unknown')
+            AND NOT (degree = 'Bachelors' AND horizon = '1yr' AND role_k50_v3 = 'Corporate Attorney')
+        ),
+        top_industries AS (
+          SELECT industry, SUM(final_weight) AS n
+          FROM eligible
+          GROUP BY industry
+          HAVING SUM(final_weight) >= ?
+          ORDER BY n DESC
+          LIMIT {industry_limit}
+        ),
+        role_totals_raw AS (
+          SELECT e.industry, e.role, SUM(e.final_weight) AS n
+          FROM eligible e
+          JOIN top_industries i USING (industry)
+          GROUP BY e.industry, e.role
+          HAVING SUM(e.final_weight) >= ?
+        ),
+        top_roles AS (
+          SELECT industry, role, n
+          FROM (
+            SELECT
+              *,
+              ROW_NUMBER() OVER (PARTITION BY industry ORDER BY n DESC) AS role_rank
+            FROM role_totals_raw
+          )
+          WHERE role_rank <= {role_limit}
+        )
+        SELECT
+          e.industry,
+          e.role,
+          e.detail_role,
+          SUM(e.final_weight) AS n,
+          SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight ELSE 0 END) AS salary_weight,
+          SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight * e.salary ELSE 0 END) AS salary_sum
+        FROM eligible e
+        JOIN top_roles r
+          ON e.industry = r.industry
+         AND e.role = r.role
+        GROUP BY e.industry, e.role, e.detail_role
+        HAVING SUM(e.final_weight) >= ?
+        ORDER BY e.industry, e.role, n DESC
+        """,
+        [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, TREND_SUPPRESSION_THRESHOLD],
+    )
+    if not leaf_rows:
+        return []
+
+    industry_nodes: dict[str, dict[str, Any]] = {}
+    role_nodes: dict[tuple[str, str], dict[str, Any]] = {}
+    detail_nodes: dict[tuple[str, str, str], dict[str, Any]] = {}
+
+    def add_stats(target: dict[str, Any], row: dict[str, Any]) -> None:
+        target["n"] = float(target.get("n") or 0) + float(row.get("n") or 0)
+        target["salary_weight"] = float(target.get("salary_weight") or 0) + float(row.get("salary_weight") or 0)
+        target["salary_sum"] = float(target.get("salary_sum") or 0) + float(row.get("salary_sum") or 0)
+
+    for row in leaf_rows:
+        industry = row["industry"]
+        role = row["role"]
+        detail = row["detail_role"] or role
+        industry_node = industry_nodes.setdefault(
+            industry,
+            {"id": f"industry::{industry}", "parent": "root", "label": industry, "level": "Industry"},
+        )
+        role_node = role_nodes.setdefault(
+            (industry, role),
+            {"id": f"role::{industry}::{role}", "parent": f"industry::{industry}", "label": role, "level": "Role"},
+        )
+        add_stats(industry_node, row)
+        add_stats(role_node, row)
+        if detail != role:
+            detail_node = detail_nodes.setdefault(
+                (industry, role, detail),
+                {
+                    "id": f"detail::{industry}::{role}::{detail}",
+                    "parent": f"role::{industry}::{role}",
+                    "label": detail,
+                    "level": "Detailed role",
+                },
+            )
+            add_stats(detail_node, row)
+
+    root_total = sum(float(node.get("n") or 0) for node in industry_nodes.values())
+    nodes = [
+        {
+            "id": "root",
+            "parent": "",
+            "label": "All role outcomes",
+            "level": "All",
+            "n": root_total,
+            "salary_weight": 0,
+            "salary_sum": 0,
+        }
+    ]
+    nodes.extend(sorted(industry_nodes.values(), key=lambda row: row["n"], reverse=True))
+    nodes.extend(sorted(role_nodes.values(), key=lambda row: row["n"], reverse=True))
+    nodes.extend(sorted(detail_nodes.values(), key=lambda row: row["n"], reverse=True))
+
+    for node in nodes:
+        salary_weight = float(node.pop("salary_weight", 0) or 0)
+        salary_sum = float(node.pop("salary_sum", 0) or 0)
+        node["n"] = round(float(node.get("n") or 0))
+        node["share_pct"] = round(100.0 * float(node["n"]) / root_total, 2) if root_total else None
+        node["weighted_mean_salary"] = round(salary_sum / salary_weight) if salary_weight >= SUPPRESSION_THRESHOLD else None
+    return nodes
 
 
 def _demographic_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, list[dict[str, Any]]]:

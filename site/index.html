@@ -1212,9 +1212,11 @@
     function renderRoles() {
       if (state.viewMode === 'snapshot') {
         $('content').innerHTML = [
+          card('Roles by Industry', 'role-tree', 12, true),
           card('Top Roles', 'role-bars', 6, true),
           card('Top Industries', 'industry-bars', 6, true),
         ].join('');
+        drawRoleTreemap('role-tree');
         drawRoleBars('role-bars', state.data.roles?.roles || [], 'Roles');
         drawRoleBars('industry-bars', state.data.roles?.industries || [], 'Industries');
       } else {
@@ -1648,6 +1650,66 @@
 
     function drawRoleBars(id, rows, title) {
       drawSimpleBars(id, rows.slice().reverse().map(r => ({ label: r.label, n: r.n })), 'n', title === 'Roles' ? COLORS[3] : COLORS[1]);
+    }
+
+    function drawRoleTreemap(id) {
+      const rows = state.data.roles?.tree || [];
+      if (!rows.length) return noData(id);
+      const salaryValues = rows
+        .map(row => row.weighted_mean_salary)
+        .filter(value => value !== null && value !== undefined && Number.isFinite(Number(value)))
+        .map(Number);
+      const cmin = salaryValues.length ? Math.min(...salaryValues) : 0;
+      const cmax = salaryValues.length ? Math.max(...salaryValues) : 1;
+      const colors = rows.map(row => {
+        const value = Number(row.weighted_mean_salary);
+        return Number.isFinite(value) ? value : cmin;
+      });
+      Plotly.newPlot(id, [{
+        type: 'treemap',
+        branchvalues: 'total',
+        ids: rows.map(row => row.id),
+        labels: rows.map(row => row.label),
+        parents: rows.map(row => row.parent),
+        values: rows.map(row => row.n),
+        textinfo: 'label',
+        maxdepth: 3,
+        marker: {
+          colors,
+          colorscale: [
+            [0, '#d9e8f7'],
+            [0.45, '#57b894'],
+            [1, '#f97316'],
+          ],
+          cmin,
+          cmax,
+          showscale: salaryValues.length > 1,
+          colorbar: {
+            title: 'Mean salary',
+            tickprefix: '$',
+            tickformat: ',.0f',
+            thickness: 12,
+          },
+          line: { width: 1.4, color: 'rgba(255,255,255,0.95)' },
+        },
+        customdata: rows.map(row => [
+          row.level,
+          row.share_pct,
+          row.weighted_mean_salary === null || row.weighted_mean_salary === undefined ? 'No salary data' : money(row.weighted_mean_salary),
+        ]),
+        hovertemplate: '<b>%{label}</b><br>%{customdata[0]}<br>%{value:,.0f} weighted alumni<br>%{customdata[1]:.1f}% of shown roles<br>Mean salary %{customdata[2]}<extra></extra>',
+        pathbar: {
+          visible: true,
+          thickness: 24,
+          textfont: { size: 12, color: '#243b53' },
+        },
+        tiling: { packing: 'squarify', squarifyratio: 1.08 },
+      }], {
+        ...layoutBase,
+        height: 520,
+        margin: { l: 6, r: salaryValues.length > 1 ? 74 : 8, t: 8, b: 6 },
+        uniformtext: { minsize: 12, mode: 'hide' },
+      }, plotConfig);
     }
 
     function drawDemoStackedSnapshot(id, rows, title) {
