@@ -16,3 +16,6 @@ data/
 *.parquet
 *.duckdb
 *.db
+*.tar.gz
+*.tgz
+*.zip
