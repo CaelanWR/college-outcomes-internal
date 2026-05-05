@@ -443,7 +443,6 @@ def _static_options() -> dict[str, Any]:
                 {"value": "1yr", "label": "1 year out"},
                 {"value": "5yr", "label": "5 years out"},
                 {"value": "10yr", "label": "10 years out"},
-                {"value": "early_2025", "label": "2025 early earnings"},
             ],
             "grad_years": grad_years,
             "current_student_years": current_years,
@@ -617,13 +616,14 @@ def _overview(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
     )
 
 
-def _salary_trend(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
-    return _records_from_query(
+def _salary_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    rows = _records_from_query(
         con,
         """
         WITH by_year AS (
           SELECT
             grad_year,
+            MAX(COALESCE(partial_horizon_flag, 0)) AS partial_horizon,
             SUM(final_weight) AS alumni,
             SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight,
             SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
@@ -635,16 +635,20 @@ def _salary_trend(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
         )
         SELECT
           grad_year,
+          CAST(partial_horizon AS INTEGER) AS partial_horizon,
           ROUND(alumni) AS alumni,
           ROUND(salary_weight) AS salary_weight,
           CASE WHEN salary_weight >= ? THEN ROUND(weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
           CASE WHEN salary_weight >= ? THEN ROUND(median_salary) ELSE NULL END AS median_salary
         FROM by_year
-        WHERE alumni >= ?
+        WHERE salary_weight >= ?
         ORDER BY grad_year
         """,
         [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, TREND_SUPPRESSION_THRESHOLD],
     )
+    if filters.horizon == "1yr":
+        rows.extend(_early_2025_salary_trend(con, filters, by_school=False))
+    return sorted(rows, key=lambda row: (row.get("grad_year") or 0, row.get("partial_horizon") or 0, row.get("school_name") or ""))
 
 
 def _alumni_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
@@ -666,8 +670,8 @@ def _alumni_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list
     )
 
 
-def _salary_trend_by_school(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
-    return _records_from_query(
+def _salary_trend_by_school(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    rows = _records_from_query(
         con,
         """
         WITH by_year AS (
@@ -675,6 +679,7 @@ def _salary_trend_by_school(con: duckdb.DuckDBPyConnection) -> list[dict[str, An
             unitid,
             MAX(school_name) AS school_name,
             grad_year,
+            MAX(COALESCE(partial_horizon_flag, 0)) AS partial_horizon,
             SUM(final_weight) AS alumni,
             SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight,
             SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
@@ -688,15 +693,91 @@ def _salary_trend_by_school(con: duckdb.DuckDBPyConnection) -> list[dict[str, An
           unitid,
           school_name,
           grad_year,
+          CAST(partial_horizon AS INTEGER) AS partial_horizon,
           ROUND(alumni) AS alumni,
           ROUND(salary_weight) AS salary_weight,
           CASE WHEN salary_weight >= ? THEN ROUND(weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
           CASE WHEN salary_weight >= ? THEN ROUND(median_salary) ELSE NULL END AS median_salary
         FROM by_year
-        WHERE alumni >= ?
+        WHERE salary_weight >= ?
         ORDER BY school_name, grad_year
         """,
         [SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, TREND_SUPPRESSION_THRESHOLD],
+    )
+    if filters.horizon == "1yr":
+        rows.extend(_early_2025_salary_trend(con, filters, by_school=True))
+    return sorted(rows, key=lambda row: (row.get("school_name") or "", row.get("grad_year") or 0, row.get("partial_horizon") or 0))
+
+
+def _early_2025_salary_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, *, by_school: bool) -> list[dict[str, Any]]:
+    early_filters = filters.model_copy(deep=True)
+    early_filters.horizon = "early_2025"
+    where_sql, params = _where(early_filters)
+    year_clause = "grad_year = 2025"
+    if where_sql:
+        where_sql = f"{where_sql} AND {year_clause}"
+    else:
+        where_sql = f" WHERE {year_clause}"
+    if by_school:
+        return _records_from_query(
+            con,
+            f"""
+            WITH by_year AS (
+              SELECT
+                unitid,
+                MAX(school_name) AS school_name,
+                grad_year,
+                SUM(final_weight) AS alumni,
+                SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight,
+                SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+                  / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS weighted_mean_salary,
+                quantile_cont(salary, 0.5) AS median_salary
+              FROM read_parquet(?)
+              {where_sql}
+              GROUP BY unitid, grad_year
+            )
+            SELECT
+              unitid,
+              school_name,
+              grad_year,
+              1 AS partial_horizon,
+              ROUND(alumni) AS alumni,
+              ROUND(salary_weight) AS salary_weight,
+              CASE WHEN salary_weight >= ? THEN ROUND(weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
+              CASE WHEN salary_weight >= ? THEN ROUND(median_salary) ELSE NULL END AS median_salary
+            FROM by_year
+            WHERE salary_weight >= ?
+            ORDER BY school_name, grad_year
+            """,
+            [_dataset_glob("base_fact"), *params, SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, TREND_SUPPRESSION_THRESHOLD],
+        )
+    return _records_from_query(
+        con,
+        f"""
+        WITH by_year AS (
+          SELECT
+            grad_year,
+            SUM(final_weight) AS alumni,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS weighted_mean_salary,
+            quantile_cont(salary, 0.5) AS median_salary
+          FROM read_parquet(?)
+          {where_sql}
+          GROUP BY grad_year
+        )
+        SELECT
+          grad_year,
+          1 AS partial_horizon,
+          ROUND(alumni) AS alumni,
+          ROUND(salary_weight) AS salary_weight,
+          CASE WHEN salary_weight >= ? THEN ROUND(weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
+          CASE WHEN salary_weight >= ? THEN ROUND(median_salary) ELSE NULL END AS median_salary
+        FROM by_year
+        WHERE salary_weight >= ?
+        ORDER BY grad_year
+        """,
+        [_dataset_glob("base_fact"), *params, SUPPRESSION_THRESHOLD, SUPPRESSION_THRESHOLD, TREND_SUPPRESSION_THRESHOLD],
     )
 
 
@@ -1868,9 +1949,9 @@ def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password
                 "filters": filters.model_dump(),
             },
             "overview": _overview(con),
-            "salary_trend": _salary_trend(con),
+            "salary_trend": _salary_trend(con, filters),
             "alumni_trend": _alumni_trend(con, filters),
-            "salary_trend_by_school": _salary_trend_by_school(con),
+            "salary_trend_by_school": _salary_trend_by_school(con, filters),
             "alumni_trend_by_school": _alumni_trend_by_school(con, filters) if filters.compare_mode else [],
             "current_student_trend": _current_student_trend(con, filters),
             "school_comparison": _school_comparison(con),

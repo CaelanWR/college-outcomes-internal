@@ -1388,7 +1388,7 @@
         drawSalaryTrend('earn-salary-trend', true);
         drawMajorSalary('top-major-salary');
         $('salary-table').innerHTML = table(['Year', 'Alumni', 'Salary observations', 'Median salary', 'Mean salary'], state.data.salary_trend || [], row => [
-          row.grad_year, num(row.alumni), num(row.salary_weight), money(row.median_salary), money(row.weighted_mean_salary)
+          row.partial_horizon ? `${row.grad_year} early` : row.grad_year, num(row.alumni), num(row.salary_weight), money(row.median_salary), money(row.weighted_mean_salary)
         ]);
       }
     }
@@ -1720,22 +1720,29 @@
     function drawSalaryTrend(id, forceSchool = false) {
       const schools = getSelectedSchools();
       const bySchool = forceSchool || schools.length > 1;
-      const rows = bySchool ? (state.data.salary_trend_by_school || []) : (state.data.salary_trend || []);
+      const rows = (bySchool ? (state.data.salary_trend_by_school || []) : (state.data.salary_trend || []))
+        .filter(row => row.median_salary !== null && row.median_salary !== undefined);
       if (!rows.length) return noData(id);
       let traces;
       if (bySchool) {
         const schools = [...new Set(rows.map(r => r.school_name))];
         traces = schools.map((school, i) => {
           const slice = rows.filter(r => r.school_name === school);
+          const color = COLORS[i % COLORS.length];
           return {
             type: 'scatter',
             mode: 'lines+markers',
             name: shortSchool(school),
             x: slice.map(r => r.grad_year),
             y: slice.map(r => r.median_salary),
-            line: { color: COLORS[i % COLORS.length], width: 3 },
-            marker: { size: 7 },
-            hovertemplate: `${school}<br>%{x}<br>%{y:$,.0f}<extra></extra>`,
+            text: slice.map(r => r.partial_horizon ? `${school}<br>2025 early earnings` : school),
+            line: { color, width: 3 },
+            marker: {
+              size: slice.map(r => r.partial_horizon ? 12 : 7),
+              color: slice.map(r => r.partial_horizon ? COLORS[2] : color),
+              symbol: slice.map(r => r.partial_horizon ? 'diamond' : 'circle'),
+            },
+            hovertemplate: '%{text}<br>Class of %{x}<br>%{y:$,.0f}<extra></extra>',
           };
         });
       } else {
@@ -1745,9 +1752,14 @@
           name: 'Median salary',
           x: rows.map(r => r.grad_year),
           y: rows.map(r => r.median_salary),
+          text: rows.map(r => r.partial_horizon ? '2025 early earnings' : 'Median salary'),
           line: { color: COLORS[0], width: 4 },
-          marker: { size: 9 },
-          hovertemplate: 'Class of %{x}<br>%{y:$,.0f}<extra></extra>',
+          marker: {
+            size: rows.map(r => r.partial_horizon ? 13 : 9),
+            color: rows.map(r => r.partial_horizon ? COLORS[2] : COLORS[0]),
+            symbol: rows.map(r => r.partial_horizon ? 'diamond' : 'circle'),
+          },
+          hovertemplate: '%{text}<br>Class of %{x}<br>%{y:$,.0f}<extra></extra>',
         }];
       }
       Plotly.newPlot(id, traces, {
