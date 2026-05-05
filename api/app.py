@@ -1192,8 +1192,107 @@ def _roles(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, A
         """,
         [SUPPRESSION_THRESHOLD],
     )
-    tree_rows = _role_tree(con, filters)
-    return {"roles": role_rows, "industries": industry_rows, "tree": tree_rows}
+    hierarchy_rows = _role_industry_hierarchy(con, filters)
+    return {
+        "roles": role_rows,
+        "industries": industry_rows,
+        "hierarchy": hierarchy_rows,
+        "role_tree": _hierarchy_nodes(hierarchy_rows, ["role_k50_v3", "role_k150_v3"], "All roles", "Role"),
+        "industry_tree": _hierarchy_nodes(hierarchy_rows, ["industry_k200", "industry_k400"], "All industries", "Industry"),
+    }
+
+
+def _role_industry_hierarchy(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    """Flat role/industry hierarchy used by the zoomable blue treemaps."""
+    base_columns = _dataset_columns("base_fact")
+    role_detail_expr = "NULLIF(TRIM(role_k150_v3), '')" if "role_k150_v3" in base_columns else "NULL"
+    industry_expr = "TRIM(industry_k200)" if "industry_k200" in base_columns else "TRIM(industry_k50)"
+    industry_detail_expr = "NULLIF(TRIM(industry_k400), '')" if "industry_k400" in base_columns else "NULL"
+    max_rows = max(600, _safe_limit(filters.top_n) * 90)
+    return _records_from_query(
+        con,
+        f"""
+        SELECT
+          TRIM(role_k50_v3) AS role_k50_v3,
+          COALESCE({role_detail_expr}, TRIM(role_k50_v3)) AS role_k150_v3,
+          {industry_expr} AS industry_k200,
+          COALESCE({industry_detail_expr}, {industry_expr}) AS industry_k400,
+          ROUND(SUM(final_weight)) AS n,
+          SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight,
+          SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END) AS salary_sum,
+          ROUND(SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+            / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0)) AS weighted_mean_salary
+        FROM slice
+        WHERE role_k50_v3 IS NOT NULL
+          AND TRIM(role_k50_v3) <> ''
+          AND LOWER(TRIM(role_k50_v3)) NOT IN ('empty', 'unknown', 'other')
+          AND {industry_expr} IS NOT NULL
+          AND {industry_expr} <> ''
+          AND LOWER({industry_expr}) NOT IN ('empty', 'unknown', 'other')
+          AND NOT (degree = 'Bachelors' AND horizon = '1yr' AND role_k50_v3 = 'Corporate Attorney')
+        GROUP BY role_k50_v3, role_k150_v3, industry_k200, industry_k400
+        HAVING SUM(final_weight) >= ?
+        ORDER BY SUM(final_weight) DESC
+        LIMIT {max_rows}
+        """,
+        [TREND_SUPPRESSION_THRESHOLD],
+    )
+
+
+def _hierarchy_nodes(rows: list[dict[str, Any]], levels: list[str], root_label: str, level_label: str) -> list[dict[str, Any]]:
+    """Compatibility node payload for consumers that prefer native Plotly treemaps."""
+    if not rows or not levels:
+        return []
+
+    def clean(value: Any) -> str:
+        return str(value or "").strip()
+
+    def add_stats(target: dict[str, Any], row: dict[str, Any]) -> None:
+        target["n"] = float(target.get("n") or 0) + float(row.get("n") or 0)
+        target["salary_weight"] = float(target.get("salary_weight") or 0) + float(row.get("salary_weight") or 0)
+        target["salary_sum"] = float(target.get("salary_sum") or 0) + float(row.get("salary_sum") or 0)
+
+    parent_nodes: dict[str, dict[str, Any]] = {}
+    child_nodes: dict[tuple[str, str], dict[str, Any]] = {}
+    parent_field = levels[0]
+    child_field = levels[1] if len(levels) > 1 else None
+    for row in rows:
+        parent = clean(row.get(parent_field))
+        if not parent:
+            continue
+        parent_node = parent_nodes.setdefault(
+            parent,
+            {"id": f"{level_label.lower()}::{parent}", "parent": "root", "label": parent, "level": level_label},
+        )
+        add_stats(parent_node, row)
+        if child_field:
+            child = clean(row.get(child_field))
+            if child and child != parent:
+                child_node = child_nodes.setdefault(
+                    (parent, child),
+                    {
+                        "id": f"{level_label.lower()}::{parent}::{child}",
+                        "parent": f"{level_label.lower()}::{parent}",
+                        "label": child,
+                        "level": f"Detailed {level_label.lower()}",
+                    },
+                )
+                add_stats(child_node, row)
+
+    root_total = sum(float(node.get("n") or 0) for node in parent_nodes.values())
+    nodes: list[dict[str, Any]] = [
+        {"id": "root", "parent": "", "label": root_label, "level": "All", "n": root_total, "salary_weight": 0, "salary_sum": 0}
+    ]
+    nodes.extend(sorted(parent_nodes.values(), key=lambda row: row["n"], reverse=True))
+    nodes.extend(sorted(child_nodes.values(), key=lambda row: row["n"], reverse=True))
+    for node in nodes:
+        salary_weight = float(node.pop("salary_weight", 0) or 0)
+        salary_sum = float(node.pop("salary_sum", 0) or 0)
+        node["n"] = round(float(node.get("n") or 0))
+        node["share_pct"] = round(100.0 * float(node["n"]) / root_total, 2) if root_total else None
+        node["weighted_mean_salary"] = round(salary_sum / salary_weight) if salary_weight >= SUPPRESSION_THRESHOLD else None
+        node["drillable"] = any(child.get("parent") == node.get("id") for child in child_nodes.values())
+    return nodes
 
 
 def _role_tree(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:

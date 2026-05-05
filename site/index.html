@@ -21,6 +21,14 @@
       --gold: #f4b740;
       --rose: #e55b7a;
       --violet: #8b6fd6;
+      --tm-ink: #2D426A;
+      --tm-muted: #899499;
+      --tm-line: #E6EBF2;
+      --tm-low: #D9ECFB;
+      --tm-mid: #48AFF4;
+      --tm-high: #2D426A;
+      --tm-gray: #B9C4D3;
+      --tm-shadow: 0 8px 24px rgba(45, 66, 106, 0.08);
       --shadow: 0 10px 30px rgba(36, 59, 83, 0.08);
       --radius: 22px;
     }
@@ -326,6 +334,81 @@
     }
 
     .card.compact { min-height: 260px; }
+    .treemap-card {
+      padding: 0;
+      overflow: hidden;
+      border-color: var(--tm-line);
+      box-shadow: var(--tm-shadow);
+    }
+    .treemap-card .card-head {
+      padding: 18px 18px 0;
+    }
+    .treemap-card .card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .treemap-card .card-head h3 {
+      margin: 0 0 5px;
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--tm-ink);
+    }
+    .treemap-card .card-head p {
+      margin: 0;
+      font-size: 14px;
+      color: var(--tm-muted);
+      line-height: 1.35;
+      font-weight: 700;
+    }
+    .treemap-card .card-back {
+      border: 1px solid var(--tm-line);
+      background: white;
+      color: var(--tm-ink);
+      border-radius: 999px;
+      padding: 7px 12px;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .treemap-card .card-back.is-hidden {
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .treemap-body {
+      padding: 0 12px 14px;
+    }
+    .treemap-plot {
+      height: clamp(430px, 54vh, 650px);
+    }
+    .legend-wrap {
+      margin: 6px 6px 0;
+      display: grid;
+      gap: 8px;
+    }
+    .legend-wrap.is-hidden { display: none; }
+    .legend-bar {
+      height: 14px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--tm-low) 0%, var(--tm-mid) 50%, var(--tm-high) 100%);
+      border: 1px solid var(--tm-line);
+    }
+    .legend-scale {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 12px;
+      color: var(--tm-muted);
+      font-weight: 800;
+    }
+    .legend-caption {
+      font-size: 12px;
+      color: var(--tm-muted);
+      line-height: 1.35;
+      font-weight: 700;
+    }
     .span-3 { grid-column: span 3; }
     .span-4 { grid-column: span 4; }
     .span-5 { grid-column: span 5; }
@@ -783,6 +866,8 @@
       selectedPostgradDegree: null,
       selectedPostgradSchool: null,
       selectedPostgradProgram: null,
+      roleTreePath: [],
+      industryTreePath: [],
       loading: false,
       pendingRefresh: null,
     };
@@ -1004,6 +1089,8 @@
           state.selectedPostgradDegree = null;
           state.selectedPostgradSchool = null;
           state.selectedPostgradProgram = null;
+          state.roleTreePath = [];
+          state.industryTreePath = [];
         }
         if (reloadOptions || !state.options) await loadOptions(true);
         state.data = await apiFetch('/api/dashboard', currentFilters());
@@ -1031,6 +1118,136 @@
 
     function card(title, id, span = 6, tall = false) {
       return `<div class="card span-${span}"><h3>${title}</h3><div id="${id}" class="chart ${tall ? 'tall' : ''}"></div></div>`;
+    }
+
+    function treemapCard(title, id, subtitle, path, kind, span = 6) {
+      return `<div class="card treemap-card span-${span}">
+        <div class="card-head">
+          <div class="card-top">
+            <div>
+              <h3>${escapeHtml(title)}</h3>
+              <p>${escapeHtml(subtitle)}</p>
+            </div>
+            <button class="card-back ${(path || []).length ? '' : 'is-hidden'}" type="button" onclick="drillBack('${kind}')">Back</button>
+          </div>
+        </div>
+        <div class="treemap-body">
+          <div id="${id}" class="treemap-plot"></div>
+          <div class="legend-wrap is-hidden" id="${id}-legend">
+            <div class="legend-bar" aria-hidden="true"></div>
+            <div class="legend-scale"><span id="${id}-legend-min"></span><span id="${id}-legend-max"></span></div>
+            <div class="legend-caption" id="${id}-legend-caption"></div>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    function isNoiseLabel(value) {
+      if (value === null || value === undefined) return true;
+      const text = String(value).trim().toLowerCase();
+      return !text || text === 'unknown' || text === 'other' || text === 'empty';
+    }
+
+    function sumRows(rows, field) {
+      return (rows || []).reduce((total, row) => total + Number(row[field] || 0), 0);
+    }
+
+    function samePath(a = [], b = []) {
+      return a.length === b.length && a.every((value, idx) => String(value) === String(b[idx]));
+    }
+
+    function hierarchyTrail(path) {
+      return (path || []).length ? path.join(' > ') : 'Top level';
+    }
+
+    function drillBack(kind) {
+      if (kind === 'roleTree') state.roleTreePath = state.roleTreePath.slice(0, -1);
+      if (kind === 'industryTree') state.industryTreePath = state.industryTreePath.slice(0, -1);
+      renderRoles();
+    }
+
+    function hexToRgb(hex) {
+      const normalized = String(hex || '').replace('#', '').trim();
+      if (normalized.length !== 6) return [185, 196, 211];
+      return [
+        parseInt(normalized.slice(0, 2), 16),
+        parseInt(normalized.slice(2, 4), 16),
+        parseInt(normalized.slice(4, 6), 16),
+      ];
+    }
+
+    function rgbToHex(rgb) {
+      return `#${rgb.map(value => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, '0')).join('')}`;
+    }
+
+    function mixHex(a, b, t) {
+      const rgbA = hexToRgb(a);
+      const rgbB = hexToRgb(b);
+      return rgbToHex(rgbA.map((value, idx) => value + ((rgbB[idx] - value) * t)));
+    }
+
+    function payColor(avgPay, domain) {
+      if (!Array.isArray(domain) || domain.length !== 2 || !Number.isFinite(avgPay)) return '#B9C4D3';
+      const [minPay, maxPay] = domain;
+      if (!Number.isFinite(minPay) || !Number.isFinite(maxPay) || maxPay <= minPay) return '#48AFF4';
+      const scaled = Math.max(0, Math.min(1, (avgPay - minPay) / (maxPay - minPay)));
+      if (scaled <= 0.5) return mixHex('#D9ECFB', '#48AFF4', scaled / 0.5);
+      return mixHex('#48AFF4', '#2D426A', (scaled - 0.5) / 0.5);
+    }
+
+    function updateTreemapLegend(id, domain) {
+      const wrap = $(`${id}-legend`);
+      const minEl = $(`${id}-legend-min`);
+      const maxEl = $(`${id}-legend-max`);
+      const captionEl = $(`${id}-legend-caption`);
+      if (!wrap || !minEl || !maxEl || !captionEl) return;
+      if (!Array.isArray(domain) || domain.length !== 2 || !Number.isFinite(domain[0]) || !Number.isFinite(domain[1]) || domain[1] <= domain[0]) {
+        wrap.classList.add('is-hidden');
+        return;
+      }
+      wrap.classList.remove('is-hidden');
+      minEl.textContent = money(domain[0]);
+      maxEl.textContent = money(domain[1]);
+      captionEl.textContent = 'Color encodes mean pay for the visible tiles.';
+    }
+
+    function filterRowsByHierarchyPath(rows, levels, path) {
+      return (rows || []).filter(row => (path || []).every((value, idx) => String(row[levels[idx]] || '') === String(value)));
+    }
+
+    function visibleHierarchyRows(rows, levels, path) {
+      const filtered = filterRowsByHierarchyPath(rows, levels, path);
+      const levelField = levels[(path || []).length];
+      const nextField = levels[(path || []).length + 1];
+      const groups = new Map();
+      filtered.forEach(row => {
+        const label = row[levelField];
+        if (isNoiseLabel(label)) return;
+        if (!groups.has(label)) {
+          groups.set(label, { label, value: 0, salaryWeight: 0, salarySum: 0, drillable: false });
+        }
+        const group = groups.get(label);
+        group.value += Number(row.n || 0);
+        group.salaryWeight += Number(row.salary_weight || 0);
+        group.salarySum += Number(row.salary_sum || 0);
+        if (nextField && !isNoiseLabel(row[nextField]) && String(row[nextField]) !== String(label)) {
+          group.drillable = true;
+        }
+      });
+      const limit = Number($('top-n-select')?.value || 12);
+      return [...groups.values()]
+        .map(row => ({
+          ...row,
+          median_salary: row.salaryWeight > 0 ? row.salarySum / row.salaryWeight : null,
+        }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, limit);
+    }
+
+    function ensureVisibleHierarchyPath(rows, levels, path) {
+      const next = [...(path || [])];
+      while (next.length && !visibleHierarchyRows(rows, levels, next).length) next.pop();
+      return next;
     }
 
     function metric(label, value, span = 3, extraClass = '') {
@@ -1217,14 +1434,47 @@
 
     function renderRoles() {
       if (state.viewMode === 'snapshot') {
+        const rows = state.data.roles?.hierarchy || [];
+        const roleLevels = ['role_k50_v3', 'role_k150_v3'];
+        const industryLevels = ['industry_k200', 'industry_k400'];
+        let changed = true;
+        while (changed) {
+          changed = false;
+          const roleContext = filterRowsByHierarchyPath(rows, industryLevels, state.industryTreePath);
+          const nextRolePath = ensureVisibleHierarchyPath(roleContext, roleLevels, state.roleTreePath);
+          if (!samePath(nextRolePath, state.roleTreePath)) {
+            state.roleTreePath = nextRolePath;
+            changed = true;
+          }
+          const industryContext = filterRowsByHierarchyPath(rows, roleLevels, state.roleTreePath);
+          const nextIndustryPath = ensureVisibleHierarchyPath(industryContext, industryLevels, state.industryTreePath);
+          if (!samePath(nextIndustryPath, state.industryTreePath)) {
+            state.industryTreePath = nextIndustryPath;
+            changed = true;
+          }
+        }
+        const roleContextRows = filterRowsByHierarchyPath(rows, industryLevels, state.industryTreePath);
+        const industryContextRows = filterRowsByHierarchyPath(rows, roleLevels, state.roleTreePath);
+        const roleSubtitle = state.industryTreePath.length
+          ? `${hierarchyTrail(state.roleTreePath)}. Filtered by industry: ${hierarchyTrail(state.industryTreePath)}`
+          : `${hierarchyTrail(state.roleTreePath)}. Click a role to zoom into K150 roles.`;
+        const industrySubtitle = state.roleTreePath.length
+          ? `${hierarchyTrail(state.industryTreePath)}. Filtered by role: ${hierarchyTrail(state.roleTreePath)}`
+          : `${hierarchyTrail(state.industryTreePath)}. Click an industry to zoom.`;
         $('content').innerHTML = [
-          card('Roles by Industry', 'role-tree', 12, true),
-          card('Top Roles', 'role-bars', 6, true),
-          card('Top Industries', 'industry-bars', 6, true),
+          treemapCard('Role Treemap', 'role-tree', roleSubtitle, state.roleTreePath, 'roleTree', 6),
+          treemapCard('Industry Treemap', 'industry-tree', industrySubtitle, state.industryTreePath, 'industryTree', 6),
         ].join('');
-        drawRoleTreemap('role-tree');
-        drawRoleBars('role-bars', state.data.roles?.roles || [], 'Roles');
-        drawRoleBars('industry-bars', state.data.roles?.industries || [], 'Industries');
+        drawHierarchyTreemap('role-tree', roleContextRows, roleLevels, state.roleTreePath, node => {
+          if (!node.drillable) return;
+          state.roleTreePath = [...state.roleTreePath, node.label];
+          renderRoles();
+        });
+        drawHierarchyTreemap('industry-tree', industryContextRows, industryLevels, state.industryTreePath, node => {
+          if (!node.drillable) return;
+          state.industryTreePath = [...state.industryTreePath, node.label];
+          renderRoles();
+        });
       } else {
         $('content').innerHTML = [
           card('Roles Over Time', 'role-trend', 6, true),
@@ -1762,64 +2012,54 @@
       drawSimpleBars(id, rows.slice().reverse().map(r => ({ label: r.label, n: r.n })), 'n', title === 'Roles' ? COLORS[3] : COLORS[1]);
     }
 
-    function drawRoleTreemap(id) {
-      const rows = state.data.roles?.tree || [];
-      if (!rows.length) return noData(id);
-      const salaryValues = rows
-        .map(row => row.weighted_mean_salary)
+    function drawHierarchyTreemap(id, rows, levels, path, onDrill) {
+      const nodes = visibleHierarchyRows(rows, levels, path);
+      if (!nodes.length) return noData(id);
+      const salaryValues = nodes
+        .map(row => row.median_salary)
         .filter(value => value !== null && value !== undefined && Number.isFinite(Number(value)))
         .map(Number);
       const cmin = salaryValues.length ? Math.min(...salaryValues) : 0;
-      const cmax = salaryValues.length ? Math.max(...salaryValues) : 1;
-      const colors = rows.map(row => {
-        const value = Number(row.weighted_mean_salary);
-        return Number.isFinite(value) ? value : cmin;
-      });
+      const cmax = salaryValues.length ? Math.max(...salaryValues) : 0;
+      const domain = salaryValues.length && cmax > cmin ? [cmin, cmax] : null;
+      const rootTotal = sumRows(rows, 'n');
+      const parentTotal = sumRows(filterRowsByHierarchyPath(rows, levels, path), 'n') || rootTotal;
+      updateTreemapLegend(id, domain);
       Plotly.newPlot(id, [{
         type: 'treemap',
-        branchvalues: 'total',
-        ids: rows.map(row => row.id),
-        labels: rows.map(row => row.label),
-        parents: rows.map(row => row.parent),
-        values: rows.map(row => row.n),
+        branchvalues: 'remainder',
+        ids: nodes.map(row => [...path, row.label].join(' > ')),
+        labels: nodes.map(row => row.label),
+        parents: nodes.map(() => ''),
+        values: nodes.map(row => row.value),
         textinfo: 'label',
-        maxdepth: 3,
         marker: {
-          colors,
-          colorscale: [
-            [0, '#d9e8f7'],
-            [0.45, '#57b894'],
-            [1, '#f97316'],
-          ],
-          cmin,
-          cmax,
-          showscale: salaryValues.length > 1,
-          colorbar: {
-            title: 'Mean salary',
-            tickprefix: '$',
-            tickformat: ',.0f',
-            thickness: 12,
-          },
-          line: { width: 1.4, color: 'rgba(255,255,255,0.95)' },
+          colors: nodes.map(row => payColor(Number(row.median_salary), domain)),
+          line: { width: 1.25, color: '#ffffff' },
         },
-        customdata: rows.map(row => [
-          row.level,
-          row.share_pct,
-          row.weighted_mean_salary === null || row.weighted_mean_salary === undefined ? 'No salary data' : money(row.weighted_mean_salary),
+        customdata: nodes.map(row => [
+          rootTotal ? (row.value / rootTotal) * 100 : null,
+          parentTotal ? (row.value / parentTotal) * 100 : null,
+          row.median_salary === null || row.median_salary === undefined ? 'Mean pay unavailable' : `Mean pay: ${money(row.median_salary)}`,
+          row.drillable ? 'Click to drill' : '',
         ]),
-        hovertemplate: '<b>%{label}</b><br>%{customdata[0]}<br>%{value:,.0f} weighted alumni<br>%{customdata[1]:.1f}% of shown roles<br>Mean salary %{customdata[2]}<extra></extra>',
-        pathbar: {
-          visible: true,
-          thickness: 24,
-          textfont: { size: 12, color: '#243b53' },
-        },
-        tiling: { packing: 'squarify', squarifyratio: 1.08 },
+        hovertemplate: '<b>%{label}</b><br>Alumni: %{value:,.0f}<br>Share of total: %{customdata[0]:.1f}%<br>Share of block: %{customdata[1]:.1f}%<br>%{customdata[2]}<br>%{customdata[3]}<extra></extra>',
+        pathbar: { visible: false },
+        tiling: { packing: 'squarify', squarifyratio: 1.1 },
       }], {
         ...layoutBase,
-        height: 520,
-        margin: { l: 6, r: salaryValues.length > 1 ? 74 : 8, t: 8, b: 6 },
+        paper_bgcolor: '#FFFFFF',
+        plot_bgcolor: '#FFFFFF',
+        font: { family: '"Source Sans 3", ui-sans-serif, system-ui, sans-serif', color: '#2D426A', size: 14 },
+        height: 500,
+        margin: { l: 6, r: 6, t: 8, b: 8 },
         uniformtext: { minsize: 12, mode: 'hide' },
-      }, plotConfig);
+      }, plotConfig).then(plot => {
+        plot.on('plotly_click', event => {
+          const node = nodes[event.points?.[0]?.pointNumber];
+          if (node && onDrill) onDrill(node);
+        });
+      });
     }
 
     function drawDemoStackedSnapshot(id, rows, title, height = 320) {
