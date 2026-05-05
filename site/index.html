@@ -908,7 +908,14 @@
     const $ = id => document.getElementById(id);
     const fmt = new Intl.NumberFormat('en-US');
     const money = value => value === null || value === undefined ? 'No data' : `$${fmt.format(Math.round(value / 1000))}k`;
-    const num = value => value === null || value === undefined ? 'No data' : fmt.format(Math.round(value));
+    const num = value => {
+      if (value === null || value === undefined) return 'No data';
+      const n = Number(value);
+      if (!Number.isFinite(n)) return 'No data';
+      if (n > 0 && n < 1) return '<1';
+      if (Math.abs(n) < 10 && !Number.isInteger(n)) return n.toFixed(1).replace(/\.0$/, '');
+      return fmt.format(Math.round(n));
+    };
     const pct = value => value === null || value === undefined ? 'No data' : `${Number(value).toFixed(1)}%`;
     let resizeTimer = null;
 
