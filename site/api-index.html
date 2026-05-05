@@ -618,11 +618,16 @@
       if (!state.apiUrl) throw new Error('Missing API URL.');
       const headers = { 'Content-Type': 'application/json' };
       if (state.password) headers['X-Outcomes-Password'] = state.password;
-      const response = await fetch(`${state.apiUrl}${path}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body || currentFilters()),
-      });
+      let response;
+      try {
+        response = await fetch(`${state.apiUrl}${path}`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body || currentFilters()),
+        });
+      } catch (error) {
+        throw new Error(`Network/CORS error reaching ${state.apiUrl}. Confirm the URL starts with https:// and Render is live.`);
+      }
       if (!response.ok) {
         const text = await response.text();
         throw new Error(`${response.status} ${response.statusText}: ${text.slice(0, 240)}`);
@@ -1449,7 +1454,9 @@
     }
 
     function init() {
-      $('api-url').value = storage.getItem('outcomes.apiUrl') || defaultApiUrl();
+      const configuredApiUrl = normalizeApiUrl(defaultApiUrl());
+      const savedApiUrl = normalizeApiUrl(storage.getItem('outcomes.apiUrl'));
+      $('api-url').value = configuredApiUrl || savedApiUrl;
       $('api-password').value = storage.getItem('outcomes.apiPassword') || '';
       applyDefaultViewForTab(state.tab);
       syncViewToggle();
