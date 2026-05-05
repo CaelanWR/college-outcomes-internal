@@ -605,7 +605,11 @@
     }
 
     function normalizeApiUrl(value) {
-      return String(value || '').trim().replace(/\/+$/, '');
+      return String(value || '')
+        .trim()
+        .replace(/\/+$/, '')
+        .replace(/\/api\/(health|options|dashboard)$/i, '')
+        .replace(/\/+$/, '');
     }
 
     function defaultApiUrl() {
@@ -630,7 +634,10 @@
       }
       if (!response.ok) {
         const text = await response.text();
-        throw new Error(`${response.status} ${response.statusText}: ${text.slice(0, 240)}`);
+        const hint = response.status === 404
+          ? ' Use the base API URL only, for example https://college-outcomes-api.onrender.com, not /api/health.'
+          : '';
+        throw new Error(`${response.status} ${response.statusText}: ${text.slice(0, 240)}${hint}`);
       }
       return response.json();
     }
