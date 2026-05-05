@@ -458,24 +458,37 @@ def _current_students_sql() -> str:
     education_columns = globals().get("EDUCATION_COLUMNS", set())
     education_column_names = {str(c).lower() for c in education_columns}
     has_startdate = "startdate" in education_column_names
+    assigned_cip4_expr = assigned_cip4_sql("e")
+    candidate_cip6_expr = candidate_cip6_sql("e")
+    assigned_cip_title_expr = assigned_cip_title_sql("e")
+    cip_probability_expr = "e.cip_probability" if "cip_probability" in education_column_names else "CAST(NULL AS DOUBLE)"
+    cip_probability_rank_expr = (
+        "COALESCE(e.cip_probability, 0)"
+        if "cip_probability" in education_column_names
+        else "0"
+    )
     profile_weight_col = next(
         (
             col
             for col in [
                 "profile_weight",
+                "education_weight",
                 "individual_weight",
                 "representation_weight",
                 "universe_weight",
+                "final_weight",
             ]
             if col in education_column_names
         ),
         None,
     )
     current_profile_weight_expr = (
-        f"GREATEST(0.0, COALESCE(e.{profile_weight_col}, 1.0))"
+        f"CAST(GREATEST(0.0, COALESCE(e.{profile_weight_col}, 1.0)) AS DOUBLE)"
         if profile_weight_col
-        else "1.0"
+        else "CAST(1.0 AS DOUBLE)"
     )
+    current_profile_weight_source = profile_weight_col or "unit_weight"
+    startdate_rank_sql = "e.startdate DESC NULLS LAST," if has_startdate else ""
     projected_year_expr = f"""
         CASE
             WHEN e.enddate IS NOT NULL AND YEAR(e.enddate) BETWEEN 2026 AND 2029 THEN YEAR(e.enddate)
@@ -492,38 +505,56 @@ def _current_students_sql() -> str:
         """
 
     return f"""
-SELECT *
+SELECT * EXCLUDE (current_rank)
 FROM (
     SELECT
         SHA2(TO_VARCHAR(e.user_id), 256) AS person_key,
         CAST(e.unitid AS VARCHAR) AS unitid,
         e.ipeds_name AS school_name,
         'Bachelors' AS degree,
-        LEFT({assigned_cip4_sql('e')}, 2) AS cip2,
-        {assigned_cip4_sql('e')} AS cip4,
-        {candidate_cip6_sql('e')} AS cip6,
-        COALESCE(c4.title, {assigned_cip_title_sql('e')}, '') AS major_title,
+        LEFT({assigned_cip4_expr}, 2) AS cip2,
+        {assigned_cip4_expr} AS cip4,
+        {candidate_cip6_expr} AS cip6,
+        COALESCE(c4.title, {assigned_cip_title_expr}, '') AS major_title,
         {projected_year_expr} AS grad_year,
         '2026-2029' AS cohort_band,
         1 AS current_student_flag,
         COALESCE(NULLIF(d.sex_predicted, ''), 'Unknown') AS gender,
         COALESCE(NULLIF(d.ethnicity_predicted, ''), 'Unknown') AS race_ethnicity,
         d.prestige,
+        '{current_profile_weight_source}' AS profile_weight_source,
         {current_profile_weight_expr} AS profile_weight,
         {current_profile_weight_expr} AS final_weight,
-        e.cip_probability,
-        CASE WHEN e.cip_probability >= 0.8 THEN 1 ELSE 0 END AS high_conf_major_flag
+        {cip_probability_expr} AS cip_probability,
+        CASE WHEN {cip_probability_rank_expr} >= 0.8 THEN 1 ELSE 0 END AS high_conf_major_flag,
+        ROW_NUMBER() OVER (
+            PARTITION BY
+                e.user_id,
+                CAST(e.unitid AS VARCHAR),
+                'Bachelors',
+                LEFT({assigned_cip4_expr}, 2),
+                {assigned_cip4_expr},
+                {candidate_cip6_expr},
+                {projected_year_expr}
+            ORDER BY
+                CASE WHEN {cip_probability_rank_expr} >= 0.8 THEN 1 ELSE 0 END DESC,
+                {cip_probability_rank_expr} DESC,
+                e.enddate DESC NULLS LAST,
+                {startdate_rank_sql}
+                {current_profile_weight_expr} DESC
+        ) AS current_rank
     FROM {EDUCATION_CIP} e
     LEFT JOIN {SCRATCH}.CIP4_TITLES c4
-      ON {assigned_cip4_sql('e')} = c4.code
+      ON {assigned_cip4_expr} = c4.code
     LEFT JOIN {demographics_table} d
       ON e.user_id = d.user_id
     WHERE e.unitid IN ({UNITID_SQL})
       AND e.degree = 'Bachelor'
-      AND {assigned_cip4_sql('e')} IS NOT NULL
+      AND {assigned_cip4_expr} IS NOT NULL
       AND ({projected_filter})
 )
 WHERE grad_year BETWEEN 2026 AND 2029
+  AND current_rank = 1
 """
 
 

@@ -340,17 +340,29 @@ def _create_current_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest)
     if not current_path.exists():
         return False
     current_columns = _dataset_columns("current_students_fact")
-    profile_weight_sql = _profile_weight_sql(current_columns)
+    profile_weight_sql = _cohort_profile_weight_sql(current_columns)
     source_star = _source_star_without_profile(current_columns)
+    high_conf_expr = "COALESCE(high_conf_major_flag, 0)" if "high_conf_major_flag" in current_columns else "0"
+    cip_prob_expr = "COALESCE(cip_probability, 0)" if "cip_probability" in current_columns else "0"
     current_filters = filters.model_copy(deep=True)
     current_filters.grad_years = []
     where_sql, params = _where(current_filters, include_horizon=False, include_postgrad=False)
     con.execute(
         f"""
         CREATE OR REPLACE TEMP TABLE current_slice AS
-        SELECT {source_star}, {profile_weight_sql} AS profile_weight
-        FROM read_parquet(?)
-        {where_sql}
+        SELECT *
+        FROM (
+          SELECT
+            {source_star},
+            {profile_weight_sql} AS profile_weight,
+            ROW_NUMBER() OVER (
+              PARTITION BY person_key, unitid, degree, cip2, cip4, cip6, grad_year
+              ORDER BY {high_conf_expr} DESC, {cip_prob_expr} DESC, {profile_weight_sql} DESC
+            ) AS current_rank
+          FROM read_parquet(?)
+          {where_sql}
+        )
+        WHERE current_rank = 1
         """,
         [_dataset_glob("current_students_fact"), *params],
     )
