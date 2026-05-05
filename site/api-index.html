@@ -753,9 +753,15 @@
       storage.setItem('outcomes.apiPassword', state.password);
       $('api-url').value = state.apiUrl;
       setStatus('', 'Connecting');
-      await loadOptions(true);
-      document.querySelector('.connection')?.classList.add('connected');
-      await refresh();
+      setMessage('Connecting to the protected API...');
+      try {
+        await loadOptions(true);
+        document.querySelector('.connection')?.classList.add('connected');
+        await refresh();
+      } catch (error) {
+        setStatus('bad', 'Connection failed');
+        setMessage(escapeHtml(error.message || 'Could not connect to the protected API.'), true);
+      }
     }
 
     async function refresh({ reloadOptions = false, resetDrill = false } = {}) {
