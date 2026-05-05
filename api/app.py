@@ -100,12 +100,17 @@ class QueryRequest(BaseModel):
     demographics: DemographicFilters = Field(default_factory=DemographicFilters)
     postgrad: PostgradFilters = Field(default_factory=PostgradFilters)
     include_current_students: bool = False
+    include_school_employers: bool = False
     compare_mode: bool = False
     selected_employer: Optional[str] = None
     selected_postgrad_degree: Optional[str] = None
     selected_postgrad_school: Optional[str] = None
     selected_postgrad_program: Optional[str] = None
     top_n: int = 12
+
+
+def _same_school_employer_filter(filters: QueryRequest) -> str:
+    return "" if filters.include_school_employers else SAME_SCHOOL_EMPLOYER_FILTER
 
 
 def require_internal_password(x_outcomes_password: Optional[str] = Header(default=None)) -> None:
@@ -1084,6 +1089,7 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
 
 def _employer_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
     limit = min(_safe_limit(filters.top_n), 8)
+    same_school_filter = _same_school_employer_filter(filters)
     return _records_from_query(
         con,
         f"""
@@ -1096,7 +1102,7 @@ def _employer_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> li
             AND unknown_employer_flag = 0
             AND named_employer_flag = 1
             AND career_employer_flag = 1
-            {SAME_SCHOOL_EMPLOYER_FILTER}
+            {same_school_filter}
         ),
         top_employers AS (
           SELECT employer, SUM(final_weight) AS total_n
@@ -1133,6 +1139,7 @@ def _employer_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> li
 
 def _employers(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
     limit = _safe_limit(filters.top_n)
+    same_school_filter = _same_school_employer_filter(filters)
     employers = _records_from_query(
         con,
         f"""
@@ -1140,7 +1147,7 @@ def _employers(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[st
           SELECT SUM(final_weight) AS total_n
           FROM slice
           WHERE career_employer_flag = 1
-            {SAME_SCHOOL_EMPLOYER_FILTER}
+            {same_school_filter}
         ),
         by_employer AS (
           SELECT
@@ -1156,7 +1163,7 @@ def _employers(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[st
             AND unknown_employer_flag = 0
             AND named_employer_flag = 1
             AND career_employer_flag = 1
-            {SAME_SCHOOL_EMPLOYER_FILTER}
+            {same_school_filter}
           GROUP BY employer
         )
         SELECT
@@ -1181,12 +1188,12 @@ def _employers(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[st
             SELECT
               COALESCE(role_k50_v3, role_k150_v3, role_k10_v3, 'Unknown role') AS role,
               ROUND(SUM(final_weight), 2) AS n,
-              ROUND(100.0 * SUM(final_weight) / NULLIF((SELECT SUM(final_weight) FROM slice WHERE employer = ?), 0), 2) AS share_pct,
+              ROUND(100.0 * SUM(final_weight) / NULLIF((SELECT SUM(final_weight) FROM slice WHERE employer = ? {same_school_filter}), 0), 2) AS share_pct,
               ROUND(SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
                 / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0)) AS weighted_mean_salary
             FROM slice
             WHERE employer = ?
-              {SAME_SCHOOL_EMPLOYER_FILTER}
+              {same_school_filter}
               AND role_k50_v3 IS NOT NULL
               AND role_k50_v3 <> ''
             GROUP BY 1

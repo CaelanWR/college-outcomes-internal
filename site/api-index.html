@@ -516,6 +516,12 @@
           <option value="true">Show current students</option>
         </select>
       </label>
+      <label>School Employer
+        <select id="school-employer-select">
+          <option value="false">Exclude school itself</option>
+          <option value="true">Include school itself</option>
+        </select>
+      </label>
       <label>Top N
         <select id="top-n-select">
           <option>8</option>
@@ -659,6 +665,7 @@
           no_further_education: noFurtherValue === '' ? null : noFurtherValue === 'true',
         },
         include_current_students: $('current-select').value === 'true',
+        include_school_employers: $('school-employer-select').value === 'true',
         selected_employer: state.selectedEmployer,
         selected_postgrad_degree: state.selectedPostgradDegree,
         top_n: Number($('top-n-select').value || 12),
@@ -732,7 +739,7 @@
       state.options = options;
       populateStaticControls(options);
       populateMajorOptions(options, preserveMajor);
-      setStatus('ok', `${options.meta?.data_version || 'Connected'} | cells suppressed below ${options.meta?.suppression_threshold || 25}`);
+      setStatus('ok', `${options.meta?.data_version || 'Connected'} | positive-weight cells visible`);
     }
 
     async function connect() {
@@ -1405,7 +1412,7 @@
       ['school-select', 'compare-school-select', 'degree-select', 'cip-level-select'].forEach(id => {
         $(id).addEventListener('change', () => refresh({ reloadOptions: true, resetDrill: true }));
       });
-      ['horizon-select', 'from-year-select', 'to-year-select', 'major-select', 'gender-select', 'race-select', 'later-degree-filter', 'no-further-select', 'current-select', 'top-n-select'].forEach(id => {
+      ['horizon-select', 'from-year-select', 'to-year-select', 'major-select', 'gender-select', 'race-select', 'later-degree-filter', 'no-further-select', 'current-select', 'school-employer-select', 'top-n-select'].forEach(id => {
         $(id).addEventListener('change', () => {
           if (id === 'horizon-select') syncHorizonToggle();
           refresh({ resetDrill: true });

@@ -852,6 +852,13 @@
           </select>
         </div>
         <div class="control">
+          <label>School Employer</label>
+          <select id="school-employer-select">
+            <option value="false">Exclude school itself</option>
+            <option value="true">Include school itself</option>
+          </select>
+        </div>
+        <div class="control">
           <label>Top N</label>
           <select id="top-n-select">
             <option>8</option>
@@ -1056,6 +1063,7 @@
           no_further_education: noFurtherValue === '' ? null : noFurtherValue === 'true',
         },
         include_current_students: $('current-select').value === 'true',
+        include_school_employers: $('school-employer-select').value === 'true',
         compare_mode: state.selectionMode === 'compare',
         selected_employer: state.selectedEmployer,
         selected_postgrad_degree: state.selectedPostgradDegree,
@@ -1138,7 +1146,7 @@
       state.options = options;
       populateStaticControls(options);
       populateMajorOptions(options, preserveMajor);
-      setStatus('ok', `${options.meta?.data_version || 'Connected'} | cells suppressed below ${options.meta?.suppression_threshold || 25}`);
+      setStatus('ok', `${options.meta?.data_version || 'Connected'} | positive-weight cells visible`);
     }
 
     async function connect() {
@@ -2406,7 +2414,7 @@
           refresh({ reloadOptions: true, resetDrill: true });
         });
       });
-      ['horizon-select', 'from-year-select', 'to-year-select', 'major-select', 'gender-select', 'race-select', 'later-degree-filter', 'no-further-select', 'current-select', 'top-n-select'].forEach(id => {
+      ['horizon-select', 'from-year-select', 'to-year-select', 'major-select', 'gender-select', 'race-select', 'later-degree-filter', 'no-further-select', 'current-select', 'school-employer-select', 'top-n-select'].forEach(id => {
         $(id).addEventListener('change', () => {
           if (id === 'horizon-select') syncHorizonToggle();
           if (id === 'later-degree-filter' && $('later-degree-filter').value) $('no-further-select').value = 'false';
