@@ -599,7 +599,7 @@
 
     .controls-main {
       display: grid;
-      grid-template-columns: minmax(300px, 1.45fr) max-content minmax(170px, 0.7fr) max-content minmax(280px, 1.15fr) max-content max-content;
+      grid-template-columns: minmax(300px, 1.45fr) minmax(170px, 0.7fr) max-content minmax(280px, 1.15fr) max-content max-content;
       gap: 14px 16px;
       width: 100%;
       align-items: end;
@@ -912,14 +912,6 @@
         <label>School</label>
         <select id="school-select"></select>
       </div>
-      <div class="control control-mode">
-        <span class="control-label">Mode</span>
-        <span class="segmented" id="selection-toggle">
-          <button class="btn active" type="button" data-selection-mode="single">Single</button>
-          <button class="btn" type="button" data-selection-mode="compare">Schools</button>
-          <button class="btn" type="button" data-selection-mode="major_compare">Majors</button>
-        </span>
-      </div>
       <div class="control control-degree">
         <label>Degree</label>
         <select id="degree-select"></select>
@@ -951,6 +943,14 @@
 
     <div id="advanced-panel" class="advanced-panel">
       <div class="advanced-grid">
+        <div class="control control-mode">
+          <span class="control-label">Mode</span>
+          <span class="segmented" id="selection-toggle">
+            <button class="btn active" type="button" data-selection-mode="single">Single</button>
+            <button class="btn" type="button" data-selection-mode="compare">Schools</button>
+            <button class="btn" type="button" data-selection-mode="major_compare">Majors</button>
+          </span>
+        </div>
         <div class="control control-wide api-connection">
           <label>Protected API URL</label>
           <input id="api-url" placeholder="https://your-protected-api.example.com" />
