@@ -2760,12 +2760,11 @@
         const label = labelFor.get(code) || code;
         return {
           type: 'scatter',
-          mode: 'lines+markers',
+          mode: 'lines',
           name: label,
           x: slice.map(row => (Number(row.bin_start || 0) + Number(row.bin_end || 0)) / 2),
           y: slice.map(row => row.share_pct),
-          line: { color, width: 3, shape: 'spline', smoothing: 0.65 },
-          marker: { color, size: 6 },
+          line: { color, width: 4, shape: 'spline', smoothing: 1.15 },
           showlegend: false,
           customdata: slice.map(row => [
             row.label || label,
