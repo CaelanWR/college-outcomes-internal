@@ -665,6 +665,73 @@
 
     .api-connection.connected { display: none; }
 
+    .auth-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: none;
+      place-items: center;
+      padding: 24px;
+      background: rgba(8, 24, 38, 0.68);
+      backdrop-filter: blur(16px);
+    }
+
+    .auth-modal.open { display: grid; }
+
+    .auth-card {
+      width: min(560px, calc(100vw - 32px));
+      border: 1px solid rgba(255,255,255,0.28);
+      border-radius: 28px;
+      background: linear-gradient(180deg, #ffffff, #f4f8fc);
+      box-shadow: 0 30px 80px rgba(8,24,38,0.28);
+      padding: clamp(24px, 3vw, 34px);
+    }
+
+    .auth-card h2 {
+      margin-bottom: 8px;
+      font-size: clamp(1.7rem, 3vw, 2.35rem);
+      letter-spacing: -0.04em;
+    }
+
+    .auth-card p {
+      margin: 0 0 20px;
+      color: var(--muted);
+      font-weight: 700;
+      line-height: 1.45;
+    }
+
+    .auth-fields {
+      display: grid;
+      gap: 14px;
+    }
+
+    .auth-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .auth-message {
+      display: none;
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(34,94,168,0.08);
+      color: #24445f;
+      font-weight: 800;
+    }
+
+    .auth-message.error {
+      display: block;
+      color: #9d2433;
+      border: 1px solid rgba(223, 77, 95, 0.28);
+      background: rgba(255, 245, 247, 0.92);
+    }
+
+    .auth-message.info { display: block; }
+
     .content .grid {
       display: grid;
       grid-template-columns: repeat(12, minmax(0, 1fr));
@@ -1038,6 +1105,28 @@
       </div>
     </div>
   </div>
+
+  <div id="auth-modal" class="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+    <div class="auth-card">
+      <h2 id="auth-title">Connect to the protected API</h2>
+      <p>Enter the API URL and password to load the outcomes dashboard. These values stay in this browser only.</p>
+      <div class="auth-fields">
+        <label>
+          Protected API URL
+          <input id="auth-api-url" placeholder="https://college-outcomes-api.onrender.com" autocomplete="off" />
+        </label>
+        <label>
+          API Password
+          <input id="auth-api-password" type="password" placeholder="Password" autocomplete="current-password" />
+        </label>
+      </div>
+      <div id="auth-message" class="auth-message"></div>
+      <div class="auth-actions">
+        <button id="auth-connect-btn" class="btn active" type="button">Connect</button>
+      </div>
+    </div>
+  </div>
+
   <div id="refresh-state" class="refresh-state">Refreshing...</div>
 
   <nav class="tabs" id="tabs">
@@ -1168,6 +1257,36 @@
     function showContent() {
       $('message').style.display = 'none';
       $('content').style.display = 'grid';
+    }
+
+    function setAuthMessage(html = '', isError = false) {
+      const node = $('auth-message');
+      node.className = `auth-message ${html ? (isError ? 'error' : 'info') : ''}`;
+      node.innerHTML = html;
+    }
+
+    function syncAuthFieldsFromControls() {
+      $('auth-api-url').value = $('api-url').value || normalizeApiUrl(defaultApiUrl());
+      $('auth-api-password').value = $('api-password').value || '';
+    }
+
+    function syncControlsFromAuthFields() {
+      $('api-url').value = normalizeApiUrl($('auth-api-url').value || $('api-url').value || defaultApiUrl());
+      $('api-password').value = $('auth-api-password').value || '';
+    }
+
+    function showAuthModal(message = '', isError = false) {
+      syncAuthFieldsFromControls();
+      setAuthMessage(message, isError);
+      $('auth-modal').classList.add('open');
+      window.setTimeout(() => {
+        ($('auth-api-password').value ? $('auth-connect-btn') : $('auth-api-password')).focus();
+      }, 0);
+    }
+
+    function hideAuthModal() {
+      $('auth-modal').classList.remove('open');
+      setAuthMessage('');
     }
 
     function normalizeApiUrl(value) {
@@ -1400,25 +1519,33 @@
       setStatus('ok', `${options.meta?.data_version || 'Connected'} | positive-weight cells visible`);
     }
 
-    async function connect() {
+    async function connect({ fromAuth = false } = {}) {
+      if (fromAuth) syncControlsFromAuthFields();
       state.apiUrl = normalizeApiUrl($('api-url').value || defaultApiUrl());
       state.password = $('api-password').value || '';
       if (!state.apiUrl) {
         setMessage('Enter the protected API URL first.', true);
+        showAuthModal('Enter the protected API URL first.', true);
         return;
       }
       storage.setItem('outcomes.apiUrl', state.apiUrl);
       storage.setItem('outcomes.apiPassword', state.password);
       $('api-url').value = state.apiUrl;
+      $('auth-api-url').value = state.apiUrl;
+      $('auth-api-password').value = state.password;
       setStatus('', 'Connecting');
+      setAuthMessage('Connecting...', false);
       setMessage('Connecting to the protected API...');
       try {
         await loadOptions(true);
         document.querySelectorAll('.api-connection').forEach(node => node.classList.add('connected'));
+        hideAuthModal();
         await refresh();
       } catch (error) {
         setStatus('bad', 'Connection failed');
-        setMessage(escapeHtml(error.message || 'Could not connect to the protected API.'), true);
+        const message = escapeHtml(error.message || 'Could not connect to the protected API.');
+        setMessage(message, true);
+        showAuthModal(message, true);
       }
     }
 
@@ -3113,6 +3240,12 @@
 
     function bindEvents() {
       $('connect-btn').addEventListener('click', () => connect());
+      $('auth-connect-btn').addEventListener('click', () => connect({ fromAuth: true }));
+      ['auth-api-url', 'auth-api-password'].forEach(id => {
+        $(id).addEventListener('keydown', event => {
+          if (event.key === 'Enter') connect({ fromAuth: true });
+        });
+      });
       $('advanced-btn').addEventListener('click', () => {
         setAdvancedOpen(!$('advanced-panel').classList.contains('open'));
       });
@@ -3258,6 +3391,7 @@
       const savedTopN = Number(storage.getItem('outcomes.topN'));
       $('api-url').value = configuredApiUrl || savedApiUrl;
       $('api-password').value = storage.getItem('outcomes.apiPassword') || '';
+      syncAuthFieldsFromControls();
       if (TOP_N_OPTIONS.includes(savedTopN)) $('top-n-select').value = String(savedTopN);
       state.topNByChart = loadStoredTopNByChart();
       applyDefaultViewForTab(state.tab);
@@ -3266,7 +3400,9 @@
       setAdvancedOpen(compareNeedsSelections());
       syncHorizonToggle();
       bindEvents();
-      if ($('api-url').value) connect();
+      showAuthModal($('api-password').value ? 'Connecting with saved credentials...' : '');
+      if ($('api-url').value && $('api-password').value) connect();
+      else setMessage('Enter the protected API URL and password to connect.');
     }
 
     init();
