@@ -2953,6 +2953,17 @@
       return bins.map((row, index) => ({ ...row, y: smoothed[index] || 0 }));
     }
 
+    function salaryDistributionRange(points) {
+      const starts = points.map(row => Number(row.start)).filter(Number.isFinite);
+      const ends = points.map(row => Number(row.end)).filter(Number.isFinite);
+      if (!starts.length || !ends.length) return undefined;
+      const min = Math.min(...starts);
+      const max = Math.max(...ends);
+      if (!Number.isFinite(min) || !Number.isFinite(max)) return undefined;
+      if (max <= min) return [Math.max(0, min - 1000), max + 1000];
+      return [min, max];
+    }
+
     function drawSalaryDistribution(id) {
       const dist = state.data.salary_distribution || {};
       const rows = dist.bins || [];
@@ -2983,7 +2994,7 @@
       }], {
         ...layoutBase,
         margin: { ...layoutBase.margin, l: 50, r: 20, t: 8, b: 58 },
-        xaxis: { title: `Salary (${horizonLabel})`, tickprefix: '$', tickformat: ',.0s', automargin: true, rangemode: 'tozero' },
+        xaxis: { title: `Salary (${horizonLabel})`, tickprefix: '$', tickformat: '~s', automargin: true, range: salaryDistributionRange(points) },
         yaxis: { title: '', showticklabels: false, zeroline: false, automargin: true, rangemode: 'tozero' },
       }, plotConfig);
     }
@@ -3040,7 +3051,7 @@
         ...layoutBase,
         height: 470,
         margin: { ...layoutBase.margin, l: 74, r: 32, t: 18, b: 62 },
-        xaxis: { title: `Salary (${horizonLabel})`, tickprefix: '$', tickformat: ',.0s', automargin: true, rangemode: 'tozero' },
+        xaxis: { title: `Salary (${horizonLabel})`, tickprefix: '$', tickformat: '~s', automargin: true, range: globalSpec ? [globalSpec.start, globalSpec.end] : undefined },
         yaxis: { title: 'Smoothed share of salary observations %', ticksuffix: '%', automargin: true, rangemode: 'tozero' },
         legend: { orientation: 'h', y: 1.16, x: 0, itemwidth: 30 },
       }, plotConfig).then(plot => bindLegendGroupToggles(plot));
