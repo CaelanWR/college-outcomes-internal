@@ -117,6 +117,7 @@ class QueryRequest(BaseModel):
     active_tab: str = "overview"
     view_mode: str = "overtime"
     selected_employer: Optional[str] = None
+    selected_employer_role: Optional[str] = None
     selected_postgrad_degree: Optional[str] = None
     selected_postgrad_school: Optional[str] = None
     selected_postgrad_program: Optional[str] = None
@@ -972,6 +973,69 @@ def _alumni_trend_by_school(con: duckdb.DuckDBPyConnection, filters: QueryReques
     )
 
 
+def _salary_distribution(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
+    summary = _single_record(
+        con,
+        """
+        WITH salaries AS (
+          SELECT salary, final_weight
+          FROM slice
+          WHERE salary IS NOT NULL
+            AND salary > 0
+            AND final_weight > 0
+        )
+        SELECT
+          ROUND(SUM(final_weight), 2) AS salary_weight,
+          ROUND(quantile_cont(salary, 0.10)) AS p10,
+          ROUND(quantile_cont(salary, 0.25)) AS p25,
+          ROUND(quantile_cont(salary, 0.50)) AS median,
+          ROUND(quantile_cont(salary, 0.75)) AS p75,
+          ROUND(quantile_cont(salary, 0.90)) AS p90
+        FROM salaries
+        """,
+    )
+    rows = _records_from_query(
+        con,
+        """
+        WITH salaries AS (
+          SELECT salary, final_weight
+          FROM slice
+          WHERE salary IS NOT NULL
+            AND salary > 0
+            AND final_weight > 0
+        ),
+        bounds AS (
+          SELECT
+            quantile_cont(salary, 0.02) AS lo,
+            quantile_cont(salary, 0.98) AS hi
+          FROM salaries
+        ),
+        binned AS (
+          SELECT
+            CASE
+              WHEN (SELECT hi - lo FROM bounds) <= 0 THEN 0
+              ELSE LEAST(19, GREATEST(0, FLOOR((LEAST(GREATEST(s.salary, b.lo), b.hi) - b.lo) / NULLIF((b.hi - b.lo) / 20.0, 0))))
+            END AS bucket,
+            s.final_weight,
+            b.lo,
+            b.hi
+          FROM salaries s
+          CROSS JOIN bounds b
+        )
+        SELECT
+          ROUND(MIN(lo + bucket * ((hi - lo) / 20.0))) AS bin_start,
+          ROUND(MIN(lo + (bucket + 1) * ((hi - lo) / 20.0))) AS bin_end,
+          ROUND(SUM(final_weight), 2) AS n
+        FROM binned
+        GROUP BY bucket
+        HAVING SUM(final_weight) > ?
+        ORDER BY bucket
+        """,
+        [SALARY_MIN_WEIGHT],
+    )
+    return {"summary": summary, "bins": rows}
+
+
 def _current_student_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
     if not filters.include_current_students or not _dataset_exists("current_students_fact"):
         return []
@@ -1293,12 +1357,14 @@ def _employers(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[st
     )
     employer = filters.selected_employer or (employers[0]["employer"] if employers else None)
     roles: list[dict[str, Any]] = []
+    subroles: list[dict[str, Any]] = []
+    selected_role: str | None = None
     if employer:
         roles = _records_from_query(
             con,
             f"""
             SELECT
-              COALESCE(role_k50_v3, role_k150_v3, role_k10_v3, 'Unknown role') AS role,
+              COALESCE(role_k50_v3, role_k10_v3, 'Unknown role') AS role,
               ROUND(SUM(final_weight), 2) AS n,
               ROUND(100.0 * SUM(final_weight) / NULLIF((SELECT SUM(final_weight) FROM slice WHERE employer = ? {same_school_filter}), 0), 2) AS share_pct,
               ROUND(SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
@@ -1315,7 +1381,42 @@ def _employers(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[st
             """,
             [employer, employer, EMPLOYER_ROW_MIN_WEIGHT],
         )
-    return {"top": employers, "selected_employer": employer, "roles": roles}
+        selected_role = filters.selected_employer_role or (roles[0]["role"] if roles else None)
+        if selected_role:
+            subroles = _records_from_query(
+                con,
+                f"""
+                SELECT
+                  COALESCE(role_k150_v3, title_raw, 'Unknown subrole') AS role,
+                  ROUND(SUM(final_weight), 2) AS n,
+                  ROUND(100.0 * SUM(final_weight) / NULLIF((
+                    SELECT SUM(final_weight)
+                    FROM slice
+                    WHERE employer = ?
+                      AND COALESCE(role_k50_v3, role_k10_v3, 'Unknown role') = ?
+                      {same_school_filter}
+                  ), 0), 2) AS share_pct,
+                  ROUND(SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+                    / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0)) AS weighted_mean_salary
+                FROM slice
+                WHERE employer = ?
+                  AND COALESCE(role_k50_v3, role_k10_v3, 'Unknown role') = ?
+                  {same_school_filter}
+                  AND COALESCE(role_k150_v3, title_raw, '') <> ''
+                GROUP BY 1
+                HAVING SUM(final_weight) > ?
+                ORDER BY SUM(final_weight) DESC
+                LIMIT {limit}
+                """,
+                [employer, selected_role, employer, selected_role, EMPLOYER_ROW_MIN_WEIGHT],
+            )
+    return {
+        "top": employers,
+        "selected_employer": employer,
+        "roles": roles,
+        "selected_role": selected_role,
+        "subroles": subroles,
+    }
 
 
 def _geography_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
@@ -2156,6 +2257,7 @@ def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password
                     {
                         "overview": _overview(con),
                         "salary_trend": _salary_trend(con, filters),
+                        "salary_distribution": _salary_distribution(con),
                         "alumni_trend": _alumni_trend(con, filters),
                         "salary_trend_by_school": _salary_trend_by_school(con, filters),
                         "alumni_trend_by_school": [],
@@ -2201,6 +2303,7 @@ def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password
 
             if tab == "earnings":
                 result["top_majors"] = _top_majors(con, filters)
+                result["salary_distribution"] = _salary_distribution(con)
                 if view_mode == "overtime":
                     result["salary_trend"] = _salary_trend(con, filters)
                     result["salary_trend_by_school"] = _salary_trend_by_school(con, filters)

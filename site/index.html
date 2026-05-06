@@ -907,6 +907,7 @@
       viewMode: storage.getItem('outcomes.viewMode') || 'overtime',
       selectionMode: storage.getItem('outcomes.selectionMode') || 'single',
       selectedEmployer: null,
+      selectedEmployerRole: null,
       selectedPostgradDegree: null,
       selectedPostgradSchool: null,
       selectedPostgradProgram: null,
@@ -1089,6 +1090,7 @@
         active_tab: state.selectionMode === 'compare' ? 'compare' : 'all',
         view_mode: state.selectionMode === 'compare' ? state.viewMode : 'all',
         selected_employer: state.selectedEmployer,
+        selected_employer_role: state.selectedEmployerRole,
         selected_postgrad_degree: state.selectedPostgradDegree,
         selected_postgrad_school: state.selectedPostgradSchool,
         selected_postgrad_program: state.selectedPostgradProgram,
@@ -1216,6 +1218,7 @@
       try {
         if (resetDrill) {
           state.selectedEmployer = null;
+          state.selectedEmployerRole = null;
           state.selectedPostgradDegree = null;
           state.selectedPostgradSchool = null;
           state.selectedPostgradProgram = null;
@@ -1508,9 +1511,11 @@
     function renderEarnings() {
       if (state.viewMode === 'snapshot') {
         $('content').innerHTML = [
-          card('Top Majors by Median Salary', 'top-major-salary', 12, true),
+          card('Salary Distribution', 'salary-distribution', 7, true),
+          card('Top Majors by Median Salary', 'top-major-salary', 5, true),
           card('Current Slice Earnings Table', 'salary-table', 12),
         ].join('');
+        drawSalaryDistribution('salary-distribution');
         drawMajorSalary('top-major-salary');
         $('salary-table').innerHTML = table(['Major', 'Alumni', 'Salary observations', 'Median salary', 'Mean salary'], state.data.top_majors || [], row => [
           row.title, num(row.alumni), num(row.salary_weight), money(row.median_salary), money(row.weighted_mean_salary)
@@ -1532,15 +1537,18 @@
     function renderEmployers() {
       if (state.viewMode === 'snapshot') {
         $('content').innerHTML = [
-          card('Top Career Employers', 'emp-top', 6, true),
-          card(`Top Roles at ${escapeHtml(state.data.employers?.selected_employer || 'Selected Employer')}`, 'emp-roles', 6, true),
+          card('Top Career Employers', 'emp-top', 4, true),
+          card(`Top Roles at ${escapeHtml(state.data.employers?.selected_employer || 'Selected Employer')}`, 'emp-roles', 4, true),
+          card(`Subroles: ${escapeHtml(state.data.employers?.selected_role || 'Selected Role')}`, 'emp-subroles', 4, true),
         ].join('');
         drawEmployerBars('emp-top', true);
-        drawEmployerRoles('emp-roles');
+        drawEmployerRoles('emp-roles', true);
+        drawEmployerSubroles('emp-subroles');
       } else {
         $('content').innerHTML = [
-          card('Career Employer Share Over Time', 'emp-trend', 8, true),
-          card(`Roles at ${escapeHtml(state.data.employers?.selected_employer || 'Top Employer')}`, 'emp-roles', 4, true),
+          card('Career Employer Share Over Time', 'emp-trend', 6, true),
+          card(`Roles at ${escapeHtml(state.data.employers?.selected_employer || 'Top Employer')}`, 'emp-roles', 3, true),
+          card(`Subroles: ${escapeHtml(state.data.employers?.selected_role || 'Selected Role')}`, 'emp-subroles', 3, true),
           card('Current Top Career Employers', 'emp-top', 12),
         ].join('');
         drawTrendLines('emp-trend', state.data.employer_trend || [], 'employer', 'share_pct', {
@@ -1548,7 +1556,8 @@
           suffix: '%',
           hover: '%{y:.1f}%',
         });
-        drawEmployerRoles('emp-roles');
+        drawEmployerRoles('emp-roles', true);
+        drawEmployerSubroles('emp-subroles');
         drawEmployerBars('emp-top', true);
       }
     }
@@ -2137,6 +2146,36 @@
       }], horizontalLayout(rows), plotConfig);
     }
 
+    function drawSalaryDistribution(id) {
+      const dist = state.data.salary_distribution || {};
+      const rows = dist.bins || [];
+      if (!rows.length) return noData(id);
+      const labels = rows.map(r => `${money(r.bin_start)}-${money(r.bin_end)}`);
+      Plotly.newPlot(id, [{
+        type: 'bar',
+        x: labels,
+        y: rows.map(r => r.n),
+        marker: { color: 'rgba(47, 128, 237, 0.72)' },
+        customdata: rows.map(r => [r.bin_start, r.bin_end]),
+        hovertemplate: '%{customdata[0]:$,.0f}-%{customdata[1]:$,.0f}<br>%{y:,.0f} weighted observations<extra></extra>',
+      }], {
+        ...layoutBase,
+        margin: { ...layoutBase.margin, l: 70, r: 24, t: 24, b: 82 },
+        xaxis: { title: 'Salary range', automargin: true, tickangle: -35 },
+        yaxis: { title: 'Weighted observations', automargin: true, rangemode: 'tozero' },
+        annotations: dist.summary?.p25 ? [{
+          x: 0.99,
+          y: 1.12,
+          xref: 'paper',
+          yref: 'paper',
+          text: `P25 ${money(dist.summary.p25)} · Median ${money(dist.summary.median)} · P75 ${money(dist.summary.p75)}`,
+          showarrow: false,
+          xanchor: 'right',
+          font: { size: 13, color: '#40556e' },
+        }] : [],
+      }, plotConfig);
+    }
+
     function drawEmployerBars(id, clickable = false) {
       const rows = (state.data.employers?.top || []).slice().reverse();
       if (!rows.length) return noData(id);
@@ -2157,14 +2196,52 @@
           const point = event.points?.[0];
           if (!point) return;
           state.selectedEmployer = point.customdata || point.y;
+          state.selectedEmployerRole = null;
           refresh();
         });
       });
     }
 
-    function drawEmployerRoles(id) {
+    function drawEmployerRoles(id, clickable = false) {
       const rows = (state.data.employers?.roles || []).slice().reverse();
-      drawSimpleBars(id, rows.map(r => ({ label: r.role, n: r.n })), 'n', COLORS[2]);
+      if (!rows.length) return noData(id);
+      Plotly.newPlot(id, [{
+        type: 'bar',
+        orientation: 'h',
+        y: rows.map(r => wrapAxisLabel(r.role)),
+        x: rows.map(r => r.n),
+        text: rows.map(r => `${num(r.n)} (${pct(r.share_pct)})`),
+        textposition: 'outside',
+        cliponaxis: false,
+        customdata: rows.map(r => r.role),
+        marker: { color: COLORS[2] },
+        hovertemplate: '%{customdata}<br>%{x:,.0f} alumni<extra></extra>',
+      }], horizontalLayout(rows.map(r => ({ label: r.role }))), plotConfig).then(plot => {
+        if (!clickable) return;
+        plot.on('plotly_click', event => {
+          const point = event.points?.[0];
+          if (!point) return;
+          state.selectedEmployerRole = point.customdata || point.y;
+          refresh();
+        });
+      });
+    }
+
+    function drawEmployerSubroles(id) {
+      const rows = (state.data.employers?.subroles || []).slice().reverse();
+      if (!rows.length) return noData(id);
+      Plotly.newPlot(id, [{
+        type: 'bar',
+        orientation: 'h',
+        y: rows.map(r => wrapAxisLabel(r.role)),
+        x: rows.map(r => r.n),
+        text: rows.map(r => `${num(r.n)} (${pct(r.share_pct)})`),
+        textposition: 'outside',
+        cliponaxis: false,
+        customdata: rows.map(r => r.role),
+        marker: { color: COLORS[4] },
+        hovertemplate: '%{customdata}<br>%{x:,.0f} alumni<extra></extra>',
+      }], horizontalLayout(rows.map(r => ({ label: r.role }))), plotConfig);
     }
 
     function drawGeo(id, metric) {
