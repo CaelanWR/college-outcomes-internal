@@ -653,7 +653,8 @@
     .advanced-grid .control { min-width: 160px; }
     .advanced-grid .control-wide { min-width: 260px; flex: 1 1 280px; }
     .compare-only { display: none; }
-    body.compare-mode .compare-only { display: flex; }
+    body.school-compare-mode .school-compare-only,
+    body.major-compare-mode .major-compare-only { display: flex; }
 
     .content {
       width: auto;
@@ -852,7 +853,8 @@
         <span class="control-label">Mode</span>
         <span class="segmented" id="selection-toggle">
           <button class="btn active" type="button" data-selection-mode="single">Single</button>
-          <button class="btn" type="button" data-selection-mode="compare">Compare</button>
+          <button class="btn" type="button" data-selection-mode="compare">Schools</button>
+          <button class="btn" type="button" data-selection-mode="major_compare">Majors</button>
         </span>
       </div>
       <div class="control control-degree">
@@ -898,9 +900,13 @@
           <label>API</label>
           <button id="connect-btn" class="btn">Connect</button>
         </div>
-        <div class="control control-wide compare-only">
+        <div class="control control-wide compare-only school-compare-only">
           <label>Comparison Schools</label>
           <select id="compare-school-select" multiple></select>
+        </div>
+        <div class="control control-wide compare-only major-compare-only">
+          <label>Comparison Majors</label>
+          <select id="compare-major-select" multiple></select>
         </div>
         <div class="control">
           <label>CIP Level</label>
@@ -1154,6 +1160,17 @@
       return [...new Set([...primary, ...compare])].filter(Boolean);
     }
 
+    function getSelectedMajors() {
+      if (state.selectionMode === 'major_compare') return selectedValues($('compare-major-select'));
+      return $('major-select').value ? [$('major-select').value] : [];
+    }
+
+    function compareNeedsSelections() {
+      if (state.selectionMode === 'compare') return selectedValues($('compare-school-select')).length < 1;
+      if (state.selectionMode === 'major_compare') return selectedValues($('compare-major-select')).length < 2;
+      return false;
+    }
+
     function yearRange() {
       const all = state.options?.grad_years || [];
       const from = Number($('from-year-select').value || all[0]);
@@ -1178,7 +1195,7 @@
         schools: getSelectedSchools(),
         degree: $('degree-select').value || 'Bachelors',
         cip_level: $('cip-level-select').value || 'cip4',
-        majors: $('major-select').value ? [$('major-select').value] : [],
+        majors: getSelectedMajors(),
         grad_years: yearRange(),
         horizon: $('horizon-select').value || '1yr',
         demographics: {
@@ -1191,9 +1208,10 @@
         },
         include_current_students: $('current-select').value === 'true',
         include_school_employers: $('school-employer-select').value === 'true',
-        compare_mode: state.selectionMode === 'compare',
-        active_tab: state.selectionMode === 'compare' ? 'compare' : 'all',
-        view_mode: state.selectionMode === 'compare' ? state.viewMode : 'all',
+        compare_mode: state.selectionMode === 'compare' || state.selectionMode === 'major_compare',
+        compare_dimension: state.selectionMode === 'major_compare' ? 'major' : 'school',
+        active_tab: state.selectionMode === 'compare' || state.selectionMode === 'major_compare' ? 'compare' : 'all',
+        view_mode: state.selectionMode === 'compare' || state.selectionMode === 'major_compare' ? state.viewMode : 'all',
         selected_employer: state.selectedEmployer,
         selected_employer_role: state.selectedEmployerRole,
         selected_postgrad_degree: state.selectedPostgradDegree,
@@ -1263,11 +1281,23 @@
       const previous = preserve ? $('major-select').value : '';
       const validCodes = new Set((options.major_options || []).map(row => String(row.code)));
       const keepPrevious = previous && validCodes.has(String(previous));
+      let savedCompareMajors = [];
+      try {
+        savedCompareMajors = JSON.parse(storage.getItem('outcomes.compareMajors') || '[]');
+      } catch {
+        savedCompareMajors = [];
+      }
+      const currentCompareMajors = selectedValues($('compare-major-select')).map(String);
+      const compareMajorValues = (currentCompareMajors.length ? currentCompareMajors : savedCompareMajors)
+        .map(String)
+        .filter(code => validCodes.has(code));
+      const existingCompareMajors = new Set(compareMajorValues);
       $('major-select').innerHTML = '<option value="">All majors</option>';
       (options.major_options || []).forEach(row => {
         const label = `${row.title} (${row.code})`;
         $('major-select').appendChild(option(label, row.code, keepPrevious && previous === row.code));
       });
+      populateSelect($('compare-major-select'), options.major_options || [], row => `${row.title} (${row.code})`, row => row.code, existingCompareMajors);
     }
 
     async function loadOptions(preserveMajor = true) {
@@ -1276,8 +1306,8 @@
       state.options = options;
       populateStaticControls(options);
       populateMajorOptions(options, preserveMajor);
-      if (state.selectionMode === 'compare') {
-        setAdvancedOpen(!selectedValues($('compare-school-select')).length);
+      if (state.selectionMode === 'compare' || state.selectionMode === 'major_compare') {
+        setAdvancedOpen(compareNeedsSelections());
       }
       setStatus('ok', `${options.meta?.data_version || 'Connected'} | positive-weight cells visible`);
     }
@@ -1331,6 +1361,18 @@
           state.industryTreePath = [];
         }
         if (reloadOptions || !state.options) await loadOptions(true);
+        if (compareNeedsSelections()) {
+          state.data = {
+            overview: {},
+            school_comparison: [],
+            major_comparison: [],
+            meta: state.options?.meta || {},
+          };
+          showContent();
+          render();
+          setStatus('ok', `${state.options?.meta?.data_version || 'Connected'} | pick comparison items`);
+          return;
+        }
         state.data = await apiFetch('/api/dashboard', currentFilters());
         showContent();
         render();
@@ -1574,7 +1616,7 @@
 
     function render() {
       if (!state.data) return;
-      if (state.selectionMode === 'compare') {
+      if (state.selectionMode === 'compare' || state.selectionMode === 'major_compare') {
         renderCompare();
         queuePlotResize();
         return;
@@ -1592,6 +1634,10 @@
     }
 
     function renderCompare() {
+      if (state.selectionMode === 'major_compare') {
+        renderMajorCompare();
+        return;
+      }
       const rows = state.data.school_comparison || [];
       const o = state.data.overview || {};
       const salaryHorizon = activeHorizonLabel();
@@ -1632,6 +1678,52 @@
           limitSeries: false,
         });
         drawComparisonTable('compare-table');
+      }
+    }
+
+    function renderMajorCompare() {
+      const rows = state.data.major_comparison || [];
+      const o = state.data.overview || {};
+      const salaryHorizon = activeHorizonLabel();
+      if (rows.length < 2) {
+        $('content').innerHTML = [card('Major Compare', 'compare-empty', 12)].join('');
+        $('compare-empty').innerHTML = '<div class="empty">Pick at least two comparison majors in Advanced Options.</div>';
+        return;
+      }
+
+      if (state.viewMode === 'snapshot') {
+        $('content').innerHTML = [
+          metric('Majors', num(rows.length), 4),
+          metric('Alumni', num(o.alumni), 4),
+          metric('Weighted Median Salary', money(o.median_salary), 4),
+          card(`Median Salary by Major (${salaryHorizon})`, 'compare-major-salary', 6, true, { topControl: true }),
+          card('Alumni by Major', 'compare-major-alumni', 6, true, { topControl: true }),
+          card('Further Education Rate by Major', 'compare-major-postgrad', 6, true, { topControl: true }),
+          card('Major Comparison Table', 'compare-major-table', 6, true),
+        ].join('');
+        drawMajorCompareSalary('compare-major-salary');
+        drawMajorCompareAlumni('compare-major-alumni');
+        drawMajorCompareFurtherEd('compare-major-postgrad');
+        drawMajorCompareTable('compare-major-table');
+      } else {
+        $('content').innerHTML = [
+          metric('Majors', num(rows.length), 4),
+          metric('Alumni', num(o.alumni), 4),
+          metric('Weighted Median Salary', money(o.median_salary), 4),
+          card(`Salary Trend by Major (${salaryHorizon})`, 'compare-major-salary-trend', 7, true, { topControl: true }),
+          card('Alumni Trend by Major', 'compare-major-alumni-trend', 5, true, { topControl: true }),
+          card('Major Comparison Table', 'compare-major-table', 12),
+        ].join('');
+        drawTrendLines('compare-major-salary-trend', state.data.salary_trend_by_major || [], 'title', 'median_salary', {
+          yTitle: `Median salary (${salaryHorizon})`,
+          prefix: '$',
+          hover: '%{y:$,.0f}',
+        });
+        drawTrendLines('compare-major-alumni-trend', state.data.alumni_trend_by_major || [], 'title', 'alumni', {
+          yTitle: 'Alumni',
+          hover: '%{y:,.0f}',
+        });
+        drawMajorCompareTable('compare-major-table');
       }
     }
 
@@ -2325,6 +2417,90 @@
       ]);
     }
 
+    function majorName(row) {
+      return row?.title || row?.code || 'Major';
+    }
+
+    function drawMajorCompareSalary(id) {
+      const rows = (state.data.major_comparison || [])
+        .filter(row => row.median_salary !== null && row.median_salary !== undefined)
+        .sort((a, b) => Number(b.median_salary || 0) - Number(a.median_salary || 0))
+        .slice(0, topNFor(id))
+        .reverse();
+      if (!rows.length) return noData(id);
+      const horizonLabel = activeHorizonLabel();
+      const layout = horizontalLayout(rows.map(row => ({ label: majorName(row) })), '$');
+      Plotly.newPlot(id, [{
+        type: 'bar',
+        orientation: 'h',
+        y: rows.map(row => wrapAxisLabel(majorName(row), 28)),
+        x: rows.map(row => row.median_salary),
+        text: rows.map(row => money(row.median_salary)),
+        textposition: 'outside',
+        cliponaxis: false,
+        customdata: rows.map(row => [majorName(row), row.code]),
+        marker: { color: COLORS[0] },
+        hovertemplate: `%{customdata[0]}<br>CIP %{customdata[1]}<br>${horizonLabel}<br>%{x:$,.0f}<extra></extra>`,
+      }], {
+        ...layout,
+        xaxis: { ...layout.xaxis, title: `Median salary (${horizonLabel})` },
+      }, plotConfig);
+    }
+
+    function drawMajorCompareAlumni(id) {
+      const rows = (state.data.major_comparison || [])
+        .filter(row => row.alumni)
+        .sort((a, b) => Number(b.alumni || 0) - Number(a.alumni || 0))
+        .slice(0, topNFor(id))
+        .reverse();
+      if (!rows.length) return noData(id);
+      Plotly.newPlot(id, [{
+        type: 'bar',
+        orientation: 'h',
+        y: rows.map(row => wrapAxisLabel(majorName(row), 28)),
+        x: rows.map(row => row.alumni),
+        text: rows.map(row => num(row.alumni)),
+        textposition: 'outside',
+        cliponaxis: false,
+        customdata: rows.map(row => [majorName(row), row.code]),
+        marker: { color: COLORS[1] },
+        hovertemplate: '%{customdata[0]}<br>CIP %{customdata[1]}<br>%{x:,.0f} alumni<extra></extra>',
+      }], horizontalLayout(rows.map(row => ({ label: majorName(row) }))), plotConfig);
+    }
+
+    function drawMajorCompareFurtherEd(id) {
+      const rows = (state.data.major_comparison || [])
+        .filter(row => row.later_degree_pct !== null && row.later_degree_pct !== undefined)
+        .sort((a, b) => Number(b.later_degree_pct || 0) - Number(a.later_degree_pct || 0))
+        .slice(0, topNFor(id))
+        .reverse();
+      if (!rows.length) return noData(id);
+      Plotly.newPlot(id, [{
+        type: 'bar',
+        orientation: 'h',
+        y: rows.map(row => wrapAxisLabel(majorName(row), 28)),
+        x: rows.map(row => row.later_degree_pct),
+        text: rows.map(row => pct(row.later_degree_pct)),
+        textposition: 'outside',
+        cliponaxis: false,
+        customdata: rows.map(row => [majorName(row), row.code]),
+        marker: { color: COLORS[2] },
+        hovertemplate: '%{customdata[0]}<br>CIP %{customdata[1]}<br>%{x:.1f}% with later degree<extra></extra>',
+      }], horizontalLayout(rows.map(row => ({ label: majorName(row) })), '%'), plotConfig);
+    }
+
+    function drawMajorCompareTable(id) {
+      const rows = (state.data.major_comparison || []).slice().sort((a, b) => Number(b.alumni || 0) - Number(a.alumni || 0));
+      $(id).innerHTML = table(['Major', 'Alumni', 'Salary obs', 'Median salary', 'Mean salary', 'Later ed'], rows, row => [
+        majorName(row),
+        num(row.alumni),
+        num(row.salary_weight),
+        money(row.median_salary),
+        money(row.weighted_mean_salary),
+        pct(row.later_degree_pct),
+      ]);
+    }
+
     function drawMajorSalary(id) {
       const rows = (state.data.top_majors || [])
         .filter(r => r.median_salary)
@@ -2732,10 +2908,10 @@
         if (!button) return;
         state.selectionMode = button.dataset.selectionMode;
         storage.setItem('outcomes.selectionMode', state.selectionMode);
-        const hasComparisonSchools = selectedValues($('compare-school-select')).length > 0;
-        setAdvancedOpen(state.selectionMode === 'compare' && !hasComparisonSchools);
         syncSelectionMode();
-        if (state.selectionMode === 'compare' && !hasComparisonSchools) {
+        const needsSelections = compareNeedsSelections();
+        setAdvancedOpen(needsSelections);
+        if (needsSelections) {
           render();
           return;
         }
@@ -2750,11 +2926,17 @@
         refresh({ resetDrill: true });
       });
 
-      ['school-select', 'compare-school-select', 'degree-select', 'cip-level-select'].forEach(id => {
+      ['school-select', 'compare-school-select', 'compare-major-select', 'degree-select', 'cip-level-select'].forEach(id => {
         $(id).addEventListener('change', () => {
           if (id === 'compare-school-select') {
             storage.setItem('outcomes.compareSchools', JSON.stringify(selectedValues($('compare-school-select'))));
             if (state.selectionMode === 'compare' && selectedValues($('compare-school-select')).length) {
+              setAdvancedOpen(false);
+            }
+          }
+          if (id === 'compare-major-select') {
+            storage.setItem('outcomes.compareMajors', JSON.stringify(selectedValues($('compare-major-select'))));
+            if (state.selectionMode === 'major_compare' && selectedValues($('compare-major-select')).length >= 2) {
               setAdvancedOpen(false);
             }
           }
@@ -2797,7 +2979,8 @@
     }
 
     function syncSelectionMode() {
-      document.body.classList.toggle('compare-mode', state.selectionMode === 'compare');
+      document.body.classList.toggle('school-compare-mode', state.selectionMode === 'compare');
+      document.body.classList.toggle('major-compare-mode', state.selectionMode === 'major_compare');
       document.querySelectorAll('[data-selection-mode]').forEach(button => {
         button.classList.toggle('active', button.dataset.selectionMode === state.selectionMode);
       });
@@ -2821,7 +3004,7 @@
       applyDefaultViewForTab(state.tab);
       syncViewToggle();
       syncSelectionMode();
-      setAdvancedOpen(state.selectionMode === 'compare' && !selectedValues($('compare-school-select')).length);
+      setAdvancedOpen(compareNeedsSelections());
       syncHorizonToggle();
       bindEvents();
       if ($('api-url').value) connect();

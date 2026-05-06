@@ -114,6 +114,7 @@ class QueryRequest(BaseModel):
     include_current_students: bool = False
     include_school_employers: bool = False
     compare_mode: bool = False
+    compare_dimension: str = "school"
     active_tab: str = "overview"
     view_mode: str = "overtime"
     selected_employer: Optional[str] = None
@@ -173,7 +174,7 @@ def _dataset_glob(dataset: str) -> list[str]:
 
 
 def _base_source_for_filters(filters: QueryRequest) -> list[str]:
-    if filters.compare_mode or len(set(filters.schools)) != 1:
+    if (filters.compare_mode and filters.compare_dimension == "school") or len(set(filters.schools)) != 1:
         return _dataset_glob("base_fact")
     return _school_base_cache(filters.schools[0])
 
@@ -973,6 +974,118 @@ def _alumni_trend_by_school(con: duckdb.DuckDBPyConnection, filters: QueryReques
     )
 
 
+def _salary_trend_by_major(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    cip_col = _cip_col(filters)
+    rows = _records_from_query(
+        con,
+        f"""
+        WITH by_year AS (
+          SELECT
+            {cip_col} AS code,
+            MAX(major_title) AS title,
+            grad_year,
+            MAX(COALESCE(partial_horizon_flag, 0)) AS partial_horizon,
+            SUM(final_weight) AS alumni,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS weighted_mean_salary,
+            quantile_cont(salary, 0.5) AS median_salary
+          FROM slice
+          WHERE grad_year IS NOT NULL
+            AND {cip_col} IS NOT NULL
+          GROUP BY {cip_col}, grad_year
+        )
+        SELECT
+          code,
+          COALESCE(title, code) AS title,
+          grad_year,
+          CAST(partial_horizon AS INTEGER) AS partial_horizon,
+          ROUND(alumni, 2) AS alumni,
+          ROUND(salary_weight) AS salary_weight,
+          CASE WHEN salary_weight > ? THEN ROUND(weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
+          CASE WHEN salary_weight > ? THEN ROUND(median_salary) ELSE NULL END AS median_salary
+        FROM by_year
+        WHERE salary_weight > ?
+        ORDER BY title, grad_year
+        """,
+        [SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT],
+    )
+    if filters.horizon == "1yr":
+        rows.extend(_early_2025_salary_trend_by_major(con, filters))
+    return sorted(rows, key=lambda row: (row.get("title") or "", row.get("grad_year") or 0, row.get("partial_horizon") or 0))
+
+
+def _early_2025_salary_trend_by_major(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    cip_col = _cip_col(filters)
+    early_filters = filters.model_copy(deep=True)
+    early_filters.horizon = "early_2025"
+    base_source = _base_source_for_filters(filters)
+    where_sql, params = _where(early_filters)
+    year_clause = "grad_year = 2025"
+    if where_sql:
+        where_sql = f"{where_sql} AND {year_clause}"
+    else:
+        where_sql = f" WHERE {year_clause}"
+    return _records_from_query(
+        con,
+        f"""
+        WITH by_year AS (
+          SELECT
+            {cip_col} AS code,
+            MAX(major_title) AS title,
+            grad_year,
+            SUM(final_weight) AS alumni,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS weighted_mean_salary,
+            quantile_cont(salary, 0.5) AS median_salary
+          FROM read_parquet(?)
+          {where_sql}
+            AND {cip_col} IS NOT NULL
+          GROUP BY {cip_col}, grad_year
+        )
+        SELECT
+          code,
+          COALESCE(title, code) AS title,
+          grad_year,
+          1 AS partial_horizon,
+          ROUND(alumni, 2) AS alumni,
+          ROUND(salary_weight) AS salary_weight,
+          CASE WHEN salary_weight > ? THEN ROUND(weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
+          CASE WHEN salary_weight > ? THEN ROUND(median_salary) ELSE NULL END AS median_salary
+        FROM by_year
+        WHERE salary_weight > ?
+        ORDER BY title, grad_year
+        """,
+        [base_source, *params, SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT],
+    )
+
+
+def _alumni_trend_by_major(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    cip_col = _cip_col(filters)
+    return _records_from_query(
+        con,
+        f"""
+        WITH by_year AS (
+          SELECT
+            {cip_col} AS code,
+            MAX(major_title) AS title,
+            grad_year,
+            SUM(profile_weight) AS alumni
+          FROM cohort_slice
+          WHERE grad_year IS NOT NULL
+            AND {cip_col} IS NOT NULL
+          GROUP BY {cip_col}, grad_year
+        )
+        SELECT code, COALESCE(title, code) AS title, grad_year, ROUND(alumni, 2) AS alumni
+        FROM by_year
+        WHERE alumni > ?
+        ORDER BY title, grad_year
+        """,
+        [MIN_CELL_WEIGHT],
+    )
+
+
 def _salary_distribution(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
     summary = _single_record(
         con,
@@ -1092,6 +1205,51 @@ def _school_comparison(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
           ROUND(100.0 * c.later_degree_n / NULLIF(c.alumni, 0), 1) AS later_degree_pct
         FROM cohort c
         LEFT JOIN outcomes o USING (unitid)
+        WHERE c.alumni > ?
+        ORDER BY o.weighted_mean_salary DESC NULLS LAST, c.alumni DESC
+        """,
+        [SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT, MIN_CELL_WEIGHT],
+    )
+
+
+def _major_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    cip_col = _cip_col(filters)
+    return _records_from_query(
+        con,
+        f"""
+        WITH cohort AS (
+          SELECT
+            {cip_col} AS code,
+            MAX(major_title) AS title,
+            SUM(profile_weight) AS alumni,
+            SUM(CASE WHEN later_degree_type IS NOT NULL THEN profile_weight ELSE 0 END) AS later_degree_n
+          FROM cohort_slice
+          WHERE {cip_col} IS NOT NULL
+          GROUP BY {cip_col}
+        ),
+        outcomes AS (
+          SELECT
+            {cip_col} AS code,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS weighted_mean_salary,
+            quantile_cont(salary, 0.5) AS median_salary,
+            COUNT(DISTINCT CASE WHEN employer IS NOT NULL AND employer <> '' AND unknown_employer_flag = 0 THEN employer END) AS unique_employers
+          FROM slice
+          WHERE {cip_col} IS NOT NULL
+          GROUP BY {cip_col}
+        )
+        SELECT
+          c.code,
+          COALESCE(c.title, c.code) AS title,
+          ROUND(c.alumni, 2) AS alumni,
+          ROUND(o.salary_weight) AS salary_weight,
+          CASE WHEN o.salary_weight > ? THEN ROUND(o.weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
+          CASE WHEN o.salary_weight > ? THEN ROUND(o.median_salary) ELSE NULL END AS median_salary,
+          o.unique_employers,
+          ROUND(100.0 * c.later_degree_n / NULLIF(c.alumni, 0), 1) AS later_degree_pct
+        FROM cohort c
+        LEFT JOIN outcomes o USING (code)
         WHERE c.alumni > ?
         ORDER BY o.weighted_mean_salary DESC NULLS LAST, c.alumni DESC
         """,
@@ -2292,10 +2450,16 @@ def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password
 
             if tab == "compare":
                 result["overview"] = _overview(con)
-                result["school_comparison"] = _school_comparison(con)
-                if view_mode == "overtime":
-                    result["salary_trend_by_school"] = _salary_trend_by_school(con, filters)
-                    result["alumni_trend_by_school"] = _alumni_trend_by_school(con, filters)
+                if filters.compare_dimension == "major":
+                    result["major_comparison"] = _major_comparison(con, filters)
+                    if view_mode == "overtime":
+                        result["salary_trend_by_major"] = _salary_trend_by_major(con, filters)
+                        result["alumni_trend_by_major"] = _alumni_trend_by_major(con, filters)
+                else:
+                    result["school_comparison"] = _school_comparison(con)
+                    if view_mode == "overtime":
+                        result["salary_trend_by_school"] = _salary_trend_by_school(con, filters)
+                        result["alumni_trend_by_school"] = _alumni_trend_by_school(con, filters)
                 return result
 
             if tab == "overview":
