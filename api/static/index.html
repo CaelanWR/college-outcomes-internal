@@ -969,6 +969,7 @@
       selectedPostgradProgram: null,
       roleTreePath: [],
       industryTreePath: [],
+      topNByChart: {},
       loading: false,
       pendingRefresh: null,
     };
@@ -1162,7 +1163,7 @@
         selected_postgrad_degree: state.selectedPostgradDegree,
         selected_postgrad_school: state.selectedPostgradSchool,
         selected_postgrad_program: state.selectedPostgradProgram,
-        top_n: Number($('top-n-select').value || 8),
+        top_n: maxRequestedTopN(),
         ...extra,
       };
     }
@@ -1321,10 +1322,38 @@
       return Number($('top-n-select')?.value || 8);
     }
 
+    function chartIdFromTopControl(id) {
+      return String(id || '').replace(/-top-n$/, '');
+    }
+
+    function validTopN(value) {
+      const numeric = Number(value);
+      return TOP_N_OPTIONS.includes(numeric) ? numeric : null;
+    }
+
+    function topNFor(chartId) {
+      return validTopN(state.topNByChart?.[chartId]) || selectedTopN();
+    }
+
+    function maxRequestedTopN() {
+      const values = Object.values(state.topNByChart || {}).map(validTopN).filter(Boolean);
+      return Math.max(selectedTopN(), ...values);
+    }
+
+    function loadStoredTopNByChart() {
+      try {
+        const parsed = JSON.parse(storage.getItem('outcomes.topNByChart') || '{}');
+        return Object.fromEntries(Object.entries(parsed).filter(([, value]) => validTopN(value)).map(([key, value]) => [key, Number(value)]));
+      } catch {
+        return {};
+      }
+    }
+
     function topNControl(id) {
-      const current = selectedTopN();
+      const chartId = chartIdFromTopControl(id);
+      const current = topNFor(chartId);
       const options = TOP_N_OPTIONS.map(value => `<option value="${value}" ${value === current ? 'selected' : ''}>${value}</option>`).join('');
-      return `<label class="chart-top-control" for="${id}"><span>Show top</span><select id="${id}" data-top-n-control>${options}</select></label>`;
+      return `<label class="chart-top-control" for="${id}"><span>Show top</span><select id="${id}" data-top-n-control data-chart-id="${chartId}">${options}</select></label>`;
     }
 
     function card(title, id, span = 6, tall = false, options = {}) {
@@ -1444,7 +1473,7 @@
       return (rows || []).filter(row => (path || []).every((value, idx) => String(row[levels[idx]] || '') === String(value)));
     }
 
-    function visibleHierarchyRows(rows, levels, path) {
+    function visibleHierarchyRows(rows, levels, path, chartId = null) {
       const filtered = filterRowsByHierarchyPath(rows, levels, path);
       const levelField = levels[(path || []).length];
       const nextField = levels[(path || []).length + 1];
@@ -1463,7 +1492,7 @@
           group.drillable = true;
         }
       });
-      const limit = selectedTopN();
+      const limit = topNFor(chartId);
       return [...groups.values()]
         .map(row => ({
           ...row,
@@ -1473,9 +1502,9 @@
         .slice(0, limit);
     }
 
-    function ensureVisibleHierarchyPath(rows, levels, path) {
+    function ensureVisibleHierarchyPath(rows, levels, path, chartId = null) {
       const next = [...(path || [])];
-      while (next.length && !visibleHierarchyRows(rows, levels, next).length) next.pop();
+      while (next.length && !visibleHierarchyRows(rows, levels, next, chartId).length) next.pop();
       return next;
     }
 
@@ -1564,6 +1593,7 @@
           yTitle: 'Alumni',
           hover: '%{y:,.0f}',
           labelTransform: shortSchool,
+          limitSeries: false,
         });
         drawComparisonTable('compare-table');
       }
@@ -1587,7 +1617,7 @@
           ...overviewMetrics(o),
           card(`Salary Trend by Graduation Year (${salaryHorizon})`, 'salary-trend', 6),
           card('Alumni by Graduation Year', 'alumni-trend', 6),
-          card('Top Majors Over Time', 'major-trend', 12, true),
+          card('Top Majors Over Time', 'major-trend', 12, true, { topControl: true }),
         ].join('');
         drawSalaryTrend('salary-trend');
         drawAlumniTrend('alumni-trend');
@@ -1683,13 +1713,13 @@
         while (changed) {
           changed = false;
           const roleContext = filterRowsByHierarchyPath(rows, industryLevels, state.industryTreePath);
-          const nextRolePath = ensureVisibleHierarchyPath(roleContext, roleLevels, state.roleTreePath);
+          const nextRolePath = ensureVisibleHierarchyPath(roleContext, roleLevels, state.roleTreePath, 'role-tree');
           if (!samePath(nextRolePath, state.roleTreePath)) {
             state.roleTreePath = nextRolePath;
             changed = true;
           }
           const industryContext = filterRowsByHierarchyPath(rows, roleLevels, state.roleTreePath);
-          const nextIndustryPath = ensureVisibleHierarchyPath(industryContext, industryLevels, state.industryTreePath);
+          const nextIndustryPath = ensureVisibleHierarchyPath(industryContext, industryLevels, state.industryTreePath, 'industry-tree');
           if (!samePath(nextIndustryPath, state.industryTreePath)) {
             state.industryTreePath = nextIndustryPath;
             changed = true;
@@ -1697,8 +1727,8 @@
         }
         const roleContextRows = filterRowsByHierarchyPath(rows, industryLevels, state.industryTreePath);
         const industryContextRows = filterRowsByHierarchyPath(rows, roleLevels, state.roleTreePath);
-        const roleNodes = visibleHierarchyRows(roleContextRows, roleLevels, state.roleTreePath);
-        const industryNodes = visibleHierarchyRows(industryContextRows, industryLevels, state.industryTreePath);
+        const roleNodes = visibleHierarchyRows(roleContextRows, roleLevels, state.roleTreePath, 'role-tree');
+        const industryNodes = visibleHierarchyRows(industryContextRows, industryLevels, state.industryTreePath, 'industry-tree');
         const sharedPayDomain = treemapPayDomain([...roleNodes, ...industryNodes]);
         const roleSubtitle = state.industryTreePath.length
           ? `${hierarchyTrail(state.roleTreePath)}. Filtered by industry: ${hierarchyTrail(state.industryTreePath)}`
@@ -1976,9 +2006,11 @@
               color: slice.map(r => r.partial_horizon ? COLORS[2] : color),
               symbol: slice.map(r => r.partial_horizon ? 'diamond' : 'circle'),
             },
+            showlegend: false,
             hovertemplate: '%{text}<br>Class of %{x}<br>%{y:$,.0f}<extra></extra>',
           };
         });
+        traces.push(...schools.map((school, i) => legendDotTrace(shortSchool(school), COLORS[i % COLORS.length])));
       } else {
         traces = [{
           type: 'scatter',
@@ -2000,7 +2032,7 @@
         ...layoutBase,
         yaxis: { title: `Median salary (${horizonLabel})`, tickprefix: '$', tickformat: ',', automargin: true },
         xaxis: { title: 'Graduation year', automargin: true },
-        legend: { orientation: 'h', y: 1.12 },
+        legend: { orientation: 'h', y: 1.12, itemwidth: 30 },
       }, plotConfig);
     }
 
@@ -2033,10 +2065,35 @@
       }, plotConfig);
     }
 
+    function legendDotTrace(name, color) {
+      return {
+        type: 'scatter',
+        mode: 'markers',
+        name,
+        x: [null],
+        y: [null],
+        marker: { color, size: 9 },
+        hoverinfo: 'skip',
+        showlegend: true,
+      };
+    }
+
+    function topSeriesLabels(rows, labelKey, limit) {
+      return [...new Set((rows || []).map(row => row[labelKey]).filter(Boolean))]
+        .sort((a, b) => {
+          const totalA = rows.filter(row => row[labelKey] === a).reduce((sum, row) => sum + Number(row.n || row.alumni || row.salary_weight || 0), 0);
+          const totalB = rows.filter(row => row[labelKey] === b).reduce((sum, row) => sum + Number(row.n || row.alumni || row.salary_weight || 0), 0);
+          return totalB - totalA;
+        })
+        .slice(0, limit);
+    }
+
     function drawTrendLines(id, rows, labelKey, valueKey, options = {}) {
       const cleanRows = (rows || []).filter(row => row.grad_year !== null && row.grad_year !== undefined && row[valueKey] !== null && row[valueKey] !== undefined);
       if (!cleanRows.length) return noData(id);
-      const labels = options.fixedLabel ? [options.fixedLabel] : [...new Set(cleanRows.map(row => row[labelKey]).filter(Boolean))];
+      const labels = options.fixedLabel
+        ? [options.fixedLabel]
+        : (options.limitSeries === false ? [...new Set(cleanRows.map(row => row[labelKey]).filter(Boolean))] : topSeriesLabels(cleanRows, labelKey, topNFor(id)));
       const traces = labels.map((label, i) => {
         const slice = options.fixedLabel ? cleanRows : cleanRows.filter(row => row[labelKey] === label);
         const displayLabel = options.labelTransform ? options.labelTransform(label) : label;
@@ -2048,11 +2105,13 @@
           y: slice.map(row => row[valueKey]),
           line: { color: COLORS[i % COLORS.length], width: 3 },
           marker: { size: 7 },
+          showlegend: false,
           customdata: slice.map(() => label),
           hovertemplate: `${displayLabel}<br>Class of %{x}<br>${options.hover || '%{y:,.1f}'}<extra></extra>`,
         };
       });
-      Plotly.newPlot(id, traces, {
+      const legendTraces = labels.map((label, i) => legendDotTrace(options.labelTransform ? options.labelTransform(label) : label, COLORS[i % COLORS.length]));
+      Plotly.newPlot(id, [...traces, ...legendTraces], {
         ...layoutBase,
         height: options.height || 420,
         margin: { ...layoutBase.margin, l: 80, r: 36, t: 22, b: 62 },
@@ -2064,7 +2123,7 @@
           automargin: true,
           rangemode: 'tozero',
         },
-        legend: { orientation: 'h', y: 1.18, x: 0 },
+        legend: { orientation: 'h', y: 1.18, x: 0, itemwidth: 30 },
       }, plotConfig).then(plot => {
         if (!options.onClick) return;
         plot.on('plotly_click', event => {
@@ -2079,7 +2138,13 @@
       const trend = state.data.major_trend || {};
       const rows = [...(trend.series || []), ...(trend.current_series || [])];
       if (!rows.length) return noData(id);
-      const codes = [...new Set(rows.map(r => r.code))];
+      const codes = [...new Set(rows.map(r => r.code))]
+        .sort((a, b) => {
+          const totalA = rows.filter(row => row.code === a).reduce((sum, row) => sum + Number(row.n || 0), 0);
+          const totalB = rows.filter(row => row.code === b).reduce((sum, row) => sum + Number(row.n || 0), 0);
+          return totalB - totalA;
+        })
+        .slice(0, topNFor(id));
       const traces = codes.map((code, i) => {
         const historic = (trend.series || []).filter(r => r.code === code);
         const current = (trend.current_series || []).filter(r => r.code === code);
@@ -2094,6 +2159,7 @@
             y: historic.map(r => r.share_pct),
             line: { color: COLORS[i % COLORS.length], width: 3 },
             marker: { size: 7 },
+            showlegend: false,
             customdata: historic.map(r => [r.n, r.total_n]),
             hovertemplate: `${title}<br>Class of %{x}<br>%{y:.1f}% of total<br>%{customdata[0]:,.0f} of %{customdata[1]:,.0f}<extra></extra>`,
           },
@@ -2114,6 +2180,10 @@
           } : null
         ].filter(Boolean);
       }).flat();
+      const legendTraces = codes.map((code, i) => {
+        const row = rows.find(r => r.code === code) || {};
+        return legendDotTrace(row.title || code, COLORS[i % COLORS.length]);
+      });
       const shapes = trend.current_series?.length ? [{
         type: 'line', x0: 2025.5, x1: 2025.5, y0: 0, y1: 1, xref: 'x', yref: 'paper',
         line: { color: '#8091a7', dash: 'dot', width: 2 },
@@ -2122,12 +2192,12 @@
         x: 2026.1, y: 1.04, xref: 'x', yref: 'paper', text: 'Current students', showarrow: false,
         font: { color: '#40556e', size: 14 },
       }] : [];
-      Plotly.newPlot(id, traces, {
+      Plotly.newPlot(id, [...traces, ...legendTraces], {
         ...layoutBase,
         margin: { ...layoutBase.margin, r: 90 },
         yaxis: { title: trend.current_series?.length ? 'Share of total class %' : 'Share of total grads %', ticksuffix: '%', automargin: true },
         xaxis: { title: 'Graduation year', automargin: true, dtick: trend.current_series?.length ? 2 : 5 },
-        legend: { orientation: 'h', y: 1.16 },
+        legend: { orientation: 'h', y: 1.16, itemwidth: 30 },
         shapes,
         annotations,
       }, plotConfig);
@@ -2203,7 +2273,11 @@
     }
 
     function drawMajorSalary(id) {
-      const rows = (state.data.top_majors || []).filter(r => r.median_salary).sort((a, b) => a.median_salary - b.median_salary);
+      const rows = (state.data.top_majors || [])
+        .filter(r => r.median_salary)
+        .sort((a, b) => b.median_salary - a.median_salary)
+        .slice(0, topNFor(id))
+        .reverse();
       if (!rows.length) return noData(id);
       const horizonLabel = activeHorizonLabel();
       const layout = horizontalLayout(rows, '$');
@@ -2225,7 +2299,7 @@
     }
 
     function drawTopMajorsVolume(id) {
-      const rows = (state.data.top_majors || []).filter(r => r.alumni).slice().reverse();
+      const rows = (state.data.top_majors || []).filter(r => r.alumni).slice(0, topNFor(id)).reverse();
       if (!rows.length) return noData(id);
       Plotly.newPlot(id, [{
         type: 'bar',
@@ -2273,7 +2347,7 @@
     }
 
     function drawEmployerBars(id, clickable = false) {
-      const rows = (state.data.employers?.top || []).slice().reverse();
+      const rows = (state.data.employers?.top || []).slice(0, topNFor(id)).reverse();
       if (!rows.length) return noData(id);
       Plotly.newPlot(id, [{
         type: 'bar',
@@ -2301,7 +2375,7 @@
     function drawEmployerRoles(id, clickable = false) {
       const employerData = state.data.employers || {};
       const drilling = Boolean(employerData.selected_role && (employerData.subroles || []).length);
-      const rows = (drilling ? employerData.subroles || [] : employerData.roles || []).slice().reverse();
+      const rows = (drilling ? employerData.subroles || [] : employerData.roles || []).slice(0, topNFor(id)).reverse();
       if (!rows.length) return noData(id);
       const plotId = `${id}-plot`;
       $(id).innerHTML = drilling
@@ -2336,7 +2410,7 @@
     }
 
     function drawGeo(id, metric) {
-      const rows = (state.data.geography || []).filter(r => metric !== 'median_salary' || r.median_salary).slice().reverse();
+      const rows = (state.data.geography || []).filter(r => metric !== 'median_salary' || r.median_salary).slice(0, topNFor(id)).reverse();
       if (!rows.length) return noData(id);
       const isSalary = metric === 'median_salary';
       const isShare = metric === 'share_pct';
@@ -2359,7 +2433,7 @@
     }
 
     function drawHierarchyTreemap(id, rows, levels, path, onDrill, options = {}) {
-      const nodes = visibleHierarchyRows(rows, levels, path);
+      const nodes = visibleHierarchyRows(rows, levels, path, id);
       if (!nodes.length) return noData(id);
       const domain = options.payDomain ?? treemapPayDomain(nodes);
       const rootTotal = sumRows(rows, 'n');
@@ -2466,7 +2540,7 @@
     }
 
     function drawPostgradFlows(id) {
-      const rows = (state.data.postgrad?.flows || []).filter(r => r.degree_type).slice().reverse();
+      const rows = (state.data.postgrad?.flows || []).filter(r => r.degree_type).slice(0, topNFor(id)).reverse();
       if (!rows.length) return noData(id);
       Plotly.newPlot(id, [{
         type: 'bar',
@@ -2494,7 +2568,7 @@
 
     function drawSimpleBars(id, rows, metric = 'n', color = COLORS[0], options = {}) {
       if (!rows.length) return noData(id);
-      const cleanRows = rows.filter(r => r.label).slice();
+      const cleanRows = rows.filter(r => r.label).slice(0, topNFor(id));
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
@@ -2636,8 +2710,11 @@
       $('content').addEventListener('change', event => {
         const select = event.target.closest('[data-top-n-control]');
         if (!select) return;
-        $('top-n-select').value = select.value;
-        storage.setItem('outcomes.topN', select.value);
+        const value = validTopN(select.value);
+        if (!value) return;
+        const chartId = select.dataset.chartId || chartIdFromTopControl(select.id);
+        state.topNByChart = { ...(state.topNByChart || {}), [chartId]: value };
+        storage.setItem('outcomes.topNByChart', JSON.stringify(state.topNByChart));
         refresh();
       });
     }
@@ -2678,6 +2755,7 @@
       $('api-url').value = configuredApiUrl || savedApiUrl;
       $('api-password').value = storage.getItem('outcomes.apiPassword') || '';
       if (TOP_N_OPTIONS.includes(savedTopN)) $('top-n-select').value = String(savedTopN);
+      state.topNByChart = loadStoredTopNByChart();
       applyDefaultViewForTab(state.tab);
       syncViewToggle();
       syncSelectionMode();
