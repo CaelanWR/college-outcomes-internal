@@ -1419,9 +1419,18 @@ def _employers(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[st
     }
 
 
+def _location_label_expr() -> str:
+    raw = "COALESCE(location, city, 'Unknown')"
+    return (
+        f"REGEXP_REPLACE("
+        f"REGEXP_REPLACE({raw}, '(?i)\\s+non\\s*metropolitan area$', ' non-metro'), "
+        f"'(?i)\\s+metropolitan area$', '')"
+    )
+
+
 def _geography_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
     limit = min(_safe_limit(filters.top_n), 5)
-    location_expr = "REGEXP_REPLACE(COALESCE(location, city, 'Unknown'), '(?i)\\s+(non)?metropolitan area$', '')"
+    location_expr = _location_label_expr()
     return _records_from_query(
         con,
         f"""
@@ -1484,12 +1493,13 @@ def _geography_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> l
 
 def _geography(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
     limit = min(_safe_limit(filters.top_n), 8)
+    location_expr = _location_label_expr()
     return _records_from_query(
         con,
         f"""
         WITH eligible AS (
           SELECT
-            REGEXP_REPLACE(COALESCE(location, city, 'Unknown'), '(?i)\\s+(non)?metropolitan area$', '') AS location,
+            {location_expr} AS location,
             final_weight,
             salary
           FROM slice
