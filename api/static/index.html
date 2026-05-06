@@ -447,7 +447,7 @@
       min-height: 318px;
     }
 
-    .chart.tall { min-height: 460px; }
+    .chart.tall { min-height: 430px; }
 
     .salary-summary {
       display: grid;
@@ -1619,6 +1619,10 @@
       return String(id || '').replace(/-top-n$/, '');
     }
 
+    function chartIsTall(id) {
+      return Boolean($(id)?.classList.contains('tall'));
+    }
+
     function validTopN(value) {
       const numeric = Number(value);
       return TOP_N_OPTIONS.includes(numeric) ? numeric : null;
@@ -2301,7 +2305,7 @@
           hovertemplate: '%{customdata[0]}<br>Revelio %{x:,.0f}<br>Grad coverage %{customdata[1]:.1f}%<extra></extra>',
         },
       ], {
-        ...horizontalLayout(cleanRows.map(row => ({ label: row[labelKey] }))),
+        ...horizontalBarLayout(id, cleanRows.map(row => ({ label: row[labelKey] }))),
         barmode: 'overlay',
         xaxis: { title: 'Completions', automargin: true, rangemode: 'tozero' },
         legend: { orientation: 'h', y: 1.14, x: 0 },
@@ -2608,7 +2612,7 @@
       if (!rows.length) return noData(id);
       const ordered = rows.slice().reverse();
       const horizonLabel = activeHorizonLabel();
-      const layout = horizontalLayout(rows, '$');
+      const layout = horizontalBarLayout(id, rows, '$');
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
@@ -2640,7 +2644,7 @@
         customdata: rows.map(r => shortSchool(r.school_name)),
         marker: { color: COLORS[1] },
         hovertemplate: '%{customdata}<br>%{x:,.0f} alumni<extra></extra>',
-      }], horizontalLayout(rows), plotConfig);
+      }], horizontalBarLayout(id, rows), plotConfig);
     }
 
     function drawSchoolFurtherEdComparison(id) {
@@ -2657,7 +2661,7 @@
         customdata: rows.map(r => shortSchool(r.school_name)),
         marker: { color: COLORS[2] },
         hovertemplate: '%{customdata}<br>%{x:.1f}% with later degree<extra></extra>',
-      }], horizontalLayout(rows, '%'), plotConfig);
+      }], horizontalBarLayout(id, rows, '%'), plotConfig);
     }
 
     function drawComparisonTable(id) {
@@ -2684,7 +2688,7 @@
         .reverse();
       if (!rows.length) return noData(id);
       const horizonLabel = activeHorizonLabel();
-      const layout = horizontalLayout(rows.map(row => ({ label: majorName(row) })), '$');
+      const layout = horizontalBarLayout(id, rows.map(row => ({ label: majorName(row) })), '$');
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
@@ -2720,7 +2724,7 @@
         customdata: rows.map(row => [majorName(row), row.code]),
         marker: { color: COLORS[1] },
         hovertemplate: '%{customdata[0]}<br>CIP %{customdata[1]}<br>%{x:,.0f} alumni<extra></extra>',
-      }], horizontalLayout(rows.map(row => ({ label: majorName(row) }))), plotConfig);
+      }], horizontalBarLayout(id, rows.map(row => ({ label: majorName(row) }))), plotConfig);
     }
 
     function drawMajorCompareFurtherEd(id) {
@@ -2741,7 +2745,7 @@
         customdata: rows.map(row => [majorName(row), row.code]),
         marker: { color: COLORS[2] },
         hovertemplate: '%{customdata[0]}<br>CIP %{customdata[1]}<br>%{x:.1f}% with later degree<extra></extra>',
-      }], horizontalLayout(rows.map(row => ({ label: majorName(row) })), '%'), plotConfig);
+      }], horizontalBarLayout(id, rows.map(row => ({ label: majorName(row) })), '%'), plotConfig);
     }
 
     function drawMajorCompareTable(id) {
@@ -2813,7 +2817,7 @@
         .reverse();
       if (!rows.length) return noData(id);
       const horizonLabel = activeHorizonLabel();
-      const layout = horizontalLayout(rows, '$');
+      const layout = horizontalBarLayout(id, rows, '$');
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
@@ -2845,7 +2849,7 @@
         customdata: rows.map(r => r.title),
         marker: { color: COLORS[3] },
         hovertemplate: '%{customdata}<br>%{x:,.0f} alumni<extra></extra>',
-      }], horizontalLayout(rows), plotConfig);
+      }], horizontalBarLayout(id, rows), plotConfig);
     }
 
     function drawSalaryDistribution(id) {
@@ -2957,7 +2961,7 @@
         customdata: rows.map(r => r.employer),
         marker: { color: COLORS[0] },
         hovertemplate: '%{customdata}<br>%{x:,.0f} alumni<extra></extra>',
-      }], horizontalLayout(rows), plotConfig).then(plot => {
+      }], horizontalBarLayout(id, rows), plotConfig).then(plot => {
         if (!clickable) return;
         plot.on('plotly_click', event => {
           const point = event.points?.[0];
@@ -2995,7 +2999,7 @@
         customdata: rows.map(r => r.role),
         marker: { color: drilling ? COLORS[4] : COLORS[2] },
         hovertemplate: '%{customdata}<br>%{x:,.0f} alumni<extra></extra>',
-      }], horizontalLayout(rows.map(r => ({ label: r.role }))), plotConfig).then(plot => {
+      }], horizontalBarLayout(id, rows.map(r => ({ label: r.role }))), plotConfig).then(plot => {
         if (!clickable || drilling) return;
         plot.on('plotly_click', event => {
           const point = event.points?.[0];
@@ -3022,7 +3026,7 @@
         customdata: rows.map(r => titleCase(r.location)),
         marker: { color: isSalary ? COLORS[1] : COLORS[0] },
         hovertemplate: isSalary ? '%{customdata}<br>%{x:$,.0f}<extra></extra>' : (isShare ? '%{customdata}<br>%{x:.1f}%<extra></extra>' : '%{customdata}<br>%{x:,.0f}<extra></extra>'),
-      }], horizontalLayout(rows, isSalary ? '$' : (isShare ? '%' : '')), plotConfig);
+      }], horizontalBarLayout(id, rows, isSalary ? '$' : (isShare ? '%' : '')), plotConfig);
     }
 
     function drawRoleBars(id, rows, title) {
@@ -3150,7 +3154,7 @@
         customdata: rows.map(r => r.degree_type),
         marker: { color: rows.map(r => r.degree_type === 'No further education' ? '#94a3b8' : COLORS[0]) },
         hovertemplate: '%{customdata}<br>%{x:.1f}%<extra></extra>',
-      }], horizontalLayout(rows, '%'), plotConfig).then(plot => {
+      }], horizontalBarLayout(id, rows, '%'), plotConfig).then(plot => {
         plot.on('plotly_click', event => {
           const point = event.points?.[0];
           const label = point?.customdata || point?.y;
@@ -3181,13 +3185,17 @@
             : color,
         },
         hovertemplate: '%{customdata}<br>%{x:,.0f}<extra></extra>',
-      }], horizontalLayout(cleanRows), plotConfig).then(plot => {
+      }], horizontalBarLayout(id, cleanRows), plotConfig).then(plot => {
         if (!options.onClick) return;
         plot.on('plotly_click', event => {
           const label = event.points?.[0]?.customdata || event.points?.[0]?.y;
           if (label) options.onClick(label);
         });
       });
+    }
+
+    function horizontalBarLayout(id, rows, prefix = '', options = {}) {
+      return horizontalLayout(rows, prefix, { ...options, tall: options.tall ?? chartIsTall(id) });
     }
 
     function horizontalLayout(rows, prefix = '', options = {}) {
@@ -3198,7 +3206,8 @@
         ? Math.min(230, Math.max(112, longest * 4.8))
         : Math.min(360, Math.max(148, longest * 7));
       const rightMargin = narrow ? 42 : 96;
-      const dynamicHeight = Math.max(narrow ? 360 : 330, Math.min(760, 142 + rowCount * (narrow ? 42 : 34)));
+      const minHeight = options.tall ? (narrow ? 430 : 410) : (narrow ? 360 : 330);
+      const dynamicHeight = Math.max(minHeight, Math.min(760, 142 + rowCount * (narrow ? 42 : 34)));
       return {
         ...layoutBase,
         height: options.height || dynamicHeight,
