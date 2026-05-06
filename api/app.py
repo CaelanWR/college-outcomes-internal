@@ -406,6 +406,21 @@ def _where(filters: QueryRequest, *, include_horizon: bool = True, include_postg
     return (" WHERE " + " AND ".join(clauses)) if clauses else "", params
 
 
+def _current_students_applicable(filters: QueryRequest) -> bool:
+    """Current-student rows only support profile/student filters.
+
+    Outcome filters such as "later degree = MBA" describe observed alumni
+    outcomes, so current students cannot honestly satisfy them.
+    """
+    if not filters.include_current_students:
+        return False
+    if filters.postgrad.later_degree_type:
+        return False
+    if filters.postgrad.no_further_education is not None:
+        return False
+    return True
+
+
 def _safe_limit(value: int) -> int:
     return min(max(value, 5), 50)
 
@@ -458,6 +473,8 @@ def _create_current_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest)
 
 
 def _create_current_slice_table(con: duckdb.DuckDBPyConnection, filters: QueryRequest, table_name: str) -> bool:
+    if not _current_students_applicable(filters):
+        return False
     if not _dataset_exists("current_students_fact"):
         return False
     current_columns = _dataset_columns("current_students_fact")
@@ -1255,7 +1272,7 @@ def _salary_distribution_by_entity(con: duckdb.DuckDBPyConnection, filters: Quer
 
 
 def _current_student_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
-    if not filters.include_current_students or not _dataset_exists("current_students_fact"):
+    if not _current_students_applicable(filters) or not _dataset_exists("current_students_fact"):
         return []
     if not _create_current_slice(con, filters):
         return []
