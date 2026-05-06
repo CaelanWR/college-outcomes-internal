@@ -1564,8 +1564,8 @@
       const employerData = state.data.employers || {};
       const selectedRole = employerData.selected_role && (employerData.subroles || []).length ? employerData.selected_role : '';
       const roleTitle = selectedRole
-        ? `Subroles within ${escapeHtml(selectedRole)}`
-        : `Top Roles at ${escapeHtml(employerData.selected_employer || 'Selected Employer')}`;
+        ? `Detailed Roles within ${escapeHtml(selectedRole)}`
+        : `Broad Roles at ${escapeHtml(employerData.selected_employer || 'Selected Employer')}`;
       if (state.viewMode === 'snapshot') {
         $('content').innerHTML = [
           card('Top Career Employers', 'emp-top', 5, true),
@@ -2243,7 +2243,7 @@
       if (!rows.length) return noData(id);
       const plotId = `${id}-plot`;
       $(id).innerHTML = drilling
-        ? `<div class="drill-toolbar"><button id="${id}-back" class="btn secondary" type="button">All roles</button></div><div id="${plotId}" class="chart"></div>`
+        ? `<div class="drill-toolbar"><button id="${id}-back" class="btn secondary" type="button">Broad roles</button></div><div id="${plotId}" class="chart"></div>`
         : `<div id="${plotId}" class="chart"></div>`;
       if (drilling) {
         $(`${id}-back`).addEventListener('click', () => {

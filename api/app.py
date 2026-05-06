@@ -1381,13 +1381,13 @@ def _employers(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[st
             """,
             [employer, employer, EMPLOYER_ROW_MIN_WEIGHT],
         )
-        selected_role = filters.selected_employer_role or (roles[0]["role"] if roles else None)
+        selected_role = filters.selected_employer_role
         if selected_role:
             subroles = _records_from_query(
                 con,
                 f"""
                 SELECT
-                  COALESCE(role_k150_v3, title_raw, 'Unknown subrole') AS role,
+                  COALESCE(role_k150_v3, title_raw, 'Unknown detailed role') AS role,
                   ROUND(SUM(final_weight), 2) AS n,
                   ROUND(100.0 * SUM(final_weight) / NULLIF((
                     SELECT SUM(final_weight)
