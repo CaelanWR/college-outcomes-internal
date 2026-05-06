@@ -2065,11 +2065,27 @@
       }, plotConfig);
     }
 
+    function legendLabel(name, maxLength = 26) {
+      const cleaned = String(name || '')
+        .replace(', General', '')
+        .replace('Political Science and Government', 'Political Science & Gov.')
+        .replace('English Language and Literature', 'English Lang. & Lit.')
+        .replace('Business Administration, Management and Operations', 'Business Admin.')
+        .replace('Computer and Information Sciences', 'Computer & Info Sci.')
+        .replace('Communication, Journalism, and Related Programs', 'Communications')
+        .replace('Mathematics and Statistics', 'Math & Statistics')
+        .replace('Economics, General', 'Economics')
+        .replace(/\s+and\s+/g, ' & ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength - 3).trim()}...` : cleaned;
+    }
+
     function legendDotTrace(name, color) {
       return {
         type: 'scatter',
         mode: 'markers',
-        name,
+        name: legendLabel(name),
         x: [null],
         y: [null],
         marker: { color, size: 9 },
