@@ -347,17 +347,23 @@
     .treemap-card {
       padding: 0;
       overflow: hidden;
+      min-width: 0;
       border-color: var(--tm-line);
       box-shadow: var(--tm-shadow);
     }
     .treemap-card .card-head {
-      padding: 18px 18px 0;
+      padding: 18px 20px 8px;
+      min-width: 0;
     }
     .treemap-card .card-top {
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
       gap: 12px;
+      min-width: 0;
+    }
+    .treemap-card .card-top > div:first-child {
+      min-width: 0;
     }
     .treemap-card .card-head h3 {
       margin: 0 0 5px;
@@ -387,10 +393,15 @@
       display: none;
     }
     .treemap-body {
-      padding: 0 12px 14px;
+      padding: 0 18px 18px;
+      min-width: 0;
+      overflow: hidden;
     }
     .treemap-plot {
-      height: clamp(430px, 54vh, 650px);
+      width: 100%;
+      min-width: 0;
+      height: clamp(380px, 48vh, 540px);
+      overflow: hidden;
     }
     .legend-wrap {
       margin: 6px 6px 0;
@@ -497,7 +508,10 @@
     }
 
     .chart .svg-container,
-    .treemap-plot .svg-container {
+    .treemap-plot .plot-container,
+    .treemap-plot .svg-container,
+    .treemap-plot .main-svg {
+      width: 100% !important;
       max-width: 100% !important;
     }
 
@@ -2100,8 +2114,8 @@
           ? `${hierarchyTrail(state.industryTreePath)}. Filtered by role: ${hierarchyTrail(state.roleTreePath)}`
           : `${hierarchyTrail(state.industryTreePath)}. Click an industry to zoom.`;
         $('content').innerHTML = [
-          treemapCard('Role Treemap', 'role-tree', roleSubtitle, state.roleTreePath, 'roleTree', 6),
-          treemapCard('Industry Treemap', 'industry-tree', industrySubtitle, state.industryTreePath, 'industryTree', 6),
+          treemapCard('Role Treemap', 'role-tree', roleSubtitle, state.roleTreePath, 'roleTree', 12),
+          treemapCard('Industry Treemap', 'industry-tree', industrySubtitle, state.industryTreePath, 'industryTree', 12),
         ].join('');
         drawHierarchyTreemap('role-tree', roleContextRows, roleLevels, state.roleTreePath, node => {
           if (!node.drillable) return;
@@ -3036,6 +3050,9 @@
     function drawHierarchyTreemap(id, rows, levels, path, onDrill, options = {}) {
       const nodes = visibleHierarchyRows(rows, levels, path, id);
       if (!nodes.length) return noData(id);
+      const plotNode = $(id);
+      const plotHeight = Math.max(360, Math.round(plotNode?.clientHeight || 460));
+      const plotWidth = Math.max(320, Math.round(plotNode?.clientWidth || 680));
       const domain = options.payDomain ?? treemapPayDomain(nodes);
       const rootTotal = sumRows(rows, 'n');
       const parentTotal = sumRows(filterRowsByHierarchyPath(rows, levels, path), 'n') || rootTotal;
@@ -3065,10 +3082,11 @@
         ...layoutBase,
         paper_bgcolor: '#FFFFFF',
         plot_bgcolor: '#FFFFFF',
-        font: { family: '"Source Sans 3", ui-sans-serif, system-ui, sans-serif', color: '#2D426A', size: 14 },
-        height: 500,
-        margin: { l: 6, r: 6, t: 8, b: 8 },
-        uniformtext: { minsize: 12, mode: 'hide' },
+        font: { family: '"Source Sans 3", ui-sans-serif, system-ui, sans-serif', color: '#2D426A', size: 13 },
+        width: plotWidth,
+        height: plotHeight,
+        margin: { l: 0, r: 0, t: 0, b: 0 },
+        uniformtext: { minsize: 11, mode: 'hide' },
       }, plotConfig).then(plot => {
         plot.on('plotly_click', event => {
           const node = nodes[event.points?.[0]?.pointNumber];
