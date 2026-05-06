@@ -493,6 +493,26 @@
       min-height: 300px;
     }
 
+    .postgrad-detail-stack {
+      display: grid;
+      gap: 18px;
+    }
+
+    .postgrad-detail-panel {
+      min-width: 0;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(22,50,74,0.08);
+    }
+
+    .postgrad-detail-panel:last-child {
+      padding-bottom: 0;
+      border-bottom: 0;
+    }
+
+    .postgrad-detail-panel .chart {
+      min-height: 270px;
+    }
+
     .drill-toolbar {
       display: flex;
       justify-content: flex-end;
@@ -2295,14 +2315,30 @@
       if (state.viewMode === 'snapshot') {
         const cards = [
           card('Further Education Paths', 'postgrad-flow', showPrograms ? 4 : 6, true, { topControl: true }),
-          card(schoolTitle, 'postgrad-schools', showPrograms ? 4 : 6, true, { topControl: true }),
         ];
         if (showPrograms) {
-          cards.push(card(programTitle, 'postgrad-programs', 4, true, { topControl: true }));
+          cards.push(`
+            <div class="card span-8">
+              <div class="postgrad-detail-stack">
+                <div class="postgrad-detail-panel">
+                  <div class="card-title-row"><h3>${schoolTitle}</h3><div class="card-controls">${topNControl('postgrad-schools-top-n')}</div></div>
+                  <div id="postgrad-schools" class="chart"></div>
+                </div>
+                <div class="postgrad-detail-panel">
+                  <div class="card-title-row"><h3>${programTitle}</h3><div class="card-controls">${topNControl('postgrad-programs-top-n')}</div></div>
+                  <div id="postgrad-programs" class="chart"></div>
+                </div>
+              </div>
+            </div>
+          `);
+        } else {
+          cards.push(card(schoolTitle, 'postgrad-schools', 6, true, { topControl: true }));
         }
         $('content').innerHTML = cards.join('');
         drawPostgradFlows('postgrad-flow');
         drawSimpleBars('postgrad-schools', state.data.postgrad?.schools || [], 'n', '#225ea8', {
+          compressed: true,
+          layoutOptions: { height: showPrograms ? 280 : undefined, leftMargin: showPrograms ? 310 : undefined, rightMargin: 92, yAutoMargin: false },
           activeLabel: selectedSchool,
           onClick: label => {
             state.selectedPostgradSchool = state.selectedPostgradSchool === label ? null : label;
@@ -2311,6 +2347,8 @@
           },
         });
         if (showPrograms) drawSimpleBars('postgrad-programs', state.data.postgrad?.programs || [], 'n', '#22a06b', {
+          compressed: true,
+          layoutOptions: { height: 280, leftMargin: 310, rightMargin: 92, yAutoMargin: false },
           activeLabel: selectedProgram,
           onClick: label => {
             state.selectedPostgradProgram = state.selectedPostgradProgram === label ? null : label;
@@ -2336,6 +2374,8 @@
           },
         });
         drawSimpleBars('postgrad-schools', state.data.postgrad?.schools || [], 'n', '#225ea8', {
+          compressed: true,
+          layoutOptions: { leftMargin: 250, rightMargin: 86, yAutoMargin: false },
           activeLabel: selectedSchool,
           onClick: label => {
             state.selectedPostgradSchool = state.selectedPostgradSchool === label ? null : label;
@@ -3380,25 +3420,33 @@
     function drawSimpleBars(id, rows, metric = 'n', color = COLORS[0], options = {}) {
       if (!rows.length) return noData(id);
       const cleanRows = rows.filter(r => r.label).slice(0, topNFor(id));
+      const rawValues = cleanRows.map(r => Number(r[metric] || 0));
+      const xValues = options.compressed
+        ? rawValues.map(value => Math.sqrt(Math.max(0, value)))
+        : rawValues;
+      const layout = horizontalBarLayout(id, cleanRows, '', options.layoutOptions || {});
+      const xaxis = options.compressed
+        ? { ...layout.xaxis, showticklabels: false, showgrid: false, title: '', zeroline: false }
+        : layout.xaxis;
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
         y: wrappedLabels(cleanRows, 'label'),
-        x: cleanRows.map(r => r[metric]),
-        text: cleanRows.map(r => num(r[metric])),
+        x: xValues,
+        text: rawValues.map(value => num(value)),
         textposition: 'outside',
         cliponaxis: false,
-        customdata: cleanRows.map(r => r.label),
+        customdata: cleanRows.map((r, index) => [r.label, rawValues[index]]),
         marker: {
           color: options.activeLabel
             ? cleanRows.map(row => row.label === options.activeLabel ? '#f97316' : color)
             : color,
         },
-        hovertemplate: '%{customdata}<br>%{x:,.0f}<extra></extra>',
-      }], horizontalBarLayout(id, cleanRows), plotConfig).then(plot => {
+        hovertemplate: '%{customdata[0]}<br>%{customdata[1]:,.0f}<extra></extra>',
+      }], { ...layout, xaxis }, plotConfig).then(plot => {
         if (!options.onClick) return;
         plot.on('plotly_click', event => {
-          const label = event.points?.[0]?.customdata || event.points?.[0]?.y;
+          const label = event.points?.[0]?.customdata?.[0] || event.points?.[0]?.y;
           if (label) options.onClick(label);
         });
       });
