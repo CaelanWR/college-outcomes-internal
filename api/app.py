@@ -4,7 +4,9 @@ import hmac
 import json
 import math
 import os
+import threading
 from decimal import Decimal
+from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
@@ -23,6 +25,10 @@ MIN_CELL_WEIGHT = float(os.environ.get("MIN_CELL_WEIGHT", "0"))
 SALARY_MIN_WEIGHT = float(os.environ.get("SALARY_MIN_WEIGHT", "0"))
 EMPLOYER_ROW_MIN_WEIGHT = float(os.environ.get("EMPLOYER_ROW_MIN_WEIGHT", str(MIN_CELL_WEIGHT)))
 GEOGRAPHY_ROW_MIN_WEIGHT = float(os.environ.get("GEOGRAPHY_ROW_MIN_WEIGHT", str(MIN_CELL_WEIGHT)))
+DUCKDB_THREADS = int(os.environ.get("OUTCOMES_DUCKDB_THREADS", "1"))
+DUCKDB_MEMORY_LIMIT = os.environ.get("OUTCOMES_DUCKDB_MEMORY_LIMIT", "1200MB")
+DUCKDB_TEMP_DIR = Path(os.environ.get("OUTCOMES_DUCKDB_TEMP_DIR", "/tmp/duckdb")).expanduser()
+QUERY_SEMAPHORE = threading.BoundedSemaphore(int(os.environ.get("OUTCOMES_QUERY_CONCURRENCY", "1")))
 APP_PASSWORD = os.environ.get("OUTCOMES_APP_PASSWORD")
 ALLOWED_ORIGINS = [
     origin.strip()
@@ -228,6 +234,22 @@ def _source_star_without_profile(columns: frozenset[str]) -> str:
     return "* EXCLUDE (profile_weight)" if "profile_weight" in columns else "*"
 
 
+def _project_columns(columns: frozenset[str], names: list[str]) -> str:
+    return ",\n                ".join(
+        name if name in columns else f"NULL AS {name}"
+        for name in dict.fromkeys(names)
+    )
+
+
+@contextmanager
+def _query_slot():
+    QUERY_SEMAPHORE.acquire()
+    try:
+        yield
+    finally:
+        QUERY_SEMAPHORE.release()
+
+
 def _manifest() -> dict[str, Any]:
     path = _platform_root() / "platform_manifest.json"
     if not path.exists():
@@ -239,9 +261,12 @@ def _manifest() -> dict[str, Any]:
 
 
 def _connect() -> duckdb.DuckDBPyConnection:
+    DUCKDB_TEMP_DIR.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(database=":memory:")
     con.execute("SET enable_progress_bar=false")
-    con.execute("SET threads=4")
+    con.execute(f"SET threads={max(1, DUCKDB_THREADS)}")
+    con.execute(f"SET memory_limit='{DUCKDB_MEMORY_LIMIT.replace(chr(39), '')}'")
+    con.execute(f"SET temp_directory='{str(DUCKDB_TEMP_DIR).replace(chr(39), '')}'")
     return con
 
 
@@ -438,50 +463,25 @@ def _create_cohort_slice_table(con: duckdb.DuckDBPyConnection, filters: QueryReq
 def _static_options() -> dict[str, Any]:
     con = _connect()
     try:
-        base_columns = _dataset_columns("base_fact")
-        profile_weight_sql = _cohort_profile_weight_sql(base_columns)
-        source_star = _source_star_without_profile(base_columns)
-        con.execute(
-            f"""
-            CREATE TEMP TABLE static_cohort AS
-            SELECT *
-            FROM (
-              SELECT
-                {source_star},
-                {profile_weight_sql} AS profile_weight,
-                ROW_NUMBER() OVER (
-                  PARTITION BY person_key, unitid, degree, cip2, cip4, cip6, grad_year
-                  ORDER BY CASE horizon
-                    WHEN '1yr' THEN 1
-                    WHEN '5yr' THEN 2
-                    WHEN '10yr' THEN 3
-                    WHEN 'early_2025' THEN 4
-                    ELSE 5
-                  END
-                ) AS cohort_rank
-              FROM read_parquet(?)
-            )
-            WHERE cohort_rank = 1
-            """,
-            [_dataset_glob("base_fact")],
-        )
         schools = _records_from_query(
             con,
             """
-            SELECT unitid, MAX(school_name) AS name, ROUND(SUM(profile_weight), 2) AS alumni
-            FROM static_cohort
+            SELECT unitid, MAX(school_name) AS name, COUNT(*) AS alumni
+            FROM read_parquet(?)
             GROUP BY unitid
             ORDER BY name
             """,
+            [_dataset_glob("base_fact")],
         )
         degree_rows = _records_from_query(
             con,
             """
-            SELECT degree, ROUND(SUM(profile_weight), 2) AS alumni
-            FROM static_cohort
+            SELECT degree, COUNT(*) AS alumni
+            FROM read_parquet(?)
             GROUP BY degree
             ORDER BY alumni DESC
             """,
+            [_dataset_glob("base_fact")],
         )
         grad_years = [
             int(row["grad_year"])
@@ -543,118 +543,135 @@ def health() -> dict[str, Any]:
 
 @app.post("/api/options")
 def options(filters: QueryRequest, _: None = Depends(require_internal_password)) -> dict[str, Any]:
-    cip_col = _cip_col(filters)
-    limit = 500
-    con = _connect()
-    try:
-        base_columns = _dataset_columns("base_fact")
-        profile_weight_sql = _cohort_profile_weight_sql(base_columns)
-        source_star = _source_star_without_profile(base_columns)
-        where_sql, params = _where(filters, include_horizon=False, include_postgrad=False)
-        con.execute(
-            f"""
-            CREATE TEMP TABLE option_cohort AS
-            SELECT *
-            FROM (
-              SELECT
-                {source_star},
-                {profile_weight_sql} AS profile_weight,
-                ROW_NUMBER() OVER (
-                  PARTITION BY person_key, unitid, degree, cip2, cip4, cip6, grad_year
-                  ORDER BY CASE horizon
-                    WHEN '1yr' THEN 1
-                    WHEN '5yr' THEN 2
-                    WHEN '10yr' THEN 3
-                    WHEN 'early_2025' THEN 4
-                    ELSE 5
-                  END
-                ) AS cohort_rank
-              FROM read_parquet(?)
-              {where_sql}
+    with _query_slot():
+        cip_col = _cip_col(filters)
+        limit = 500
+        con = _connect()
+        try:
+            base_columns = _dataset_columns("base_fact")
+            profile_weight_sql = _cohort_profile_weight_sql(base_columns)
+            option_projection = _project_columns(
+                base_columns,
+                [
+                    "person_key",
+                    "unitid",
+                    "degree",
+                    "cip2",
+                    "cip4",
+                    "cip6",
+                    "grad_year",
+                    "horizon",
+                    "major_title",
+                    "gender",
+                    "race_ethnicity",
+                    "later_degree_type",
+                ],
             )
-            WHERE cohort_rank = 1
-            """,
-            [_dataset_glob("base_fact"), *params],
-        )
-        majors = _records_from_query(
-            con,
-            f"""
-            WITH major_counts AS (
-              SELECT
-                {cip_col} AS code,
-                MAX(major_title) AS title,
-                ROUND(SUM(profile_weight), 2) AS alumni
-              FROM option_cohort
-              WHERE {cip_col} IS NOT NULL
-              GROUP BY {cip_col}
-            )
-            SELECT code, COALESCE(title, code) AS title, alumni
-            FROM major_counts
-            WHERE alumni > ?
-            ORDER BY alumni DESC, title
-            LIMIT {limit}
-            """,
-            [MIN_CELL_WEIGHT],
-        )
-        demographics = {
-            "gender": [
-                row["value"]
-                for row in _records_from_query(
-                    con,
-                    """
-                    SELECT gender AS value, SUM(profile_weight) AS n
-                    FROM option_cohort
-                    WHERE gender IS NOT NULL
-                      AND gender <> ''
-                      AND LOWER(TRIM(gender)) NOT IN ('empty', 'unknown')
-                    GROUP BY gender
-                    ORDER BY n DESC
-                    """,
+            where_sql, params = _where(filters, include_horizon=False, include_postgrad=False)
+            con.execute(
+                f"""
+                CREATE TEMP TABLE option_cohort AS
+                SELECT *
+                FROM (
+                  SELECT
+                    {option_projection},
+                    {profile_weight_sql} AS profile_weight,
+                    ROW_NUMBER() OVER (
+                      PARTITION BY person_key, unitid, degree, cip2, cip4, cip6, grad_year
+                      ORDER BY CASE horizon
+                        WHEN '1yr' THEN 1
+                        WHEN '5yr' THEN 2
+                        WHEN '10yr' THEN 3
+                        WHEN 'early_2025' THEN 4
+                        ELSE 5
+                      END
+                    ) AS cohort_rank
+                  FROM read_parquet(?)
+                  {where_sql}
                 )
-            ],
-            "race_ethnicity": [
-                row["value"]
-                for row in _records_from_query(
-                    con,
-                    """
-                    SELECT race_ethnicity AS value, SUM(profile_weight) AS n
-                    FROM option_cohort
-                    WHERE race_ethnicity IS NOT NULL
-                      AND race_ethnicity <> ''
-                      AND LOWER(TRIM(race_ethnicity)) NOT IN ('empty', 'unknown')
-                    GROUP BY race_ethnicity
-                    ORDER BY n DESC
-                    """,
-                )
-            ],
-        }
-        later_degrees = [
-            row["later_degree_type"]
-            for row in _records_from_query(
-                con,
-                """
-                SELECT later_degree_type, SUM(profile_weight) AS n
-                FROM option_cohort
-                WHERE later_degree_type IS NOT NULL AND later_degree_type <> ''
-                GROUP BY later_degree_type
-                ORDER BY n DESC
+                WHERE cohort_rank = 1
                 """,
+                [_dataset_glob("base_fact"), *params],
             )
-        ]
-        static = _static_options()
-        return {
-            **static,
-            "major_options": majors,
-            "demographics": demographics,
-            "later_degrees": later_degrees,
-            "meta": {
-                "data_version": _manifest().get("version"),
-                "min_cell_weight": MIN_CELL_WEIGHT,
-                "salary_min_weight": SALARY_MIN_WEIGHT,
-            },
-        }
-    finally:
-        con.close()
+            majors = _records_from_query(
+                con,
+                f"""
+                WITH major_counts AS (
+                  SELECT
+                    {cip_col} AS code,
+                    MAX(major_title) AS title,
+                    ROUND(SUM(profile_weight), 2) AS alumni
+                  FROM option_cohort
+                  WHERE {cip_col} IS NOT NULL
+                  GROUP BY {cip_col}
+                )
+                SELECT code, COALESCE(title, code) AS title, alumni
+                FROM major_counts
+                WHERE alumni > ?
+                ORDER BY alumni DESC, title
+                LIMIT {limit}
+                """,
+                [MIN_CELL_WEIGHT],
+            )
+            demographics = {
+                "gender": [
+                    row["value"]
+                    for row in _records_from_query(
+                        con,
+                        """
+                        SELECT gender AS value, SUM(profile_weight) AS n
+                        FROM option_cohort
+                        WHERE gender IS NOT NULL
+                          AND gender <> ''
+                          AND LOWER(TRIM(gender)) NOT IN ('empty', 'unknown')
+                        GROUP BY gender
+                        ORDER BY n DESC
+                        """,
+                    )
+                ],
+                "race_ethnicity": [
+                    row["value"]
+                    for row in _records_from_query(
+                        con,
+                        """
+                        SELECT race_ethnicity AS value, SUM(profile_weight) AS n
+                        FROM option_cohort
+                        WHERE race_ethnicity IS NOT NULL
+                          AND race_ethnicity <> ''
+                          AND LOWER(TRIM(race_ethnicity)) NOT IN ('empty', 'unknown')
+                        GROUP BY race_ethnicity
+                        ORDER BY n DESC
+                        """,
+                    )
+                ],
+            }
+            later_degrees = [
+                row["later_degree_type"]
+                for row in _records_from_query(
+                    con,
+                    """
+                    SELECT later_degree_type, SUM(profile_weight) AS n
+                    FROM option_cohort
+                    WHERE later_degree_type IS NOT NULL AND later_degree_type <> ''
+                    GROUP BY later_degree_type
+                    ORDER BY n DESC
+                    """,
+                )
+            ]
+            static = _static_options()
+            return {
+                **static,
+                "major_options": majors,
+                "demographics": demographics,
+                "later_degrees": later_degrees,
+                "meta": {
+                    "data_version": _manifest().get("version"),
+                    "min_cell_weight": MIN_CELL_WEIGHT,
+                    "salary_min_weight": SALARY_MIN_WEIGHT,
+                },
+            }
+        finally:
+            con.close()
 
 
 def _overview(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
@@ -2045,40 +2062,41 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
 
 @app.post("/api/dashboard")
 def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password)) -> dict[str, Any]:
-    con = _connect()
-    try:
-        _create_slice(con, filters)
-        return {
-            "meta": {
-                "data_version": _manifest().get("version"),
-                "min_cell_weight": MIN_CELL_WEIGHT,
-                "salary_min_weight": SALARY_MIN_WEIGHT,
-                "partial_horizon": filters.horizon == "early_2025",
-                "filters": filters.model_dump(),
-            },
-            "overview": _overview(con),
-            "salary_trend": _salary_trend(con, filters),
-            "alumni_trend": _alumni_trend(con, filters),
-            "salary_trend_by_school": _salary_trend_by_school(con, filters),
-            "alumni_trend_by_school": _alumni_trend_by_school(con, filters) if filters.compare_mode else [],
-            "current_student_trend": _current_student_trend(con, filters),
-            "school_comparison": _school_comparison(con),
-            "top_majors": _top_majors(con, filters),
-            "major_trend": _major_trend(con, filters, filters.include_current_students),
-            "employers": _employers(con, filters),
-            "employer_trend": _employer_trend(con, filters),
-            "geography": _geography(con, filters),
-            "geography_trend": _geography_trend(con, filters),
-            "roles": _roles(con, filters),
-            "role_trend": _role_trend(con, filters),
-            "coverage": _coverage(con, filters),
-            "demographics": _demographics(con),
-            "demographic_trend": _demographic_trend(con, filters),
-            "postgrad": _postgrad(con, filters),
-            "postgrad_trend": _postgrad_trend(con, filters),
-        }
-    finally:
-        con.close()
+    with _query_slot():
+        con = _connect()
+        try:
+            _create_slice(con, filters)
+            return {
+                "meta": {
+                    "data_version": _manifest().get("version"),
+                    "min_cell_weight": MIN_CELL_WEIGHT,
+                    "salary_min_weight": SALARY_MIN_WEIGHT,
+                    "partial_horizon": filters.horizon == "early_2025",
+                    "filters": filters.model_dump(),
+                },
+                "overview": _overview(con),
+                "salary_trend": _salary_trend(con, filters),
+                "alumni_trend": _alumni_trend(con, filters),
+                "salary_trend_by_school": _salary_trend_by_school(con, filters),
+                "alumni_trend_by_school": _alumni_trend_by_school(con, filters) if filters.compare_mode else [],
+                "current_student_trend": _current_student_trend(con, filters),
+                "school_comparison": _school_comparison(con),
+                "top_majors": _top_majors(con, filters),
+                "major_trend": _major_trend(con, filters, filters.include_current_students),
+                "employers": _employers(con, filters),
+                "employer_trend": _employer_trend(con, filters),
+                "geography": _geography(con, filters),
+                "geography_trend": _geography_trend(con, filters),
+                "roles": _roles(con, filters),
+                "role_trend": _role_trend(con, filters),
+                "coverage": _coverage(con, filters),
+                "demographics": _demographics(con),
+                "demographic_trend": _demographic_trend(con, filters),
+                "postgrad": _postgrad(con, filters),
+                "postgrad_trend": _postgrad_trend(con, filters),
+            }
+        finally:
+            con.close()
 
 
 @app.get("/", include_in_schema=False)
