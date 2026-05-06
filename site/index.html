@@ -742,6 +742,69 @@
       display: none !important;
     }
 
+    .major-picker {
+      width: 100%;
+      max-height: 238px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(245,248,252,0.96);
+      padding: 8px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.85);
+    }
+
+    .major-picker-head {
+      position: sticky;
+      top: -8px;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 6px 4px 8px;
+      background: rgba(245,248,252,0.98);
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .major-picker-clear {
+      border: 0;
+      background: transparent;
+      color: #225ea8;
+      cursor: pointer;
+      font-size: 0.78rem;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+
+    .major-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 8px 7px;
+      border-radius: 10px;
+      color: var(--ink);
+      font-size: 0.88rem;
+      font-weight: 700;
+      line-height: 1.22;
+      text-transform: none;
+      letter-spacing: 0;
+      cursor: pointer;
+    }
+
+    .major-option:hover { background: rgba(34,94,168,0.07); }
+
+    .major-option input {
+      width: auto;
+      min-height: 0;
+      margin-top: 2px;
+      accent-color: #225ea8;
+      box-shadow: none;
+    }
+
     .metric {
       background: linear-gradient(180deg, #ffffff, #f5f9fd);
       border: 1px solid rgba(22,50,74,0.08);
@@ -906,7 +969,8 @@
         </div>
         <div class="control control-wide compare-only major-compare-only">
           <label>Comparison Majors</label>
-          <select id="compare-major-select" multiple></select>
+          <select id="compare-major-select" class="hidden-control" multiple aria-hidden="true" tabindex="-1"></select>
+          <div id="compare-major-picker" class="major-picker"></div>
         </div>
         <div class="control">
           <label>CIP Level</label>
@@ -1235,6 +1299,29 @@
       rows.forEach(row => select.appendChild(option(getLabel(row), getValue(row), selectedValuesSet.has(String(getValue(row))))));
     }
 
+    function renderCompareMajorPicker(rows, selectedSet = new Set()) {
+      const picker = $('compare-major-picker');
+      if (!picker) return;
+      const safeRows = rows || [];
+      const count = selectedValues($('compare-major-select')).length;
+      picker.innerHTML = `
+        <div class="major-picker-head">
+          <span>${num(count)} selected</span>
+          <button type="button" class="major-picker-clear" data-clear-compare-majors>Clear</button>
+        </div>
+        ${safeRows.map(row => {
+          const value = String(row.code);
+          const label = `${row.title} (${row.code})`;
+          return `
+            <label class="major-option">
+              <input type="checkbox" data-compare-major value="${escapeHtml(value)}" ${selectedSet.has(value) ? 'checked' : ''}>
+              <span>${escapeHtml(label)}</span>
+            </label>
+          `;
+        }).join('')}
+      `;
+    }
+
     function populateStaticControls(options) {
       const defaultSchool = options.schools.find(s => /Columbia University in the City of New York/i.test(s.name)) || options.schools[0];
       const existingPrimary = $('school-select').value || defaultSchool?.unitid || '';
@@ -1298,6 +1385,7 @@
         $('major-select').appendChild(option(label, row.code, keepPrevious && previous === row.code));
       });
       populateSelect($('compare-major-select'), options.major_options || [], row => `${row.title} (${row.code})`, row => row.code, existingCompareMajors);
+      renderCompareMajorPicker(options.major_options || [], existingCompareMajors);
     }
 
     async function loadOptions(preserveMajor = true) {
@@ -1683,24 +1771,24 @@
             metric(entities, num(rows.length), 4),
             metric('Alumni', num(o.alumni), 4),
             metric('Weighted Median Salary', money(o.median_salary), 4),
-            card(`Median Salary by ${entity} (${salaryHorizon})`, 'compare-salary', 7, true, { topControl: state.selectionMode === 'major_compare' }),
-            card(`Salary Distribution (${salaryHorizon})`, 'salary-distribution', 5, true),
+            card(`Salary Distributions by ${entity} (${salaryHorizon})`, 'compare-salary-distribution', 12, true, { topControl: true }),
+            card(`Median Salary by ${entity} (${salaryHorizon})`, 'compare-salary', 6, true, { topControl: state.selectionMode === 'major_compare' }),
             card(`${entity} Salary Table`, 'compare-table', 12),
           ].join('');
+          drawCompareSalaryDistribution('compare-salary-distribution');
           drawCompareSalary('compare-salary');
-          drawSalaryDistribution('salary-distribution');
           drawCompareTable('compare-table');
         } else {
           $('content').innerHTML = [
             metric(entities, num(rows.length), 4),
             metric('Alumni', num(o.alumni), 4),
             metric('Weighted Median Salary', money(o.median_salary), 4),
-            card(`Salary Trend by ${entity} (${salaryHorizon})`, 'compare-salary-trend', 7, true, { topControl: state.selectionMode === 'major_compare' }),
-            card(`Salary Distribution (${salaryHorizon})`, 'salary-distribution', 5, true),
+            card(`Salary Trend by ${entity} (${salaryHorizon})`, 'compare-salary-trend', 6, true, { topControl: state.selectionMode === 'major_compare' }),
+            card(`Salary Distributions by ${entity} (${salaryHorizon})`, 'compare-salary-distribution', 6, true, { topControl: true }),
             card(`${entity} Salary Table`, 'compare-table', 12),
           ].join('');
           drawCompareSalaryTrend('compare-salary-trend');
-          drawSalaryDistribution('salary-distribution');
+          drawCompareSalaryDistribution('compare-salary-distribution');
           drawCompareTable('compare-table');
         }
         return;
@@ -2648,6 +2736,60 @@
       }, plotConfig);
     }
 
+    function drawCompareSalaryDistribution(id) {
+      const dist = state.data.salary_distributions_by_entity || {};
+      const bins = dist.bins || [];
+      const summaries = (dist.summary || [])
+        .filter(row => row.code && row.salary_weight)
+        .sort((a, b) => Number(b.salary_weight || 0) - Number(a.salary_weight || 0))
+        .slice(0, topNFor(id));
+      if (!bins.length || !summaries.length) return noData(id);
+      const horizonLabel = activeHorizonLabel();
+      const codes = summaries.map(row => String(row.code));
+      const labelFor = new Map(summaries.map(row => [
+        String(row.code),
+        state.selectionMode === 'major_compare' ? legendLabel(row.label || row.code, 30) : shortSchool(row.label || row.code),
+      ]));
+      const summaryFor = new Map(summaries.map(row => [String(row.code), row]));
+      const traces = codes.map((code, i) => {
+        const color = COLORS[i % COLORS.length];
+        const slice = bins
+          .filter(row => String(row.code) === code)
+          .sort((a, b) => Number(a.bin_start || 0) - Number(b.bin_start || 0));
+        const summary = summaryFor.get(code) || {};
+        const label = labelFor.get(code) || code;
+        return {
+          type: 'scatter',
+          mode: 'lines+markers',
+          name: label,
+          x: slice.map(row => (Number(row.bin_start || 0) + Number(row.bin_end || 0)) / 2),
+          y: slice.map(row => row.share_pct),
+          line: { color, width: 3, shape: 'spline', smoothing: 0.65 },
+          marker: { color, size: 6 },
+          showlegend: false,
+          customdata: slice.map(row => [
+            row.label || label,
+            row.bin_start,
+            row.bin_end,
+            row.n,
+            summary.p25,
+            summary.median,
+            summary.p75,
+          ]),
+          hovertemplate: '<b>%{customdata[0]}</b><br>%{customdata[1]:$,.0f}-%{customdata[2]:$,.0f}<br>%{y:.1f}% of salary observations<br>Weighted observations %{customdata[3]:,.0f}<br>P25 %{customdata[4]:$,.0f} | Median %{customdata[5]:$,.0f} | P75 %{customdata[6]:$,.0f}<extra></extra>',
+        };
+      });
+      const legendTraces = codes.map((code, i) => legendDotTrace(labelFor.get(code) || code, COLORS[i % COLORS.length]));
+      Plotly.newPlot(id, [...traces, ...legendTraces], {
+        ...layoutBase,
+        height: 470,
+        margin: { ...layoutBase.margin, l: 74, r: 32, t: 18, b: 62 },
+        xaxis: { title: `Salary (${horizonLabel})`, tickprefix: '$', tickformat: ',.0s', automargin: true, rangemode: 'tozero' },
+        yaxis: { title: 'Share of salary observations %', ticksuffix: '%', automargin: true, rangemode: 'tozero' },
+        legend: { orientation: 'h', y: 1.16, x: 0, itemwidth: 30 },
+      }, plotConfig);
+    }
+
     function drawEmployerBars(id, clickable = false) {
       const rows = (state.data.employers?.top || []).slice(0, topNFor(id)).reverse();
       if (!rows.length) return noData(id);
@@ -3014,6 +3156,25 @@
           }
           refresh({ reloadOptions: true, resetDrill: true });
         });
+      });
+      $('compare-major-picker').addEventListener('change', event => {
+        const checkbox = event.target.closest('[data-compare-major]');
+        if (!checkbox) return;
+        const optionNode = Array.from($('compare-major-select').options).find(opt => opt.value === checkbox.value);
+        if (optionNode) optionNode.selected = checkbox.checked;
+        const values = selectedValues($('compare-major-select'));
+        storage.setItem('outcomes.compareMajors', JSON.stringify(values));
+        renderCompareMajorPicker(state.options?.major_options || [], new Set(values.map(String)));
+        if (state.selectionMode === 'major_compare' && values.length >= 2) setAdvancedOpen(false);
+        refresh({ resetDrill: true });
+      });
+      $('compare-major-picker').addEventListener('click', event => {
+        if (!event.target.closest('[data-clear-compare-majors]')) return;
+        event.preventDefault();
+        Array.from($('compare-major-select').options).forEach(opt => { opt.selected = false; });
+        storage.setItem('outcomes.compareMajors', '[]');
+        renderCompareMajorPicker(state.options?.major_options || [], new Set());
+        refresh({ resetDrill: true });
       });
       ['horizon-select', 'from-year-select', 'to-year-select', 'major-select', 'gender-select', 'race-select', 'later-degree-filter', 'no-further-select', 'current-select', 'school-employer-select'].forEach(id => {
         $(id).addEventListener('change', () => {

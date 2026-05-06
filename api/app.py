@@ -1149,6 +1149,103 @@ def _salary_distribution(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
     return {"summary": summary, "bins": rows}
 
 
+def _salary_distribution_by_entity(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
+    if filters.compare_dimension == "major":
+        code_expr = _cip_col(filters)
+        label_expr = "major_title"
+    else:
+        code_expr = "unitid"
+        label_expr = "school_name"
+    summaries = _records_from_query(
+        con,
+        f"""
+        WITH salaries AS (
+          SELECT
+            CAST({code_expr} AS VARCHAR) AS code,
+            COALESCE({label_expr}, CAST({code_expr} AS VARCHAR)) AS label,
+            salary,
+            final_weight
+          FROM slice
+          WHERE salary IS NOT NULL
+            AND salary > 0
+            AND final_weight > 0
+            AND {code_expr} IS NOT NULL
+        )
+        SELECT
+          code,
+          MAX(label) AS label,
+          ROUND(SUM(final_weight), 2) AS salary_weight,
+          ROUND(quantile_cont(salary, 0.10)) AS p10,
+          ROUND(quantile_cont(salary, 0.25)) AS p25,
+          ROUND(quantile_cont(salary, 0.50)) AS median,
+          ROUND(quantile_cont(salary, 0.75)) AS p75,
+          ROUND(quantile_cont(salary, 0.90)) AS p90
+        FROM salaries
+        GROUP BY code
+        HAVING SUM(final_weight) > ?
+        ORDER BY salary_weight DESC
+        """,
+        [SALARY_MIN_WEIGHT],
+    )
+    rows = _records_from_query(
+        con,
+        f"""
+        WITH salaries AS (
+          SELECT
+            CAST({code_expr} AS VARCHAR) AS code,
+            COALESCE({label_expr}, CAST({code_expr} AS VARCHAR)) AS label,
+            salary,
+            final_weight
+          FROM slice
+          WHERE salary IS NOT NULL
+            AND salary > 0
+            AND final_weight > 0
+            AND {code_expr} IS NOT NULL
+        ),
+        bounds AS (
+          SELECT
+            quantile_cont(salary, 0.02) AS lo,
+            quantile_cont(salary, 0.98) AS hi
+          FROM salaries
+        ),
+        group_totals AS (
+          SELECT code, MAX(label) AS label, SUM(final_weight) AS salary_weight
+          FROM salaries
+          GROUP BY code
+          HAVING SUM(final_weight) > ?
+        ),
+        binned AS (
+          SELECT
+            s.code,
+            CASE
+              WHEN (SELECT hi - lo FROM bounds) <= 0 THEN 0
+              ELSE LEAST(23, GREATEST(0, FLOOR((LEAST(GREATEST(s.salary, b.lo), b.hi) - b.lo) / NULLIF((b.hi - b.lo) / 24.0, 0))))
+            END AS bucket,
+            s.final_weight,
+            b.lo,
+            b.hi
+          FROM salaries s
+          JOIN group_totals gt USING (code)
+          CROSS JOIN bounds b
+        )
+        SELECT
+          b.code,
+          MAX(gt.label) AS label,
+          ROUND(MIN(lo + bucket * ((hi - lo) / 24.0))) AS bin_start,
+          ROUND(MIN(lo + (bucket + 1) * ((hi - lo) / 24.0))) AS bin_end,
+          ROUND(SUM(b.final_weight), 2) AS n,
+          ROUND(100.0 * SUM(b.final_weight) / NULLIF(MAX(gt.salary_weight), 0), 2) AS share_pct
+        FROM binned b
+        JOIN group_totals gt USING (code)
+        GROUP BY b.code, bucket
+        HAVING SUM(b.final_weight) > ?
+        ORDER BY label, bucket
+        """,
+        [SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT],
+    )
+    return {"summary": summaries, "bins": rows}
+
+
 def _current_student_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
     if not filters.include_current_students or not _dataset_exists("current_students_fact"):
         return []
@@ -2466,6 +2563,7 @@ def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password
                         result["salary_trend_by_school"] = _salary_trend_by_school(con, filters)
                 if tab == "earnings":
                     result["salary_distribution"] = _salary_distribution(con)
+                    result["salary_distributions_by_entity"] = _salary_distribution_by_entity(con, filters)
                 if tab == "employers":
                     result["employers"] = _employers(con, filters)
                     if view_mode == "overtime":
