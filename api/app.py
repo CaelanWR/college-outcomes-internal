@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hmac
+import hashlib
 import json
 import math
 import os
@@ -28,7 +29,9 @@ GEOGRAPHY_ROW_MIN_WEIGHT = float(os.environ.get("GEOGRAPHY_ROW_MIN_WEIGHT", str(
 DUCKDB_THREADS = int(os.environ.get("OUTCOMES_DUCKDB_THREADS", "1"))
 DUCKDB_MEMORY_LIMIT = os.environ.get("OUTCOMES_DUCKDB_MEMORY_LIMIT", "1200MB")
 DUCKDB_TEMP_DIR = Path(os.environ.get("OUTCOMES_DUCKDB_TEMP_DIR", "/tmp/duckdb")).expanduser()
+SCHOOL_CACHE_DIR = Path(os.environ.get("OUTCOMES_SCHOOL_CACHE_DIR", "/tmp/outcomes_school_cache")).expanduser()
 QUERY_SEMAPHORE = threading.BoundedSemaphore(int(os.environ.get("OUTCOMES_QUERY_CONCURRENCY", "1")))
+SCHOOL_CACHE_LOCK = threading.Lock()
 APP_PASSWORD = os.environ.get("OUTCOMES_APP_PASSWORD")
 ALLOWED_ORIGINS = [
     origin.strip()
@@ -165,6 +168,55 @@ def _dataset_files(dataset: str) -> tuple[str, ...]:
 
 def _dataset_glob(dataset: str) -> list[str]:
     return list(_dataset_files(dataset))
+
+
+def _base_source_for_filters(filters: QueryRequest) -> list[str]:
+    if filters.compare_mode or len(set(filters.schools)) != 1:
+        return _dataset_glob("base_fact")
+    return _school_base_cache(filters.schools[0])
+
+
+def _school_cache_key(unitid: str) -> str:
+    manifest_path = _platform_root() / "platform_manifest.json"
+    manifest_mtime = int(manifest_path.stat().st_mtime) if manifest_path.exists() else 0
+    payload = {
+        "dataset": "base_fact",
+        "unitid": str(unitid),
+        "version": _manifest().get("version"),
+        "manifest_mtime": manifest_mtime,
+        "file_count": len(_dataset_files("base_fact")),
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:20]
+
+
+def _school_base_cache(unitid: str) -> list[str]:
+    key = _school_cache_key(unitid)
+    SCHOOL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    path = SCHOOL_CACHE_DIR / f"base_fact_unitid_{unitid}_{key}.parquet"
+    if path.exists() and path.stat().st_size > 0:
+        return [str(path)]
+
+    with SCHOOL_CACHE_LOCK:
+        if path.exists() and path.stat().st_size > 0:
+            return [str(path)]
+        tmp_path = SCHOOL_CACHE_DIR / f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp"
+        con = _connect()
+        try:
+            target = str(tmp_path).replace("'", "''")
+            con.execute(
+                f"""
+                COPY (
+                  SELECT *
+                  FROM read_parquet(?)
+                  WHERE unitid = ?
+                ) TO '{target}' (FORMAT PARQUET, COMPRESSION 'SNAPPY')
+                """,
+                [_dataset_glob("base_fact"), str(unitid)],
+            )
+        finally:
+            con.close()
+        os.replace(tmp_path, path)
+    return [str(path)]
 
 
 def _dataset_exists(dataset: str) -> bool:
@@ -354,6 +406,7 @@ def _create_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> None
     base_columns = _dataset_columns("base_fact")
     profile_weight_sql = _cohort_profile_weight_sql(base_columns)
     source_star = _source_star_without_profile(base_columns)
+    base_source = _base_source_for_filters(filters)
     where_sql, params = _where(filters)
     con.execute(
         f"""
@@ -362,7 +415,7 @@ def _create_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> None
         FROM read_parquet(?)
         {where_sql}
         """,
-        [_dataset_glob("base_fact"), *params],
+        [base_source, *params],
     )
     cohort_where_sql, cohort_params = _where(filters, include_horizon=False)
     con.execute(
@@ -388,7 +441,7 @@ def _create_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> None
         )
         WHERE cohort_rank = 1
         """,
-        [_dataset_glob("base_fact"), *cohort_params],
+        [base_source, *cohort_params],
     )
 
 
@@ -433,6 +486,7 @@ def _create_cohort_slice_table(con: duckdb.DuckDBPyConnection, filters: QueryReq
     base_columns = _dataset_columns("base_fact")
     profile_weight_sql = _cohort_profile_weight_sql(base_columns)
     source_star = _source_star_without_profile(base_columns)
+    base_source = _base_source_for_filters(filters)
     cohort_where_sql, cohort_params = _where(filters, include_horizon=False)
     con.execute(
         f"""
@@ -457,7 +511,7 @@ def _create_cohort_slice_table(con: duckdb.DuckDBPyConnection, filters: QueryReq
         )
         WHERE cohort_rank = 1
         """,
-        [_dataset_glob("base_fact"), *cohort_params],
+        [base_source, *cohort_params],
     )
 
 
@@ -552,6 +606,7 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
         try:
             base_columns = _dataset_columns("base_fact")
             profile_weight_sql = _cohort_profile_weight_sql(base_columns)
+            base_source = _base_source_for_filters(filters)
             option_projection = _project_columns(
                 base_columns,
                 [
@@ -593,7 +648,7 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
                 )
                 WHERE cohort_rank = 1
                 """,
-                [_dataset_glob("base_fact"), *params],
+                [base_source, *params],
             )
             majors = _records_from_query(
                 con,
@@ -812,6 +867,7 @@ def _salary_trend_by_school(con: duckdb.DuckDBPyConnection, filters: QueryReques
 def _early_2025_salary_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, *, by_school: bool) -> list[dict[str, Any]]:
     early_filters = filters.model_copy(deep=True)
     early_filters.horizon = "early_2025"
+    base_source = _base_source_for_filters(filters)
     where_sql, params = _where(early_filters)
     year_clause = "grad_year = 2025"
     if where_sql:
@@ -849,7 +905,7 @@ def _early_2025_salary_trend(con: duckdb.DuckDBPyConnection, filters: QueryReque
             WHERE salary_weight > ?
             ORDER BY school_name, grad_year
             """,
-            [_dataset_glob("base_fact"), *params, SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT],
+            [base_source, *params, SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT],
         )
     return _records_from_query(
         con,
@@ -877,7 +933,7 @@ def _early_2025_salary_trend(con: duckdb.DuckDBPyConnection, filters: QueryReque
         WHERE salary_weight > ?
         ORDER BY grad_year
         """,
-        [_dataset_glob("base_fact"), *params, SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT],
+        [base_source, *params, SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT],
     )
 
 
@@ -1709,6 +1765,7 @@ def _create_coverage_groups(
         ignore_major=ignore_major,
         force_degree=force_degree,
     )
+    base_source = _base_source_for_filters(filters)
     con.execute(
         f"""
         CREATE OR REPLACE TEMP TABLE {table_name} AS
@@ -1728,7 +1785,7 @@ def _create_coverage_groups(
           AND cip4 IS NOT NULL
           AND MAX(calibration_observed_completions) IS NOT NULL
         """,
-        [_dataset_glob("base_fact"), *params],
+        [base_source, *params],
     )
 
 
