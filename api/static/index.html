@@ -1077,6 +1077,8 @@
         include_current_students: $('current-select').value === 'true',
         include_school_employers: $('school-employer-select').value === 'true',
         compare_mode: state.selectionMode === 'compare',
+        active_tab: state.selectionMode === 'compare' ? 'compare' : state.tab,
+        view_mode: state.viewMode,
         selected_employer: state.selectedEmployer,
         selected_postgrad_degree: state.selectedPostgradDegree,
         selected_postgrad_school: state.selectedPostgradSchool,
@@ -2387,7 +2389,7 @@
         document.querySelectorAll('.tab').forEach(node => node.classList.toggle('active', node === tab));
         applyDefaultViewForTab(state.tab);
         syncViewToggle();
-        render();
+        refresh({ resetDrill: true });
       });
 
       $('view-toggle').addEventListener('click', event => {
@@ -2396,7 +2398,7 @@
         state.viewMode = button.dataset.viewMode;
         storage.setItem('outcomes.viewMode', state.viewMode);
         syncViewToggle();
-        render();
+        refresh({ resetDrill: true });
       });
 
       $('selection-toggle').addEventListener('click', event => {
