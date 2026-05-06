@@ -1663,30 +1663,29 @@
 
     function renderEarnings() {
       const salaryHorizon = activeHorizonLabel();
+      const hasMajor = Boolean($('major-select')?.value);
       if (state.viewMode === 'snapshot') {
-        $('content').innerHTML = [
-          card(`Salary Distribution (${salaryHorizon})`, 'salary-distribution', 7, true),
-          card(`Top Majors by Median Salary (${salaryHorizon})`, 'top-major-salary', 5, true, { topControl: true }),
-          card('Current Slice Earnings Table', 'salary-table', 12),
-        ].join('');
+        const cards = [
+          card(`Salary Distribution (${salaryHorizon})`, 'salary-distribution', hasMajor ? 12 : 7, true),
+        ];
+        if (!hasMajor) cards.push(card(`Top Majors by Median Salary (${salaryHorizon})`, 'top-major-salary', 5, true, { topControl: true }));
+        cards.push(card('Current Slice Earnings Table', 'salary-table', 12));
+        $('content').innerHTML = cards.join('');
         drawSalaryDistribution('salary-distribution');
-        drawMajorSalary('top-major-salary');
+        if (!hasMajor) drawMajorSalary('top-major-salary');
         $('salary-table').innerHTML = table(['Major', 'Alumni', 'Salary observations', 'Median salary', 'Mean salary'], state.data.top_majors || [], row => [
           row.title, num(row.alumni), num(row.salary_weight), money(row.median_salary), money(row.weighted_mean_salary)
         ]);
       } else {
-        $('content').innerHTML = [
+        const cards = [
           card(`Salary Trend by Graduation Year (${salaryHorizon})`, 'earn-salary-trend', 7, true),
           card(`Salary Distribution (${salaryHorizon})`, 'salary-distribution', 5, true),
-          card(`Top Majors by Salary (${salaryHorizon})`, 'top-major-salary', 5, true, { topControl: true }),
-          card('Cohort Salary Table', 'salary-table', 7),
-        ].join('');
+        ];
+        if (!hasMajor) cards.push(card(`Top Majors by Salary (${salaryHorizon})`, 'top-major-salary', 12, true, { topControl: true }));
+        $('content').innerHTML = cards.join('');
         drawSalaryTrend('earn-salary-trend', true);
         drawSalaryDistribution('salary-distribution');
-        drawMajorSalary('top-major-salary');
-        $('salary-table').innerHTML = table(['Year', 'Alumni', 'Salary observations', 'Median salary', 'Mean salary'], state.data.salary_trend || [], row => [
-          row.partial_horizon ? `${row.grad_year} early` : row.grad_year, num(row.alumni), num(row.salary_weight), money(row.median_salary), money(row.weighted_mean_salary)
-        ]);
+        if (!hasMajor) drawMajorSalary('top-major-salary');
       }
     }
 
