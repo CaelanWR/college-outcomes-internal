@@ -1234,6 +1234,15 @@
     const $ = id => document.getElementById(id);
     const fmt = new Intl.NumberFormat('en-US');
     const money = value => value === null || value === undefined ? 'No data' : `$${fmt.format(Math.round(value / 1000))}k`;
+    const wholePeople = value => {
+      if (value === null || value === undefined) return null;
+      const n = Number(value);
+      return Number.isFinite(n) ? Math.round(n) : null;
+    };
+    const people = value => {
+      const n = wholePeople(value);
+      return n === null ? 'No data' : fmt.format(n);
+    };
     const num = value => {
       if (value === null || value === undefined) return 'No data';
       const n = Number(value);
@@ -3194,17 +3203,18 @@
     function drawEmployerBars(id, clickable = false) {
       const rows = (state.data.employers?.top || []).slice(0, topNFor(id)).reverse();
       if (!rows.length) return noData(id);
+      const peopleValues = rows.map(row => wholePeople(row.n) ?? 0);
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
         y: wrappedLabels(rows, 'employer'),
-        x: rows.map(r => r.n),
-        text: rows.map(r => `${num(r.n)} (${pct(r.share_pct)})`),
+        x: peopleValues,
+        text: rows.map(r => `${people(r.n)} (${pct(r.share_pct)})`),
         textposition: 'outside',
         cliponaxis: false,
-        customdata: rows.map(r => r.employer),
+        customdata: rows.map((r, index) => [r.employer, peopleValues[index]]),
         marker: { color: COLORS[0] },
-        hovertemplate: '%{customdata}<br>%{x:,.0f} alumni<extra></extra>',
+        hovertemplate: '%{customdata[0]}<br>%{customdata[1]:,.0f} alumni<extra></extra>',
       }], horizontalBarLayout(id, rows, '', {
         leftMargin: compactWindow() ? 210 : 280,
         rightMargin: compactWindow() ? 58 : 140,
@@ -3214,7 +3224,7 @@
         plot.on('plotly_click', event => {
           const point = event.points?.[0];
           if (!point) return;
-          state.selectedEmployer = point.customdata || point.y;
+          state.selectedEmployer = point.customdata?.[0] || point.customdata || point.y;
           state.selectedEmployerRole = null;
           refresh();
         });
@@ -3236,17 +3246,18 @@
           refresh();
         });
       }
+      const peopleValues = rows.map(row => wholePeople(row.n) ?? 0);
       Plotly.newPlot(plotId, [{
         type: 'bar',
         orientation: 'h',
         y: rows.map(r => wrapAxisLabel(r.role)),
-        x: rows.map(r => r.n),
-        text: rows.map(r => `${num(r.n)} (${pct(r.share_pct)})`),
+        x: peopleValues,
+        text: rows.map(r => `${people(r.n)} (${pct(r.share_pct)})`),
         textposition: 'outside',
         cliponaxis: false,
-        customdata: rows.map(r => r.role),
+        customdata: rows.map((r, index) => [r.role, peopleValues[index]]),
         marker: { color: drilling ? COLORS[4] : COLORS[2] },
-        hovertemplate: '%{customdata}<br>%{x:,.0f} alumni<extra></extra>',
+        hovertemplate: '%{customdata[0]}<br>%{customdata[1]:,.0f} alumni<extra></extra>',
       }], horizontalBarLayout(id, rows.map(r => ({ label: r.role })), '', {
         leftMargin: compactWindow() ? 210 : 280,
         rightMargin: compactWindow() ? 58 : 140,
@@ -3256,7 +3267,7 @@
         plot.on('plotly_click', event => {
           const point = event.points?.[0];
           if (!point) return;
-          state.selectedEmployerRole = point.customdata || point.y;
+          state.selectedEmployerRole = point.customdata?.[0] || point.customdata || point.y;
           refresh();
         });
       });
