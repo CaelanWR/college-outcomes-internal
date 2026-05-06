@@ -449,6 +449,41 @@
 
     .chart.tall { min-height: 460px; }
 
+    .salary-summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin: 2px 0 12px;
+    }
+
+    .salary-stat {
+      border: 1px solid rgba(22,50,74,0.08);
+      border-radius: 16px;
+      padding: 12px 14px;
+      background: rgba(245,249,253,0.78);
+    }
+
+    .salary-stat strong {
+      display: block;
+      font-size: clamp(1.1rem, 1.7vw, 1.45rem);
+      line-height: 1;
+      letter-spacing: -0.03em;
+    }
+
+    .salary-stat span {
+      display: block;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .distribution-curve {
+      min-height: 300px;
+    }
+
     .drill-toolbar {
       display: flex;
       justify-content: flex-end;
@@ -787,6 +822,7 @@
       .tab { padding: 10px 15px; }
       .content { padding: 14px 10px 34px; }
       .metric, .card { padding: 18px; }
+      .salary-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       select[multiple] { min-height: 92px; }
     }
 
@@ -2338,29 +2374,38 @@
       const rows = dist.bins || [];
       if (!rows.length) return noData(id);
       const horizonLabel = activeHorizonLabel();
-      const labels = rows.map(r => `${money(r.bin_start)}-${money(r.bin_end)}`);
-      Plotly.newPlot(id, [{
-        type: 'bar',
-        x: labels,
-        y: rows.map(r => r.n),
-        marker: { color: 'rgba(47, 128, 237, 0.72)' },
-        customdata: rows.map(r => [r.bin_start, r.bin_end]),
+      const summary = dist.summary || {};
+      const plotId = `${id}-curve`;
+      $(id).innerHTML = `
+        <div class="salary-summary">
+          <div class="salary-stat"><strong>${money(summary.p25)}</strong><span>P25</span></div>
+          <div class="salary-stat"><strong>${money(summary.median)}</strong><span>Median</span></div>
+          <div class="salary-stat"><strong>${money(summary.p75)}</strong><span>P75</span></div>
+          <div class="salary-stat"><strong>${num(summary.salary_weight)}</strong><span>Observations</span></div>
+        </div>
+        <div id="${plotId}" class="distribution-curve"></div>
+      `;
+      const points = rows.map(r => ({
+        x: (Number(r.bin_start) + Number(r.bin_end)) / 2,
+        y: Number(r.n || 0),
+        start: Number(r.bin_start),
+        end: Number(r.bin_end),
+      }));
+      Plotly.newPlot(plotId, [{
+        type: 'scatter',
+        mode: 'lines',
+        x: points.map(r => r.x),
+        y: points.map(r => r.y),
+        fill: 'tozeroy',
+        line: { color: COLORS[0], width: 4, shape: 'spline', smoothing: 0.8 },
+        fillcolor: 'rgba(47, 128, 237, 0.16)',
+        customdata: points.map(r => [r.start, r.end]),
         hovertemplate: `%{customdata[0]:$,.0f}-%{customdata[1]:$,.0f}<br>${horizonLabel}<br>%{y:,.0f} weighted observations<extra></extra>`,
       }], {
         ...layoutBase,
-        margin: { ...layoutBase.margin, l: 70, r: 24, t: 24, b: 82 },
-        xaxis: { title: `Salary range (${horizonLabel})`, automargin: true, tickangle: -35 },
-        yaxis: { title: 'Weighted observations', automargin: true, rangemode: 'tozero' },
-        annotations: dist.summary?.p25 ? [{
-          x: 0.99,
-          y: 1.12,
-          xref: 'paper',
-          yref: 'paper',
-          text: `${horizonLabel} · P25 ${money(dist.summary.p25)} · Median ${money(dist.summary.median)} · P75 ${money(dist.summary.p75)}`,
-          showarrow: false,
-          xanchor: 'right',
-          font: { size: 13, color: '#40556e' },
-        }] : [],
+        margin: { ...layoutBase.margin, l: 50, r: 20, t: 8, b: 58 },
+        xaxis: { title: `Salary (${horizonLabel})`, tickprefix: '$', tickformat: ',.0s', automargin: true, rangemode: 'tozero' },
+        yaxis: { title: '', showticklabels: false, zeroline: false, automargin: true, rangemode: 'tozero' },
       }, plotConfig);
     }
 
