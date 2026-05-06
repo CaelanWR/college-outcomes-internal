@@ -2406,7 +2406,9 @@ def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password
         con = _connect()
         try:
             _create_slice(con, filters)
-            tab = "compare" if filters.compare_mode else (filters.active_tab or "overview")
+            tab = filters.active_tab or ("overview" if filters.compare_mode else "overview")
+            if tab == "compare":
+                tab = "overview"
             view_mode = filters.view_mode or "snapshot"
             result: dict[str, Any] = {
                 "meta": {
@@ -2448,18 +2450,47 @@ def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password
                 )
                 return result
 
-            if tab == "compare":
+            if filters.compare_mode:
                 result["overview"] = _overview(con)
                 if filters.compare_dimension == "major":
                     result["major_comparison"] = _major_comparison(con, filters)
-                    if view_mode == "overtime":
-                        result["salary_trend_by_major"] = _salary_trend_by_major(con, filters)
+                    if view_mode == "overtime" and tab == "overview":
                         result["alumni_trend_by_major"] = _alumni_trend_by_major(con, filters)
+                    if view_mode == "overtime" and tab == "earnings":
+                        result["salary_trend_by_major"] = _salary_trend_by_major(con, filters)
                 else:
                     result["school_comparison"] = _school_comparison(con)
-                    if view_mode == "overtime":
-                        result["salary_trend_by_school"] = _salary_trend_by_school(con, filters)
+                    if view_mode == "overtime" and tab == "overview":
                         result["alumni_trend_by_school"] = _alumni_trend_by_school(con, filters)
+                    if view_mode == "overtime" and tab == "earnings":
+                        result["salary_trend_by_school"] = _salary_trend_by_school(con, filters)
+                if tab == "earnings":
+                    result["salary_distribution"] = _salary_distribution(con)
+                if tab == "employers":
+                    result["employers"] = _employers(con, filters)
+                    if view_mode == "overtime":
+                        result["employer_trend"] = _employer_trend(con, filters)
+                if tab == "geography":
+                    if view_mode == "snapshot":
+                        result["geography"] = _geography(con, filters)
+                    else:
+                        result["geography_trend"] = _geography_trend(con, filters)
+                if tab == "roles":
+                    if view_mode == "snapshot":
+                        result["roles"] = _roles(con, filters)
+                    else:
+                        result["role_trend"] = _role_trend(con, filters)
+                if tab == "demographics":
+                    if view_mode == "snapshot":
+                        result["demographics"] = _demographics(con)
+                    else:
+                        result["demographic_trend"] = _demographic_trend(con, filters)
+                if tab == "coverage":
+                    result["coverage"] = _coverage(con, filters)
+                if tab == "postgrad":
+                    result["postgrad"] = _postgrad(con, filters)
+                    if view_mode == "overtime":
+                        result["postgrad_trend"] = _postgrad_trend(con, filters)
                 return result
 
             if tab == "overview":

@@ -1210,7 +1210,7 @@
         include_school_employers: $('school-employer-select').value === 'true',
         compare_mode: state.selectionMode === 'compare' || state.selectionMode === 'major_compare',
         compare_dimension: state.selectionMode === 'major_compare' ? 'major' : 'school',
-        active_tab: state.selectionMode === 'compare' || state.selectionMode === 'major_compare' ? 'compare' : 'all',
+        active_tab: state.selectionMode === 'compare' || state.selectionMode === 'major_compare' ? state.tab : 'all',
         view_mode: state.selectionMode === 'compare' || state.selectionMode === 'major_compare' ? state.viewMode : 'all',
         selected_employer: state.selectedEmployer,
         selected_employer_role: state.selectedEmployerRole,
@@ -1617,7 +1617,7 @@
     function render() {
       if (!state.data) return;
       if (state.selectionMode === 'compare' || state.selectionMode === 'major_compare') {
-        renderCompare();
+        renderComparePage();
         queuePlotResize();
         return;
       }
@@ -1633,97 +1633,112 @@
       queuePlotResize();
     }
 
-    function renderCompare() {
-      if (state.selectionMode === 'major_compare') {
-        renderMajorCompare();
-        return;
-      }
-      const rows = state.data.school_comparison || [];
-      const o = state.data.overview || {};
-      const salaryHorizon = activeHorizonLabel();
-      if (rows.length < 2) {
-        $('content').innerHTML = [card('Comparison Mode', 'compare-empty', 12)].join('');
-        $('compare-empty').innerHTML = '<div class="empty">Pick at least one comparison school in Advanced Options.</div>';
-        return;
-      }
-
-      if (state.viewMode === 'snapshot') {
-        $('content').innerHTML = [
-          metric('Schools', num(rows.length), 4),
-          metric('Alumni', num(o.alumni), 4),
-          metric('Weighted Median Salary', money(o.median_salary), 4),
-          card(`Median Salary by School (${salaryHorizon})`, 'compare-salary', 6, true),
-          card('Alumni by School', 'compare-alumni', 6, true),
-          card('Further Education Rate by School', 'compare-postgrad', 6, true),
-          card('Comparison Table', 'compare-table', 6, true),
-        ].join('');
-        drawSchoolComparison('compare-salary');
-        drawSchoolAlumniComparison('compare-alumni');
-        drawSchoolFurtherEdComparison('compare-postgrad');
-        drawComparisonTable('compare-table');
-      } else {
-        $('content').innerHTML = [
-          metric('Schools', num(rows.length), 4),
-          metric('Alumni', num(o.alumni), 4),
-          metric('Weighted Median Salary', money(o.median_salary), 4),
-          card(`Salary Trend by School (${salaryHorizon})`, 'compare-salary-trend', 7, true),
-          card('Alumni Trend by School', 'compare-alumni-trend', 5, true),
-          card('Comparison Table', 'compare-table', 12),
-        ].join('');
-        drawSalaryTrend('compare-salary-trend', true);
-        drawTrendLines('compare-alumni-trend', state.data.alumni_trend_by_school || [], 'school_name', 'alumni', {
-          yTitle: 'Alumni',
-          hover: '%{y:,.0f}',
-          labelTransform: shortSchool,
-          limitSeries: false,
-        });
-        drawComparisonTable('compare-table');
-      }
+    function compareRows() {
+      return state.selectionMode === 'major_compare'
+        ? (state.data.major_comparison || [])
+        : (state.data.school_comparison || []);
     }
 
-    function renderMajorCompare() {
-      const rows = state.data.major_comparison || [];
+    function compareEntityLabel(plural = false) {
+      if (state.selectionMode === 'major_compare') return plural ? 'Majors' : 'Major';
+      return plural ? 'Schools' : 'School';
+    }
+
+    function renderComparePage() {
+      const tab = state.tab;
+      const rows = compareRows();
       const o = state.data.overview || {};
       const salaryHorizon = activeHorizonLabel();
+      const entity = compareEntityLabel();
+      const entities = compareEntityLabel(true);
       if (rows.length < 2) {
-        $('content').innerHTML = [card('Major Compare', 'compare-empty', 12)].join('');
-        $('compare-empty').innerHTML = '<div class="empty">Pick at least two comparison majors in Advanced Options.</div>';
+        $('content').innerHTML = [card(`${entity} Compare`, 'compare-empty', 12)].join('');
+        $('compare-empty').innerHTML = `<div class="empty">Pick at least ${state.selectionMode === 'major_compare' ? 'two comparison majors' : 'one comparison school'} in Advanced Options.</div>`;
+        return;
+      }
+      if (tab === 'coverage') {
+        renderCoverage();
+        return;
+      }
+      if (tab === 'employers') {
+        renderEmployers();
+        return;
+      }
+      if (tab === 'geography') {
+        renderGeography();
+        return;
+      }
+      if (tab === 'roles') {
+        renderRoles();
+        return;
+      }
+      if (tab === 'demographics') {
+        renderDemographics();
+        return;
+      }
+
+      if (tab === 'earnings') {
+        if (state.viewMode === 'snapshot') {
+          $('content').innerHTML = [
+            metric(entities, num(rows.length), 4),
+            metric('Alumni', num(o.alumni), 4),
+            metric('Weighted Median Salary', money(o.median_salary), 4),
+            card(`Median Salary by ${entity} (${salaryHorizon})`, 'compare-salary', 7, true, { topControl: state.selectionMode === 'major_compare' }),
+            card(`Salary Distribution (${salaryHorizon})`, 'salary-distribution', 5, true),
+            card(`${entity} Salary Table`, 'compare-table', 12),
+          ].join('');
+          drawCompareSalary('compare-salary');
+          drawSalaryDistribution('salary-distribution');
+          drawCompareTable('compare-table');
+        } else {
+          $('content').innerHTML = [
+            metric(entities, num(rows.length), 4),
+            metric('Alumni', num(o.alumni), 4),
+            metric('Weighted Median Salary', money(o.median_salary), 4),
+            card(`Salary Trend by ${entity} (${salaryHorizon})`, 'compare-salary-trend', 7, true, { topControl: state.selectionMode === 'major_compare' }),
+            card(`Salary Distribution (${salaryHorizon})`, 'salary-distribution', 5, true),
+            card(`${entity} Salary Table`, 'compare-table', 12),
+          ].join('');
+          drawCompareSalaryTrend('compare-salary-trend');
+          drawSalaryDistribution('salary-distribution');
+          drawCompareTable('compare-table');
+        }
+        return;
+      }
+
+      if (tab === 'postgrad') {
+        $('content').innerHTML = [
+          metric(entities, num(rows.length), 4),
+          metric('Alumni', num(o.alumni), 4),
+          metric('Weighted Median Salary', money(o.median_salary), 4),
+          card(`Further Education Rate by ${entity}`, 'compare-postgrad', 7, true, { topControl: state.selectionMode === 'major_compare' }),
+          card(`${entity} Further Education Table`, 'compare-table', 5, true),
+        ].join('');
+        drawCompareFurtherEd('compare-postgrad');
+        drawCompareTable('compare-table');
         return;
       }
 
       if (state.viewMode === 'snapshot') {
         $('content').innerHTML = [
-          metric('Majors', num(rows.length), 4),
+          metric(entities, num(rows.length), 4),
           metric('Alumni', num(o.alumni), 4),
           metric('Weighted Median Salary', money(o.median_salary), 4),
-          card(`Median Salary by Major (${salaryHorizon})`, 'compare-major-salary', 6, true, { topControl: true }),
-          card('Alumni by Major', 'compare-major-alumni', 6, true, { topControl: true }),
-          card('Further Education Rate by Major', 'compare-major-postgrad', 6, true, { topControl: true }),
-          card('Major Comparison Table', 'compare-major-table', 6, true),
+          card(`Alumni by ${entity}`, 'compare-alumni', 7, true, { topControl: state.selectionMode === 'major_compare' }),
+          card(`${entity} Comparison Table`, 'compare-table', 5, true),
         ].join('');
-        drawMajorCompareSalary('compare-major-salary');
-        drawMajorCompareAlumni('compare-major-alumni');
-        drawMajorCompareFurtherEd('compare-major-postgrad');
-        drawMajorCompareTable('compare-major-table');
+        drawCompareAlumni('compare-alumni');
+        drawCompareTable('compare-table');
       } else {
         $('content').innerHTML = [
-          metric('Majors', num(rows.length), 4),
+          metric(entities, num(rows.length), 4),
           metric('Alumni', num(o.alumni), 4),
           metric('Weighted Median Salary', money(o.median_salary), 4),
-          card(`Salary Trend by Major (${salaryHorizon})`, 'compare-major-salary-trend', 7, true, { topControl: true }),
-          card('Alumni Trend by Major', 'compare-major-alumni-trend', 5, true, { topControl: true }),
-          card('Major Comparison Table', 'compare-major-table', 12),
+          card(`Alumni Trend by ${entity}`, 'compare-alumni-trend', 7, true, { topControl: state.selectionMode === 'major_compare' }),
+          card(`${entity} Comparison Table`, 'compare-table', 5, true),
         ].join('');
-        drawTrendLines('compare-major-salary-trend', state.data.salary_trend_by_major || [], 'title', 'median_salary', {
-          yTitle: `Median salary (${salaryHorizon})`,
-          prefix: '$',
-          hover: '%{y:$,.0f}',
-        });
-        drawTrendLines('compare-major-alumni-trend', state.data.alumni_trend_by_major || [], 'title', 'alumni', {
-          yTitle: 'Alumni',
-          hover: '%{y:,.0f}',
-        });
-        drawMajorCompareTable('compare-major-table');
+        drawCompareAlumniTrend('compare-alumni-trend');
+        drawCompareTable('compare-table');
       }
     }
 
@@ -2501,6 +2516,55 @@
       ]);
     }
 
+    function drawCompareSalary(id) {
+      if (state.selectionMode === 'major_compare') drawMajorCompareSalary(id);
+      else drawSchoolComparison(id);
+    }
+
+    function drawCompareAlumni(id) {
+      if (state.selectionMode === 'major_compare') drawMajorCompareAlumni(id);
+      else drawSchoolAlumniComparison(id);
+    }
+
+    function drawCompareFurtherEd(id) {
+      if (state.selectionMode === 'major_compare') drawMajorCompareFurtherEd(id);
+      else drawSchoolFurtherEdComparison(id);
+    }
+
+    function drawCompareTable(id) {
+      if (state.selectionMode === 'major_compare') drawMajorCompareTable(id);
+      else drawComparisonTable(id);
+    }
+
+    function drawCompareSalaryTrend(id) {
+      const salaryHorizon = activeHorizonLabel();
+      if (state.selectionMode === 'major_compare') {
+        drawTrendLines(id, state.data.salary_trend_by_major || [], 'title', 'median_salary', {
+          yTitle: `Median salary (${salaryHorizon})`,
+          prefix: '$',
+          hover: '%{y:$,.0f}',
+        });
+        return;
+      }
+      drawSalaryTrend(id, true);
+    }
+
+    function drawCompareAlumniTrend(id) {
+      if (state.selectionMode === 'major_compare') {
+        drawTrendLines(id, state.data.alumni_trend_by_major || [], 'title', 'alumni', {
+          yTitle: 'Alumni',
+          hover: '%{y:,.0f}',
+        });
+        return;
+      }
+      drawTrendLines(id, state.data.alumni_trend_by_school || [], 'school_name', 'alumni', {
+        yTitle: 'Alumni',
+        hover: '%{y:,.0f}',
+        labelTransform: shortSchool,
+        limitSeries: false,
+      });
+    }
+
     function drawMajorSalary(id) {
       const rows = (state.data.top_majors || [])
         .filter(r => r.median_salary)
@@ -2891,6 +2955,10 @@
         document.querySelectorAll('.tab').forEach(node => node.classList.toggle('active', node === tab));
         applyDefaultViewForTab(state.tab);
         syncViewToggle();
+        if (state.selectionMode === 'compare' || state.selectionMode === 'major_compare') {
+          refresh({ resetDrill: true });
+          return;
+        }
         render();
       });
 
@@ -2900,6 +2968,10 @@
         state.viewMode = button.dataset.viewMode;
         storage.setItem('outcomes.viewMode', state.viewMode);
         syncViewToggle();
+        if (state.selectionMode === 'compare' || state.selectionMode === 'major_compare') {
+          refresh({ resetDrill: true });
+          return;
+        }
         render();
       });
 
