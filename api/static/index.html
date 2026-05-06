@@ -714,6 +714,19 @@
       line-height: 1.45;
     }
 
+    .auth-notice {
+      margin: 0 0 14px;
+      border: 1px solid rgba(157, 36, 51, 0.20);
+      border-radius: 16px;
+      padding: 10px 12px;
+      background: rgba(255, 245, 247, 0.92);
+      color: #8d1f2e;
+      font-size: 0.9rem;
+      font-weight: 900;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
     .auth-fields {
       display: grid;
       gap: 14px;
@@ -1123,6 +1136,7 @@
   <div id="auth-modal" class="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
     <div class="auth-card">
       <h2 id="auth-title">Connect to the protected API</h2>
+      <div class="auth-notice">For Revelio internal use only</div>
       <p>Enter the API URL and password to load the outcomes dashboard. These values stay in this browser only.</p>
       <div class="auth-fields">
         <label>
