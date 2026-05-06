@@ -1403,7 +1403,7 @@ def _top_majors(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[d
 
 def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_current: bool) -> dict[str, Any]:
     cip_col = _cip_col(filters)
-    limit = min(_safe_limit(filters.top_n), 5)
+    limit = _safe_limit(filters.top_n)
     current_exists = include_current and _create_current_slice(con, filters)
     has_major_filter = bool(filters.majors)
 
