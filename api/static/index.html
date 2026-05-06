@@ -2880,6 +2880,74 @@
       }], horizontalBarLayout(id, rows), plotConfig);
     }
 
+    function medianNumber(values) {
+      const clean = values.map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+      if (!clean.length) return null;
+      const mid = Math.floor(clean.length / 2);
+      return clean.length % 2 ? clean[mid] : (clean[mid - 1] + clean[mid]) / 2;
+    }
+
+    function salaryBinSpec(rows) {
+      const clean = (rows || [])
+        .map(row => ({
+          start: Number(row.bin_start),
+          end: Number(row.bin_end),
+        }))
+        .filter(row => Number.isFinite(row.start) && Number.isFinite(row.end) && row.end > row.start)
+        .sort((a, b) => a.start - b.start);
+      if (!clean.length) return null;
+      const widths = clean.map(row => row.end - row.start).filter(width => width > 0);
+      const startGaps = clean.slice(1).map((row, i) => row.start - clean[i].start).filter(width => width > 0);
+      const width = medianNumber(widths) || medianNumber(startGaps) || 25000;
+      const start = Math.min(...clean.map(row => row.start));
+      const end = Math.max(...clean.map(row => row.end));
+      return { start, end, width };
+    }
+
+    function smoothDistribution(values, radius = 4, sigma = 2.1) {
+      const clean = values.map(value => Math.max(0, Number(value) || 0));
+      const kernel = [];
+      for (let offset = -radius; offset <= radius; offset += 1) {
+        kernel.push(Math.exp(-(offset * offset) / (2 * sigma * sigma)));
+      }
+      const kernelTotal = kernel.reduce((sum, value) => sum + value, 0) || 1;
+      const smoothed = clean.map((_, index) => {
+        let total = 0;
+        for (let offset = -radius; offset <= radius; offset += 1) {
+          const sourceIndex = index + offset;
+          if (sourceIndex >= 0 && sourceIndex < clean.length) {
+            total += clean[sourceIndex] * kernel[offset + radius];
+          }
+        }
+        return total / kernelTotal;
+      });
+      const rawTotal = clean.reduce((sum, value) => sum + value, 0);
+      const smoothTotal = smoothed.reduce((sum, value) => sum + value, 0);
+      const scale = rawTotal > 0 && smoothTotal > 0 ? rawTotal / smoothTotal : 1;
+      return smoothed.map(value => value * scale);
+    }
+
+    function salaryDistributionPoints(rows, valueKey, spec = null) {
+      const binSpec = spec || salaryBinSpec(rows);
+      if (!binSpec) return [];
+      const count = Math.max(1, Math.min(80, Math.ceil((binSpec.end - binSpec.start) / binSpec.width)));
+      const bins = Array.from({ length: count }, (_, index) => {
+        const start = binSpec.start + index * binSpec.width;
+        const end = index === count - 1 ? binSpec.end : start + binSpec.width;
+        return { start, end, x: (start + end) / 2, rawY: 0, rawN: 0 };
+      });
+      (rows || []).forEach(row => {
+        const start = Number(row.bin_start);
+        const end = Number(row.bin_end);
+        if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(binSpec.width) || binSpec.width <= 0) return;
+        const index = Math.max(0, Math.min(count - 1, Math.round((start - binSpec.start) / binSpec.width)));
+        bins[index].rawY += Number(row[valueKey] || 0);
+        bins[index].rawN += Number(row.n || 0);
+      });
+      const smoothed = smoothDistribution(bins.map(row => row.rawY));
+      return bins.map((row, index) => ({ ...row, y: smoothed[index] || 0 }));
+    }
+
     function drawSalaryDistribution(id) {
       const dist = state.data.salary_distribution || {};
       const rows = dist.bins || [];
@@ -2896,22 +2964,17 @@
         </div>
         <div id="${plotId}" class="distribution-curve"></div>
       `;
-      const points = rows.map(r => ({
-        x: (Number(r.bin_start) + Number(r.bin_end)) / 2,
-        y: Number(r.n || 0),
-        start: Number(r.bin_start),
-        end: Number(r.bin_end),
-      }));
+      const points = salaryDistributionPoints(rows, 'n');
       Plotly.newPlot(plotId, [{
         type: 'scatter',
         mode: 'lines',
         x: points.map(r => r.x),
         y: points.map(r => r.y),
         fill: 'tozeroy',
-        line: { color: COLORS[0], width: 4, shape: 'spline', smoothing: 0.8 },
+        line: { color: COLORS[0], width: 4, shape: 'linear' },
         fillcolor: 'rgba(47, 128, 237, 0.16)',
-        customdata: points.map(r => [r.start, r.end]),
-        hovertemplate: `%{customdata[0]:$,.0f}-%{customdata[1]:$,.0f}<br>${horizonLabel}<br>%{y:,.0f} weighted observations<extra></extra>`,
+        customdata: points.map(r => [r.start, r.end, r.rawN]),
+        hovertemplate: `%{customdata[0]:$,.0f}-%{customdata[1]:$,.0f}<br>${horizonLabel}<br>Smoothed %{y:,.0f}<br>Raw bin %{customdata[2]:,.0f}<extra></extra>`,
       }], {
         ...layoutBase,
         margin: { ...layoutBase.margin, l: 50, r: 20, t: 8, b: 58 },
@@ -2935,12 +2998,14 @@
         state.selectionMode === 'major_compare' ? legendLabel(row.label || row.code, 30) : shortSchool(row.label || row.code),
       ]));
       const summaryFor = new Map(summaries.map(row => [String(row.code), row]));
+      const globalSpec = salaryBinSpec(bins);
       const traces = codes.map((code, i) => {
         const color = COLORS[i % COLORS.length];
         const legendgroup = `${id}-dist-${i}`;
         const slice = bins
           .filter(row => String(row.code) === code)
           .sort((a, b) => Number(a.bin_start || 0) - Number(b.bin_start || 0));
+        const points = salaryDistributionPoints(slice, 'share_pct', globalSpec);
         const summary = summaryFor.get(code) || {};
         const label = labelFor.get(code) || code;
         return {
@@ -2948,20 +3013,21 @@
           mode: 'lines',
           name: label,
           legendgroup,
-          x: slice.map(row => (Number(row.bin_start || 0) + Number(row.bin_end || 0)) / 2),
-          y: slice.map(row => row.share_pct),
-          line: { color, width: 4.5, shape: 'spline', smoothing: 1.3 },
+          x: points.map(row => row.x),
+          y: points.map(row => row.y),
+          line: { color, width: 4, shape: 'linear' },
           showlegend: false,
-          customdata: slice.map(row => [
-            row.label || label,
-            row.bin_start,
-            row.bin_end,
-            row.n,
+          customdata: points.map(row => [
+            label,
+            row.start,
+            row.end,
+            row.rawN,
+            row.rawY,
             summary.p25,
             summary.median,
             summary.p75,
           ]),
-          hovertemplate: '<b>%{customdata[0]}</b><br>%{customdata[1]:$,.0f}-%{customdata[2]:$,.0f}<br>%{y:.1f}% of salary observations<br>Weighted observations %{customdata[3]:,.0f}<br>P25 %{customdata[4]:$,.0f} | Median %{customdata[5]:$,.0f} | P75 %{customdata[6]:$,.0f}<extra></extra>',
+          hovertemplate: '<b>%{customdata[0]}</b><br>%{customdata[1]:$,.0f}-%{customdata[2]:$,.0f}<br>Smoothed %{y:.1f}% of salary observations<br>Raw bin %{customdata[4]:.1f}% | %{customdata[3]:,.0f} weighted obs<br>P25 %{customdata[5]:$,.0f} | Median %{customdata[6]:$,.0f} | P75 %{customdata[7]:$,.0f}<extra></extra>',
         };
       });
       const legendTraces = codes.map((code, i) => legendDotTrace(labelFor.get(code) || code, COLORS[i % COLORS.length], `${id}-dist-${i}`));
@@ -2970,7 +3036,7 @@
         height: 470,
         margin: { ...layoutBase.margin, l: 74, r: 32, t: 18, b: 62 },
         xaxis: { title: `Salary (${horizonLabel})`, tickprefix: '$', tickformat: ',.0s', automargin: true, rangemode: 'tozero' },
-        yaxis: { title: 'Share of salary observations %', ticksuffix: '%', automargin: true, rangemode: 'tozero' },
+        yaxis: { title: 'Smoothed share of salary observations %', ticksuffix: '%', automargin: true, rangemode: 'tozero' },
         legend: { orientation: 'h', y: 1.16, x: 0, itemwidth: 30 },
       }, plotConfig).then(plot => bindLegendGroupToggles(plot));
     }

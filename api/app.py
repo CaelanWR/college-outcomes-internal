@@ -26,6 +26,7 @@ MIN_CELL_WEIGHT = float(os.environ.get("MIN_CELL_WEIGHT", "0"))
 SALARY_MIN_WEIGHT = float(os.environ.get("SALARY_MIN_WEIGHT", "0"))
 EMPLOYER_ROW_MIN_WEIGHT = float(os.environ.get("EMPLOYER_ROW_MIN_WEIGHT", str(MIN_CELL_WEIGHT)))
 GEOGRAPHY_ROW_MIN_WEIGHT = float(os.environ.get("GEOGRAPHY_ROW_MIN_WEIGHT", str(MIN_CELL_WEIGHT)))
+SALARY_DISTRIBUTION_BUCKETS = int(os.environ.get("SALARY_DISTRIBUTION_BUCKETS", "32"))
 DUCKDB_THREADS = int(os.environ.get("OUTCOMES_DUCKDB_THREADS", "1"))
 DUCKDB_MEMORY_LIMIT = os.environ.get("OUTCOMES_DUCKDB_MEMORY_LIMIT", "1200MB")
 DUCKDB_TEMP_DIR = Path(os.environ.get("OUTCOMES_DUCKDB_TEMP_DIR", "/tmp/duckdb")).expanduser()
@@ -1091,6 +1092,8 @@ def _alumni_trend_by_major(con: duckdb.DuckDBPyConnection, filters: QueryRequest
 
 
 def _salary_distribution(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
+    bucket_count = max(12, min(80, SALARY_DISTRIBUTION_BUCKETS))
+    max_bucket = bucket_count - 1
     summary = _single_record(
         con,
         """
@@ -1113,7 +1116,7 @@ def _salary_distribution(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
     )
     rows = _records_from_query(
         con,
-        """
+        f"""
         WITH salaries AS (
           SELECT salary, final_weight
           FROM slice
@@ -1131,7 +1134,7 @@ def _salary_distribution(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
           SELECT
             CASE
               WHEN (SELECT hi - lo FROM bounds) <= 0 THEN 0
-              ELSE LEAST(19, GREATEST(0, FLOOR((LEAST(GREATEST(s.salary, b.lo), b.hi) - b.lo) / NULLIF((b.hi - b.lo) / 20.0, 0))))
+              ELSE LEAST({max_bucket}, GREATEST(0, FLOOR((LEAST(GREATEST(s.salary, b.lo), b.hi) - b.lo) / NULLIF((b.hi - b.lo) / {float(bucket_count)}, 0))))
             END AS bucket,
             s.final_weight,
             b.lo,
@@ -1140,20 +1143,21 @@ def _salary_distribution(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
           CROSS JOIN bounds b
         )
         SELECT
-          ROUND(MIN(lo + bucket * ((hi - lo) / 20.0))) AS bin_start,
-          ROUND(MIN(lo + (bucket + 1) * ((hi - lo) / 20.0))) AS bin_end,
+          ROUND(MIN(lo + bucket * ((hi - lo) / {float(bucket_count)}))) AS bin_start,
+          ROUND(MIN(lo + (bucket + 1) * ((hi - lo) / {float(bucket_count)}))) AS bin_end,
           ROUND(SUM(final_weight), 2) AS n
         FROM binned
         GROUP BY bucket
-        HAVING SUM(final_weight) > ?
+        HAVING SUM(final_weight) > 0
         ORDER BY bucket
         """,
-        [SALARY_MIN_WEIGHT],
     )
     return {"summary": summary, "bins": rows}
 
 
 def _salary_distribution_by_entity(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
+    bucket_count = max(12, min(80, SALARY_DISTRIBUTION_BUCKETS))
+    max_bucket = bucket_count - 1
     if filters.compare_dimension == "major":
         code_expr = _cip_col(filters)
         label_expr = "major_title"
@@ -1223,7 +1227,7 @@ def _salary_distribution_by_entity(con: duckdb.DuckDBPyConnection, filters: Quer
             s.code,
             CASE
               WHEN (SELECT hi - lo FROM bounds) <= 0 THEN 0
-              ELSE LEAST(23, GREATEST(0, FLOOR((LEAST(GREATEST(s.salary, b.lo), b.hi) - b.lo) / NULLIF((b.hi - b.lo) / 24.0, 0))))
+              ELSE LEAST({max_bucket}, GREATEST(0, FLOOR((LEAST(GREATEST(s.salary, b.lo), b.hi) - b.lo) / NULLIF((b.hi - b.lo) / {float(bucket_count)}, 0))))
             END AS bucket,
             s.final_weight,
             b.lo,
@@ -1235,17 +1239,17 @@ def _salary_distribution_by_entity(con: duckdb.DuckDBPyConnection, filters: Quer
         SELECT
           b.code,
           MAX(gt.label) AS label,
-          ROUND(MIN(lo + bucket * ((hi - lo) / 24.0))) AS bin_start,
-          ROUND(MIN(lo + (bucket + 1) * ((hi - lo) / 24.0))) AS bin_end,
+          ROUND(MIN(lo + bucket * ((hi - lo) / {float(bucket_count)}))) AS bin_start,
+          ROUND(MIN(lo + (bucket + 1) * ((hi - lo) / {float(bucket_count)}))) AS bin_end,
           ROUND(SUM(b.final_weight), 2) AS n,
           ROUND(100.0 * SUM(b.final_weight) / NULLIF(MAX(gt.salary_weight), 0), 2) AS share_pct
         FROM binned b
         JOIN group_totals gt USING (code)
         GROUP BY b.code, bucket
-        HAVING SUM(b.final_weight) > ?
+        HAVING SUM(b.final_weight) > 0
         ORDER BY label, bucket
         """,
-        [SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT],
+        [SALARY_MIN_WEIGHT],
     )
     return {"summary": summaries, "bins": rows}
 
