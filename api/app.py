@@ -144,8 +144,21 @@ def _dataset_glob(dataset: str) -> str:
     return str(path / "**" / "*.parquet")
 
 
+def _dataset_root(dataset: str) -> Path:
+    if DATA_ROOT.name == dataset:
+        return DATA_ROOT
+    return _platform_root() / dataset
+
+
+def _dataset_exists(dataset: str) -> bool:
+    root = _dataset_root(dataset)
+    return root.exists() and any(root.rglob("*.parquet"))
+
+
 @lru_cache(maxsize=8)
 def _dataset_columns(dataset: str) -> frozenset[str]:
+    if not _dataset_exists(dataset):
+        return frozenset()
     con = _connect()
     try:
         rows = con.execute("DESCRIBE SELECT * FROM read_parquet(?)", [_dataset_glob(dataset)]).fetchall()
@@ -349,8 +362,7 @@ def _create_current_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest)
 
 
 def _create_current_slice_table(con: duckdb.DuckDBPyConnection, filters: QueryRequest, table_name: str) -> bool:
-    current_path = _platform_root() / "current_students_fact"
-    if not current_path.exists():
+    if not _dataset_exists("current_students_fact"):
         return False
     current_columns = _dataset_columns("current_students_fact")
     profile_weight_sql = _cohort_profile_weight_sql(current_columns)
@@ -477,7 +489,7 @@ def _static_options() -> dict[str, Any]:
             )
         ]
         current_years = []
-        if (_platform_root() / "current_students_fact").exists():
+        if _dataset_exists("current_students_fact"):
             current_years = [
                 int(row["grad_year"])
                 for row in _records_from_query(
@@ -514,7 +526,8 @@ def health() -> dict[str, Any]:
     return {
         "status": "ok",
         "data_version": manifest.get("version"),
-        "base_fact_exists": (_platform_root() / "base_fact").exists() or DATA_ROOT.exists(),
+        "base_fact_exists": _dataset_exists("base_fact"),
+        "current_students_fact_exists": _dataset_exists("current_students_fact"),
     }
 
 
@@ -863,7 +876,7 @@ def _alumni_trend_by_school(con: duckdb.DuckDBPyConnection, filters: QueryReques
 
 
 def _current_student_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
-    if not filters.include_current_students or not (_platform_root() / "current_students_fact").exists():
+    if not filters.include_current_students or not _dataset_exists("current_students_fact"):
         return []
     if not _create_current_slice(con, filters):
         return []
