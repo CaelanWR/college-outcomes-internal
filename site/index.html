@@ -3161,7 +3161,11 @@
         customdata: rows.map(r => r.employer),
         marker: { color: COLORS[0] },
         hovertemplate: '%{customdata}<br>%{x:,.0f} alumni<extra></extra>',
-      }], horizontalBarLayout(id, rows), plotConfig).then(plot => {
+      }], horizontalBarLayout(id, rows, '', {
+        leftMargin: compactWindow() ? 210 : 280,
+        rightMargin: compactWindow() ? 58 : 140,
+        yAutoMargin: false,
+      }), plotConfig).then(plot => {
         if (!clickable) return;
         plot.on('plotly_click', event => {
           const point = event.points?.[0];
@@ -3199,7 +3203,11 @@
         customdata: rows.map(r => r.role),
         marker: { color: drilling ? COLORS[4] : COLORS[2] },
         hovertemplate: '%{customdata}<br>%{x:,.0f} alumni<extra></extra>',
-      }], horizontalBarLayout(id, rows.map(r => ({ label: r.role }))), plotConfig).then(plot => {
+      }], horizontalBarLayout(id, rows.map(r => ({ label: r.role })), '', {
+        leftMargin: compactWindow() ? 210 : 280,
+        rightMargin: compactWindow() ? 58 : 140,
+        yAutoMargin: false,
+      }), plotConfig).then(plot => {
         if (!clickable || drilling) return;
         plot.on('plotly_click', event => {
           const point = event.points?.[0];
@@ -3406,10 +3414,10 @@
       const rowCount = Math.max(1, (rows || []).length);
       const longest = Math.max(12, ...(rows || []).map(r => labelText(r).length));
       const narrow = compactWindow();
-      const leftMargin = narrow
+      const leftMargin = options.leftMargin ?? (narrow
         ? Math.min(230, Math.max(112, longest * 4.8))
-        : Math.min(360, Math.max(148, longest * 7));
-      const rightMargin = narrow ? 42 : 96;
+        : Math.min(360, Math.max(148, longest * 7)));
+      const rightMargin = options.rightMargin ?? (narrow ? 42 : 96);
       const minHeight = options.tall ? (narrow ? 430 : 410) : (narrow ? 360 : 330);
       const dynamicHeight = Math.max(minHeight, Math.min(760, 142 + rowCount * (narrow ? 42 : 34)));
       return {
@@ -3417,7 +3425,7 @@
         height: options.height || dynamicHeight,
         margin: { l: leftMargin, r: rightMargin, t: 14, b: 52 },
         xaxis: { tickprefix: prefix === '$' ? '$' : '', ticksuffix: prefix === '%' ? '%' : '', automargin: true, rangemode: 'tozero' },
-        yaxis: { automargin: true, tickfont: { size: narrow ? 12 : 13 } },
+        yaxis: { automargin: options.yAutoMargin ?? true, tickfont: { size: narrow ? 12 : 13 } },
       };
     }
 
