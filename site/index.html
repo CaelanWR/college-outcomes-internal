@@ -450,6 +450,18 @@
 
     .chart.tall { min-height: 460px; }
 
+    .drill-toolbar {
+      display: flex;
+      justify-content: flex-end;
+      margin: -4px 0 4px;
+    }
+
+    .drill-toolbar .btn {
+      min-height: 30px;
+      padding: 5px 10px;
+      font-size: 0.86rem;
+    }
+
     .chart .svg-container,
     .treemap-plot .svg-container {
       max-width: 100% !important;
@@ -1535,20 +1547,22 @@
     }
 
     function renderEmployers() {
+      const employerData = state.data.employers || {};
+      const selectedRole = employerData.selected_role && (employerData.subroles || []).length ? employerData.selected_role : '';
+      const roleTitle = selectedRole
+        ? `Subroles within ${escapeHtml(selectedRole)}`
+        : `Top Roles at ${escapeHtml(employerData.selected_employer || 'Selected Employer')}`;
       if (state.viewMode === 'snapshot') {
         $('content').innerHTML = [
-          card('Top Career Employers', 'emp-top', 4, true),
-          card(`Top Roles at ${escapeHtml(state.data.employers?.selected_employer || 'Selected Employer')}`, 'emp-roles', 4, true),
-          card(`Subroles: ${escapeHtml(state.data.employers?.selected_role || 'Selected Role')}`, 'emp-subroles', 4, true),
+          card('Top Career Employers', 'emp-top', 5, true),
+          card(roleTitle, 'emp-roles', 7, true),
         ].join('');
         drawEmployerBars('emp-top', true);
         drawEmployerRoles('emp-roles', true);
-        drawEmployerSubroles('emp-subroles');
       } else {
         $('content').innerHTML = [
-          card('Career Employer Share Over Time', 'emp-trend', 6, true),
-          card(`Roles at ${escapeHtml(state.data.employers?.selected_employer || 'Top Employer')}`, 'emp-roles', 3, true),
-          card(`Subroles: ${escapeHtml(state.data.employers?.selected_role || 'Selected Role')}`, 'emp-subroles', 3, true),
+          card('Career Employer Share Over Time', 'emp-trend', 7, true),
+          card(roleTitle, 'emp-roles', 5, true),
           card('Current Top Career Employers', 'emp-top', 12),
         ].join('');
         drawTrendLines('emp-trend', state.data.employer_trend || [], 'employer', 'share_pct', {
@@ -1557,7 +1571,6 @@
           hover: '%{y:.1f}%',
         });
         drawEmployerRoles('emp-roles', true);
-        drawEmployerSubroles('emp-subroles');
         drawEmployerBars('emp-top', true);
       }
     }
@@ -2198,9 +2211,21 @@
     }
 
     function drawEmployerRoles(id, clickable = false) {
-      const rows = (state.data.employers?.roles || []).slice().reverse();
+      const employerData = state.data.employers || {};
+      const drilling = Boolean(employerData.selected_role && (employerData.subroles || []).length);
+      const rows = (drilling ? employerData.subroles || [] : employerData.roles || []).slice().reverse();
       if (!rows.length) return noData(id);
-      Plotly.newPlot(id, [{
+      const plotId = `${id}-plot`;
+      $(id).innerHTML = drilling
+        ? `<div class="drill-toolbar"><button id="${id}-back" class="btn secondary" type="button">All roles</button></div><div id="${plotId}" class="chart"></div>`
+        : `<div id="${plotId}" class="chart"></div>`;
+      if (drilling) {
+        $(`${id}-back`).addEventListener('click', () => {
+          state.selectedEmployerRole = null;
+          refresh();
+        });
+      }
+      Plotly.newPlot(plotId, [{
         type: 'bar',
         orientation: 'h',
         y: rows.map(r => wrapAxisLabel(r.role)),
@@ -2209,10 +2234,10 @@
         textposition: 'outside',
         cliponaxis: false,
         customdata: rows.map(r => r.role),
-        marker: { color: COLORS[2] },
+        marker: { color: drilling ? COLORS[4] : COLORS[2] },
         hovertemplate: '%{customdata}<br>%{x:,.0f} alumni<extra></extra>',
       }], horizontalLayout(rows.map(r => ({ label: r.role }))), plotConfig).then(plot => {
-        if (!clickable) return;
+        if (!clickable || drilling) return;
         plot.on('plotly_click', event => {
           const point = event.points?.[0];
           if (!point) return;
@@ -2220,23 +2245,6 @@
           refresh();
         });
       });
-    }
-
-    function drawEmployerSubroles(id) {
-      const rows = (state.data.employers?.subroles || []).slice().reverse();
-      if (!rows.length) return noData(id);
-      Plotly.newPlot(id, [{
-        type: 'bar',
-        orientation: 'h',
-        y: rows.map(r => wrapAxisLabel(r.role)),
-        x: rows.map(r => r.n),
-        text: rows.map(r => `${num(r.n)} (${pct(r.share_pct)})`),
-        textposition: 'outside',
-        cliponaxis: false,
-        customdata: rows.map(r => r.role),
-        marker: { color: COLORS[4] },
-        hovertemplate: '%{customdata}<br>%{x:,.0f} alumni<extra></extra>',
-      }], horizontalLayout(rows.map(r => ({ label: r.role }))), plotConfig);
     }
 
     function drawGeo(id, metric) {
