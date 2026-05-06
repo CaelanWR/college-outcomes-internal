@@ -666,6 +666,13 @@
     }
     .advanced-grid .control { min-width: 160px; }
     .advanced-grid .control-wide { min-width: 260px; flex: 1 1 280px; }
+    .advanced-actions {
+      flex: 1 1 100%;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding-top: 4px;
+    }
     .compare-only { display: none; }
     body.school-compare-mode .school-compare-only,
     body.major-compare-mode .major-compare-only { display: flex; }
@@ -1134,6 +1141,9 @@
           <option>30</option>
           <option>50</option>
         </select>
+        <div class="advanced-actions">
+          <button id="advanced-apply-btn" class="btn active" type="button">Apply Advanced Options</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1198,6 +1208,7 @@
       roleTreePath: [],
       industryTreePath: [],
       topNByChart: {},
+      appliedAdvanced: null,
       loading: false,
       pendingRefresh: null,
     };
@@ -1364,38 +1375,115 @@
       return Array.from(select.selectedOptions || []).map(option => option.value).filter(Boolean);
     }
 
+    function draftSelectionMode() {
+      return document.querySelector('#selection-toggle [data-selection-mode].active')?.dataset.selectionMode
+        || state.selectionMode
+        || 'single';
+    }
+
     function setAdvancedOpen(open) {
       $('advanced-panel').classList.toggle('open', open);
       $('advanced-btn').textContent = open ? 'Hide Advanced Options' : 'Advanced Options';
     }
 
-    function getSelectedSchools() {
+    function normalizeAdvancedControls() {
+      if ($('later-degree-filter')?.value) $('no-further-select').value = 'false';
+      if ($('no-further-select')?.value === 'true') $('later-degree-filter').value = '';
+      const from = Number($('from-year-select')?.value || 0);
+      const to = Number($('to-year-select')?.value || 0);
+      if (from && to && from > to) {
+        $('to-year-select').value = String(from);
+      }
+      syncHorizonToggle();
+    }
+
+    function readAdvancedControls() {
+      return {
+        selectionMode: draftSelectionMode(),
+        compareSchools: selectedValues($('compare-school-select')).map(String),
+        compareMajors: selectedValues($('compare-major-select')).map(String),
+        cipLevel: $('cip-level-select')?.value || 'cip4',
+        fromYear: $('from-year-select')?.value || '',
+        toYear: $('to-year-select')?.value || '',
+        horizon: $('horizon-select')?.value || '1yr',
+        gender: $('gender-select')?.value || '',
+        race: $('race-select')?.value || '',
+        laterDegree: $('later-degree-filter')?.value || '',
+        noFurther: $('no-further-select')?.value || '',
+        currentStudents: $('current-select')?.value || 'true',
+        schoolEmployer: $('school-employer-select')?.value || 'false',
+      };
+    }
+
+    function activeAdvancedControls() {
+      return state.appliedAdvanced || readAdvancedControls();
+    }
+
+    function initializeAppliedAdvancedControls() {
+      if (state.appliedAdvanced) return;
+      normalizeAdvancedControls();
+      state.appliedAdvanced = readAdvancedControls();
+      state.selectionMode = state.appliedAdvanced.selectionMode;
+      syncSelectionMode(state.selectionMode);
+    }
+
+    function persistAdvancedControls(advanced) {
+      storage.setItem('outcomes.selectionMode', advanced.selectionMode);
+      storage.setItem('outcomes.compareSchools', JSON.stringify(advanced.compareSchools || []));
+      storage.setItem('outcomes.compareMajors', JSON.stringify(advanced.compareMajors || []));
+    }
+
+    function applyAdvancedOptions() {
+      normalizeAdvancedControls();
+      const advanced = readAdvancedControls();
+      state.appliedAdvanced = advanced;
+      state.selectionMode = advanced.selectionMode;
+      persistAdvancedControls(advanced);
+      syncSelectionMode(advanced.selectionMode);
+      if (compareNeedsSelections(advanced)) {
+        setAdvancedOpen(true);
+        state.data = {
+          overview: {},
+          school_comparison: [],
+          major_comparison: [],
+          meta: state.options?.meta || {},
+        };
+        showContent();
+        render();
+        setStatus('ok', `${state.options?.meta?.data_version || 'Connected'} | pick comparison items`);
+        return;
+      }
+      setAdvancedOpen(false);
+      refresh({ reloadOptions: true, resetDrill: true });
+    }
+
+    function getSelectedSchools(advanced = activeAdvancedControls()) {
       const primary = $('school-select').value ? [$('school-select').value] : [];
-      if (state.selectionMode !== 'compare') return primary;
-      const compare = selectedValues($('compare-school-select'));
+      if (advanced.selectionMode !== 'compare') return primary;
+      const compare = advanced.compareSchools || [];
       return [...new Set([...primary, ...compare])].filter(Boolean);
     }
 
-    function getSelectedMajors() {
-      if (state.selectionMode === 'major_compare') return selectedValues($('compare-major-select'));
+    function getSelectedMajors(advanced = activeAdvancedControls()) {
+      if (advanced.selectionMode === 'major_compare') return advanced.compareMajors || [];
       return $('major-select').value ? [$('major-select').value] : [];
     }
 
-    function compareNeedsSelections() {
-      if (state.selectionMode === 'compare') return selectedValues($('compare-school-select')).length < 1;
-      if (state.selectionMode === 'major_compare') return selectedValues($('compare-major-select')).length < 2;
+    function compareNeedsSelections(advanced = activeAdvancedControls()) {
+      if (advanced.selectionMode === 'compare') return (advanced.compareSchools || []).length < 1;
+      if (advanced.selectionMode === 'major_compare') return (advanced.compareMajors || []).length < 2;
       return false;
     }
 
-    function yearRange() {
+    function yearRange(advanced = activeAdvancedControls()) {
       const all = state.options?.grad_years || [];
-      const from = Number($('from-year-select').value || all[0]);
-      const to = Number($('to-year-select').value || all[all.length - 1]);
+      const from = Number(advanced.fromYear || all[0]);
+      const to = Number(advanced.toYear || all[all.length - 1]);
       return all.filter(year => year >= from && year <= to);
     }
 
     function activeHorizonLabel(compact = false) {
-      const horizon = $('horizon-select')?.value || '1yr';
+      const horizon = (state.appliedAdvanced?.horizon || $('horizon-select')?.value || '1yr');
       const labels = {
         '1yr': compact ? '1 yr out' : '1 year after graduation',
         '5yr': compact ? '5 yrs out' : '5 years after graduation',
@@ -1406,28 +1494,29 @@
     }
 
     function currentFilters(extra = {}) {
-      const noFurtherValue = $('no-further-select').value;
+      const advanced = activeAdvancedControls();
+      const noFurtherValue = advanced.noFurther;
       return {
-        schools: getSelectedSchools(),
+        schools: getSelectedSchools(advanced),
         degree: $('degree-select').value || 'Bachelors',
-        cip_level: $('cip-level-select').value || 'cip4',
-        majors: getSelectedMajors(),
-        grad_years: yearRange(),
-        horizon: $('horizon-select').value || '1yr',
+        cip_level: advanced.cipLevel || 'cip4',
+        majors: getSelectedMajors(advanced),
+        grad_years: yearRange(advanced),
+        horizon: advanced.horizon || '1yr',
         demographics: {
-          gender: $('gender-select').value || null,
-          race_ethnicity: $('race-select').value || null,
+          gender: advanced.gender || null,
+          race_ethnicity: advanced.race || null,
         },
         postgrad: {
-          later_degree_type: $('later-degree-filter').value || null,
+          later_degree_type: advanced.laterDegree || null,
           no_further_education: noFurtherValue === '' ? null : noFurtherValue === 'true',
         },
-        include_current_students: $('current-select').value === 'true',
-        include_school_employers: $('school-employer-select').value === 'true',
-        compare_mode: state.selectionMode === 'compare' || state.selectionMode === 'major_compare',
-        compare_dimension: state.selectionMode === 'major_compare' ? 'major' : 'school',
-        active_tab: state.selectionMode === 'compare' || state.selectionMode === 'major_compare' ? state.tab : 'all',
-        view_mode: state.selectionMode === 'compare' || state.selectionMode === 'major_compare' ? state.viewMode : 'all',
+        include_current_students: advanced.currentStudents === 'true',
+        include_school_employers: advanced.schoolEmployer === 'true',
+        compare_mode: advanced.selectionMode === 'compare' || advanced.selectionMode === 'major_compare',
+        compare_dimension: advanced.selectionMode === 'major_compare' ? 'major' : 'school',
+        active_tab: advanced.selectionMode === 'compare' || advanced.selectionMode === 'major_compare' ? state.tab : 'all',
+        view_mode: advanced.selectionMode === 'compare' || advanced.selectionMode === 'major_compare' ? state.viewMode : 'all',
         selected_employer: state.selectedEmployer,
         selected_employer_role: state.selectedEmployerRole,
         selected_postgrad_degree: state.selectedPostgradDegree,
@@ -1546,6 +1635,7 @@
       state.options = options;
       populateStaticControls(options);
       populateMajorOptions(options, preserveMajor);
+      initializeAppliedAdvancedControls();
       if (state.selectionMode === 'compare' || state.selectionMode === 'major_compare') {
         setAdvancedOpen(compareNeedsSelections());
       }
@@ -3372,6 +3462,7 @@
       $('advanced-btn').addEventListener('click', () => {
         setAdvancedOpen(!$('advanced-panel').classList.contains('open'));
       });
+      $('advanced-apply-btn').addEventListener('click', () => applyAdvancedOptions());
       $('tabs').addEventListener('click', event => {
         const tab = event.target.closest('.tab');
         if (!tab) return;
@@ -3402,41 +3493,34 @@
       $('selection-toggle').addEventListener('click', event => {
         const button = event.target.closest('[data-selection-mode]');
         if (!button) return;
-        state.selectionMode = button.dataset.selectionMode;
-        storage.setItem('outcomes.selectionMode', state.selectionMode);
-        syncSelectionMode();
-        const needsSelections = compareNeedsSelections();
-        setAdvancedOpen(needsSelections);
-        if (needsSelections) {
-          render();
-          return;
-        }
-        refresh({ resetDrill: true });
+        syncSelectionMode(button.dataset.selectionMode);
+        setAdvancedOpen(true);
       });
 
       $('horizon-toggle').addEventListener('click', event => {
         const button = event.target.closest('[data-horizon]');
         if (!button) return;
         $('horizon-select').value = button.dataset.horizon;
+        state.appliedAdvanced = { ...activeAdvancedControls(), horizon: button.dataset.horizon };
         syncHorizonToggle();
         refresh({ resetDrill: true });
       });
 
-      ['school-select', 'compare-school-select', 'compare-major-select', 'degree-select', 'cip-level-select'].forEach(id => {
+      ['school-select', 'degree-select'].forEach(id => {
+        $(id).addEventListener('change', () => {
+          refresh({ reloadOptions: true, resetDrill: true });
+        });
+      });
+      $('major-select').addEventListener('change', () => refresh({ resetDrill: true }));
+      ['compare-school-select', 'compare-major-select', 'cip-level-select'].forEach(id => {
         $(id).addEventListener('change', () => {
           if (id === 'compare-school-select') {
             storage.setItem('outcomes.compareSchools', JSON.stringify(selectedValues($('compare-school-select'))));
-            if (state.selectionMode === 'compare' && selectedValues($('compare-school-select')).length) {
-              setAdvancedOpen(false);
-            }
           }
           if (id === 'compare-major-select') {
             storage.setItem('outcomes.compareMajors', JSON.stringify(selectedValues($('compare-major-select'))));
-            if (state.selectionMode === 'major_compare' && selectedValues($('compare-major-select')).length >= 2) {
-              setAdvancedOpen(false);
-            }
           }
-          refresh({ reloadOptions: true, resetDrill: true });
+          setAdvancedOpen(true);
         });
       });
       $('compare-major-picker').addEventListener('change', event => {
@@ -3447,8 +3531,7 @@
         const values = selectedValues($('compare-major-select'));
         storage.setItem('outcomes.compareMajors', JSON.stringify(values));
         renderCompareMajorPicker(state.options?.major_options || [], new Set(values.map(String)));
-        if (state.selectionMode === 'major_compare' && values.length >= 2) setAdvancedOpen(false);
-        refresh({ resetDrill: true });
+        setAdvancedOpen(true);
       });
       $('compare-major-picker').addEventListener('click', event => {
         if (!event.target.closest('[data-clear-compare-majors]')) return;
@@ -3456,14 +3539,13 @@
         Array.from($('compare-major-select').options).forEach(opt => { opt.selected = false; });
         storage.setItem('outcomes.compareMajors', '[]');
         renderCompareMajorPicker(state.options?.major_options || [], new Set());
-        refresh({ resetDrill: true });
+        setAdvancedOpen(true);
       });
-      ['horizon-select', 'from-year-select', 'to-year-select', 'major-select', 'gender-select', 'race-select', 'later-degree-filter', 'no-further-select', 'current-select', 'school-employer-select'].forEach(id => {
+      ['horizon-select', 'from-year-select', 'to-year-select', 'gender-select', 'race-select', 'later-degree-filter', 'no-further-select', 'current-select', 'school-employer-select'].forEach(id => {
         $(id).addEventListener('change', () => {
-          if (id === 'horizon-select') syncHorizonToggle();
           if (id === 'later-degree-filter' && $('later-degree-filter').value) $('no-further-select').value = 'false';
           if (id === 'no-further-select' && $('no-further-select').value === 'true') $('later-degree-filter').value = '';
-          refresh({ resetDrill: true });
+          setAdvancedOpen(true);
         });
       });
       $('content').addEventListener('change', event => {
@@ -3493,11 +3575,12 @@
       });
     }
 
-    function syncSelectionMode() {
-      document.body.classList.toggle('school-compare-mode', state.selectionMode === 'compare');
-      document.body.classList.toggle('major-compare-mode', state.selectionMode === 'major_compare');
+    function syncSelectionMode(mode = state.selectionMode) {
+      const selectedMode = mode || 'single';
+      document.body.classList.toggle('school-compare-mode', selectedMode === 'compare');
+      document.body.classList.toggle('major-compare-mode', selectedMode === 'major_compare');
       document.querySelectorAll('[data-selection-mode]').forEach(button => {
-        button.classList.toggle('active', button.dataset.selectionMode === state.selectionMode);
+        button.classList.toggle('active', button.dataset.selectionMode === selectedMode);
       });
     }
 
@@ -3520,7 +3603,7 @@
       applyDefaultViewForTab(state.tab);
       syncViewToggle();
       syncSelectionMode();
-      setAdvancedOpen(compareNeedsSelections());
+      setAdvancedOpen(state.selectionMode === 'compare' || state.selectionMode === 'major_compare');
       syncHorizonToggle();
       bindEvents();
       showAuthModal($('api-password').value ? 'Connecting with saved credentials...' : '');
