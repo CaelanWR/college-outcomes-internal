@@ -135,24 +135,32 @@ def _platform_root() -> Path:
     return DATA_ROOT
 
 
-def _dataset_glob(dataset: str) -> str:
-    root = _platform_root()
-    if DATA_ROOT.name == dataset:
-        path = DATA_ROOT
-    else:
-        path = root / dataset
-    return str(path / "**" / "*.parquet")
-
-
 def _dataset_root(dataset: str) -> Path:
     if DATA_ROOT.name == dataset:
         return DATA_ROOT
     return _platform_root() / dataset
 
 
-def _dataset_exists(dataset: str) -> bool:
+@lru_cache(maxsize=8)
+def _dataset_files(dataset: str) -> tuple[str, ...]:
     root = _dataset_root(dataset)
-    return root.exists() and any(root.rglob("*.parquet"))
+    if not root.exists():
+        return tuple()
+    return tuple(
+        sorted(
+            str(path)
+            for path in root.rglob("*.parquet")
+            if path.is_file() and not path.name.startswith(".")
+        )
+    )
+
+
+def _dataset_glob(dataset: str) -> list[str]:
+    return list(_dataset_files(dataset))
+
+
+def _dataset_exists(dataset: str) -> bool:
+    return bool(_dataset_files(dataset))
 
 
 @lru_cache(maxsize=8)
@@ -528,6 +536,8 @@ def health() -> dict[str, Any]:
         "data_version": manifest.get("version"),
         "base_fact_exists": _dataset_exists("base_fact"),
         "current_students_fact_exists": _dataset_exists("current_students_fact"),
+        "base_fact_file_count": len(_dataset_files("base_fact")),
+        "current_students_fact_file_count": len(_dataset_files("current_students_fact")),
     }
 
 

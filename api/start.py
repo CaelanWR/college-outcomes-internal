@@ -14,7 +14,10 @@ ALLOW_EMPTY_STARTUP = os.environ.get("OUTCOMES_ALLOW_EMPTY_STARTUP", "0").lower(
 
 
 def _has_parquet(path: Path) -> bool:
-    return path.exists() and any(path.rglob("*.parquet"))
+    return path.exists() and any(
+        candidate.is_file() and not candidate.name.startswith(".")
+        for candidate in path.rglob("*.parquet")
+    )
 
 
 def _safe_extract_tar(archive: Path, dest: Path) -> None:
