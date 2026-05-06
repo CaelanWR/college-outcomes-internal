@@ -35,10 +35,9 @@
 
     * { box-sizing: border-box; }
 
-    html { scroll-behavior: smooth; }
-
-    @supports not (zoom: 1) {
-      html { font-size: 86%; }
+    html {
+      scroll-behavior: smooth;
+      font-size: 86%;
     }
 
     body {
@@ -50,7 +49,6 @@
         linear-gradient(180deg, #f4f8fb 0%, #edf3f8 100%);
       min-height: 100vh;
       overflow-x: hidden;
-      zoom: 0.86;
     }
 
     header {
@@ -2687,7 +2685,7 @@
             marker: { size: 7 },
             showlegend: false,
             customdata: historic.map(r => [r.n, r.total_n]),
-            hovertemplate: `${title}<br>Class of %{x}<br>%{y:.1f}% of total<br>%{customdata[0]:,.0f} of %{customdata[1]:,.0f}<extra></extra>`,
+            hovertemplate: `${title}<br>Class of %{x}<br>%{y:.1f}%<extra></extra>`,
           },
           current.length ? {
             type: 'scatter',
@@ -2703,7 +2701,7 @@
             },
             customdata: currentBridge.map(r => [r.n, r.total_n]),
             showlegend: false,
-            hovertemplate: `${title}<br>Class of %{x}<br>%{y:.1f}% of total<br>%{customdata[0]:,.0f} of %{customdata[1]:,.0f}<extra></extra>`,
+            hovertemplate: `${title}<br>Class of %{x}<br>%{y:.1f}%<extra></extra>`,
           } : null
         ].filter(Boolean);
       }).flat();
@@ -2822,7 +2820,7 @@
         cliponaxis: false,
         customdata: rows.map(row => [majorName(row), row.code]),
         marker: { color: COLORS[0] },
-        hovertemplate: `%{customdata[0]}<br>CIP %{customdata[1]}<br>${horizonLabel}<br>%{x:$,.0f}<extra></extra>`,
+        hovertemplate: `%{customdata[0]}<br>${horizonLabel}<br>%{x:$,.0f}<extra></extra>`,
       }], {
         ...layout,
         xaxis: { ...layout.xaxis, title: `Median salary (${horizonLabel})` },
@@ -2846,7 +2844,7 @@
         cliponaxis: false,
         customdata: rows.map(row => [majorName(row), row.code]),
         marker: { color: COLORS[1] },
-        hovertemplate: '%{customdata[0]}<br>CIP %{customdata[1]}<br>%{x:,.0f} alumni<extra></extra>',
+        hovertemplate: '%{customdata[0]}<br>%{x:,.0f} alumni<extra></extra>',
       }], horizontalBarLayout(id, rows.map(row => ({ label: majorName(row) }))), plotConfig);
     }
 
@@ -2867,7 +2865,7 @@
         cliponaxis: false,
         customdata: rows.map(row => [majorName(row), row.code]),
         marker: { color: COLORS[2] },
-        hovertemplate: '%{customdata[0]}<br>CIP %{customdata[1]}<br>%{x:.1f}% with later degree<extra></extra>',
+        hovertemplate: '%{customdata[0]}<br>%{x:.1f}% with later degree<extra></extra>',
       }], horizontalBarLayout(id, rows.map(row => ({ label: majorName(row) })), '%'), plotConfig);
     }
 
@@ -3080,7 +3078,7 @@
         line: { color: COLORS[0], width: 4, shape: 'linear' },
         fillcolor: 'rgba(47, 128, 237, 0.16)',
         customdata: points.map(r => [r.start, r.end, r.rawN]),
-        hovertemplate: `%{customdata[0]:$,.0f}-%{customdata[1]:$,.0f}<br>${horizonLabel}<br>Smoothed %{y:,.0f}<br>Raw bin %{customdata[2]:,.0f}<extra></extra>`,
+        hovertemplate: `Salary %{customdata[0]:$,.0f}-%{customdata[1]:$,.0f}<br>${horizonLabel}<br>%{y:,.0f} observations<extra></extra>`,
       }], {
         ...layoutBase,
         margin: { ...layoutBase.margin, l: 50, r: 20, t: 8, b: 58 },
@@ -3133,7 +3131,7 @@
             summary.median,
             summary.p75,
           ]),
-          hovertemplate: '<b>%{customdata[0]}</b><br>%{customdata[1]:$,.0f}-%{customdata[2]:$,.0f}<br>Smoothed %{y:.1f}% of salary observations<br>Raw bin %{customdata[4]:.1f}% | %{customdata[3]:,.0f} weighted obs<br>P25 %{customdata[5]:$,.0f} | Median %{customdata[6]:$,.0f} | P75 %{customdata[7]:$,.0f}<extra></extra>',
+          hovertemplate: '<b>%{customdata[0]}</b><br>Salary %{customdata[1]:$,.0f}-%{customdata[2]:$,.0f}<br>%{y:.1f}% of observations<extra></extra>',
         };
       });
       const legendTraces = codes.map((code, i) => legendDotTrace(labelFor.get(code) || code, COLORS[i % COLORS.length], `${id}-dist-${i}`));
@@ -3269,7 +3267,7 @@
           row.median_salary === null || row.median_salary === undefined ? 'Mean pay unavailable' : `Mean pay: ${money(row.median_salary)}`,
           row.drillable ? 'Click to drill' : '',
         ]),
-        hovertemplate: '<b>%{label}</b><br>Alumni: %{value:,.0f}<br>Share of total: %{customdata[0]:.1f}%<br>Share of block: %{customdata[1]:.1f}%<br>%{customdata[2]}<br>%{customdata[3]}<extra></extra>',
+        hovertemplate: '<b>%{label}</b><br>%{value:,.0f} alumni<br>%{customdata[0]:.1f}% of total<br>%{customdata[2]}<extra></extra>',
         pathbar: { visible: false },
         tiling: { packing: 'squarify', squarifyratio: 1.1 },
       }], {
@@ -3301,7 +3299,7 @@
         x: [row.share_pct],
         marker: { color: COLORS[i % COLORS.length] },
         customdata: [[row.label, row.n, row.weighted_mean_salary]],
-        hovertemplate: '%{customdata[0]}<br>%{x:.1f}%<br>%{customdata[1]:,.0f} alumni<br>Mean salary %{customdata[2]:$,.0f}<extra></extra>',
+        hovertemplate: '%{customdata[0]}<br>%{x:.1f}%<extra></extra>',
       }));
       Plotly.newPlot(id, traces, {
         ...layoutBase,
@@ -3337,7 +3335,7 @@
             const row = byYear.get(year) || {};
             return [label, row.n || 0, row.weighted_mean_salary || null];
           }),
-          hovertemplate: '%{customdata[0]}<br>Class of %{x}<br>%{y:.1f}%<br>%{customdata[1]:,.0f} alumni<extra></extra>',
+          hovertemplate: '%{customdata[0]}<br>Class of %{x}<br>%{y:.1f}%<extra></extra>',
         };
       });
       Plotly.newPlot(id, traces, {
