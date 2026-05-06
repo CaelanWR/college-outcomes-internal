@@ -37,6 +37,10 @@
 
     html { scroll-behavior: smooth; }
 
+    @supports not (zoom: 1) {
+      html { font-size: 86%; }
+    }
+
     body {
       margin: 0;
       color: var(--ink);
@@ -46,6 +50,7 @@
         linear-gradient(180deg, #f4f8fb 0%, #edf3f8 100%);
       min-height: 100vh;
       overflow-x: hidden;
+      zoom: 0.86;
     }
 
     header {
@@ -603,7 +608,6 @@
     .advanced-grid .control-wide { min-width: 260px; flex: 1 1 280px; }
     .compare-only { display: none; }
     body.compare-mode .compare-only { display: flex; }
-    body.compare-mode .tabs { display: none; }
 
     .content {
       width: auto;
@@ -861,10 +865,10 @@
         <div class="control">
           <label>Top N</label>
           <select id="top-n-select">
-            <option>8</option>
+            <option selected>8</option>
             <option>12</option>
             <option>16</option>
-            <option selected>20</option>
+            <option>20</option>
             <option>30</option>
             <option>50</option>
           </select>
@@ -1043,6 +1047,11 @@
       return Array.from(select.selectedOptions || []).map(option => option.value).filter(Boolean);
     }
 
+    function setAdvancedOpen(open) {
+      $('advanced-panel').classList.toggle('open', open);
+      $('advanced-btn').textContent = open ? 'Hide Advanced Options' : 'Advanced Options';
+    }
+
     function getSelectedSchools() {
       const primary = $('school-select').value ? [$('school-select').value] : [];
       if (state.selectionMode !== 'compare') return primary;
@@ -1083,7 +1092,7 @@
         selected_postgrad_degree: state.selectedPostgradDegree,
         selected_postgrad_school: state.selectedPostgradSchool,
         selected_postgrad_program: state.selectedPostgradProgram,
-        top_n: Number($('top-n-select').value || 12),
+        top_n: Number($('top-n-select').value || 8),
         ...extra,
       };
     }
@@ -1160,6 +1169,9 @@
       state.options = options;
       populateStaticControls(options);
       populateMajorOptions(options, preserveMajor);
+      if (state.selectionMode === 'compare') {
+        setAdvancedOpen(!selectedValues($('compare-school-select')).length);
+      }
       setStatus('ok', `${options.meta?.data_version || 'Connected'} | positive-weight cells visible`);
     }
 
@@ -1363,7 +1375,7 @@
           group.drillable = true;
         }
       });
-      const limit = Number($('top-n-select')?.value || 12);
+      const limit = Number($('top-n-select')?.value || 8);
       return [...groups.values()]
         .map(row => ({
           ...row,
@@ -1389,14 +1401,22 @@
 
     function overviewMetrics(o) {
       const currentTotal = currentStudentTotal();
-      const span = currentTotal ? 3 : 4;
+      const span = currentTotal ? 4 : 6;
       const rows = [
         metric('Weighted Median Salary', money(o.median_salary), span),
         metric('Alumni', num(o.alumni), span),
       ];
       if (currentTotal) rows.push(metric('Current Students', num(currentTotal), span, 'current-students'));
-      rows.push(metric('Salary Observations', num(o.salary_weight), span));
       return rows;
+    }
+
+    function coverageMetrics() {
+      const o = state.data.overview || {};
+      return [
+        metric('Alumni', num(o.alumni), 4),
+        metric('Weighted Median Salary', money(o.median_salary), 4),
+        metric('Salary Observations', num(o.salary_weight), 4),
+      ];
     }
 
     function render() {
@@ -1429,10 +1449,9 @@
 
       if (state.viewMode === 'snapshot') {
         $('content').innerHTML = [
-          metric('Schools', num(rows.length), 3),
-          metric('Alumni', num(o.alumni), 3),
-          metric('Weighted Median Salary', money(o.median_salary), 3),
-          metric('Salary Observations', num(o.salary_weight), 3),
+          metric('Schools', num(rows.length), 4),
+          metric('Alumni', num(o.alumni), 4),
+          metric('Weighted Median Salary', money(o.median_salary), 4),
           card('Median Salary by School', 'compare-salary', 6, true),
           card('Alumni by School', 'compare-alumni', 6, true),
           card('Further Education Rate by School', 'compare-postgrad', 6, true),
@@ -1444,10 +1463,9 @@
         drawComparisonTable('compare-table');
       } else {
         $('content').innerHTML = [
-          metric('Schools', num(rows.length), 3),
-          metric('Alumni', num(o.alumni), 3),
-          metric('Weighted Median Salary', money(o.median_salary), 3),
-          metric('Salary Observations', num(o.salary_weight), 3),
+          metric('Schools', num(rows.length), 4),
+          metric('Alumni', num(o.alumni), 4),
+          metric('Weighted Median Salary', money(o.median_salary), 4),
           card('Salary Trend by School', 'compare-salary-trend', 7, true),
           card('Alumni Trend by School', 'compare-alumni-trend', 5, true),
           card('Comparison Table', 'compare-table', 12),
@@ -1727,6 +1745,7 @@
       if (state.viewMode === 'snapshot') {
         if (isCompare) {
           $('content').innerHTML = [
+            ...coverageMetrics(),
             card('IPEDS vs Revelio Completions by School', 'coverage-school-bars', 7, true),
             card('School Coverage Table', 'coverage-school-table', 5),
           ].join('');
@@ -1735,6 +1754,7 @@
           return;
         }
         $('content').innerHTML = [
+          ...coverageMetrics(),
           card('Coverage by Degree Level vs IPEDS', 'coverage-degree-bars', 6, true),
           card('Degree Coverage Table', 'coverage-degree-table', 6),
           card('Bachelor Major Coverage vs IPEDS', 'coverage-major-bars', 7, true),
@@ -1746,6 +1766,7 @@
         $('coverage-major-table').innerHTML = coverageTable(coverage.bachelor_majors || [], 'Major', 'title', 30);
       } else {
         $('content').innerHTML = [
+          ...coverageMetrics(),
           card('IPEDS vs Revelio Completions by Graduation Year', 'coverage-trend-bars', 8, true),
           card('Grad Coverage by Graduation Year', 'coverage-trend-line', 4, true),
         ].join('');
@@ -2379,8 +2400,7 @@
     function bindEvents() {
       $('connect-btn').addEventListener('click', () => connect());
       $('advanced-btn').addEventListener('click', () => {
-        $('advanced-panel').classList.toggle('open');
-        $('advanced-btn').textContent = $('advanced-panel').classList.contains('open') ? 'Hide Advanced Options' : 'Advanced Options';
+        setAdvancedOpen(!$('advanced-panel').classList.contains('open'));
       });
       $('tabs').addEventListener('click', event => {
         const tab = event.target.closest('.tab');
@@ -2406,12 +2426,10 @@
         if (!button) return;
         state.selectionMode = button.dataset.selectionMode;
         storage.setItem('outcomes.selectionMode', state.selectionMode);
-        if (state.selectionMode === 'compare') {
-          $('advanced-panel').classList.add('open');
-          $('advanced-btn').textContent = 'Hide Advanced Options';
-        }
+        const hasComparisonSchools = selectedValues($('compare-school-select')).length > 0;
+        setAdvancedOpen(state.selectionMode === 'compare' && !hasComparisonSchools);
         syncSelectionMode();
-        if (state.selectionMode === 'compare' && selectedValues($('compare-school-select')).length === 0) {
+        if (state.selectionMode === 'compare' && !hasComparisonSchools) {
           render();
           return;
         }
@@ -2430,6 +2448,9 @@
         $(id).addEventListener('change', () => {
           if (id === 'compare-school-select') {
             storage.setItem('outcomes.compareSchools', JSON.stringify(selectedValues($('compare-school-select'))));
+            if (state.selectionMode === 'compare' && selectedValues($('compare-school-select')).length) {
+              setAdvancedOpen(false);
+            }
           }
           refresh({ reloadOptions: true, resetDrill: true });
         });
@@ -2481,10 +2502,7 @@
       applyDefaultViewForTab(state.tab);
       syncViewToggle();
       syncSelectionMode();
-      if (state.selectionMode === 'compare') {
-        $('advanced-panel').classList.add('open');
-        $('advanced-btn').textContent = 'Hide Advanced Options';
-      }
+      setAdvancedOpen(state.selectionMode === 'compare' && !selectedValues($('compare-school-select')).length);
       syncHorizonToggle();
       bindEvents();
       if ($('api-url').value) connect();

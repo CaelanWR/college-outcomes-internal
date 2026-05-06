@@ -120,7 +120,7 @@ class QueryRequest(BaseModel):
     selected_postgrad_degree: Optional[str] = None
     selected_postgrad_school: Optional[str] = None
     selected_postgrad_program: Optional[str] = None
-    top_n: int = 12
+    top_n: int = 8
 
 
 def _same_school_employer_filter(filters: QueryRequest) -> str:
