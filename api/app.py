@@ -2082,6 +2082,33 @@ def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password
                 },
             }
 
+            if tab in {"all", "full"}:
+                result.update(
+                    {
+                        "overview": _overview(con),
+                        "salary_trend": _salary_trend(con, filters),
+                        "alumni_trend": _alumni_trend(con, filters),
+                        "salary_trend_by_school": _salary_trend_by_school(con, filters),
+                        "alumni_trend_by_school": [],
+                        "current_student_trend": _current_student_trend(con, filters),
+                        "school_comparison": _school_comparison(con),
+                        "top_majors": _top_majors(con, filters),
+                        "major_trend": _major_trend(con, filters, filters.include_current_students),
+                        "employers": _employers(con, filters),
+                        "employer_trend": _employer_trend(con, filters),
+                        "geography": _geography(con, filters),
+                        "geography_trend": _geography_trend(con, filters),
+                        "roles": _roles(con, filters),
+                        "role_trend": _role_trend(con, filters),
+                        "coverage": _coverage(con, filters),
+                        "demographics": _demographics(con),
+                        "demographic_trend": _demographic_trend(con, filters),
+                        "postgrad": _postgrad(con, filters),
+                        "postgrad_trend": _postgrad_trend(con, filters),
+                    }
+                )
+                return result
+
             if tab == "compare":
                 result["overview"] = _overview(con)
                 result["school_comparison"] = _school_comparison(con)
