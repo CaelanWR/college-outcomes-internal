@@ -384,8 +384,7 @@
       white-space: nowrap;
     }
     .treemap-card .card-back.is-hidden {
-      visibility: hidden;
-      pointer-events: none;
+      display: none;
     }
     .treemap-body {
       padding: 0 12px 14px;
@@ -660,6 +659,53 @@
       line-height: 1.25;
     }
 
+    .card-title-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .card-title-row h3 {
+      margin-bottom: 0;
+      min-width: 0;
+    }
+
+    .card-controls,
+    .card-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+
+    .chart-top-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      white-space: nowrap;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .chart-top-control select {
+      width: auto;
+      min-height: 32px;
+      padding: 4px 30px 4px 10px;
+      border-radius: 999px;
+      font-size: 0.88rem;
+      font-weight: 800;
+    }
+
+    .hidden-control {
+      display: none !important;
+    }
+
     .metric {
       background: linear-gradient(180deg, #ffffff, #f5f9fd);
       border: 1px solid rgba(22,50,74,0.08);
@@ -874,17 +920,15 @@
             <option value="true">Include school itself</option>
           </select>
         </div>
-        <div class="control">
-          <label>Top N</label>
-          <select id="top-n-select">
-            <option selected>8</option>
-            <option>12</option>
-            <option>16</option>
-            <option>20</option>
-            <option>30</option>
-            <option>50</option>
-          </select>
-        </div>
+        <select id="top-n-select" class="hidden-control" aria-hidden="true" tabindex="-1">
+          <option>5</option>
+          <option selected>8</option>
+          <option>12</option>
+          <option>16</option>
+          <option>20</option>
+          <option>30</option>
+          <option>50</option>
+        </select>
       </div>
     </div>
   </div>
@@ -941,6 +985,7 @@
       return fmt.format(Math.round(n));
     };
     const pct = value => value === null || value === undefined ? 'No data' : `${Number(value).toFixed(1)}%`;
+    const TOP_N_OPTIONS = [5, 8, 12, 16, 20, 30, 50];
     let resizeTimer = null;
 
     const layoutBase = {
@@ -1272,8 +1317,22 @@
       return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
     }
 
-    function card(title, id, span = 6, tall = false) {
-      return `<div class="card span-${span}"><h3>${title}</h3><div id="${id}" class="chart ${tall ? 'tall' : ''}"></div></div>`;
+    function selectedTopN() {
+      return Number($('top-n-select')?.value || 8);
+    }
+
+    function topNControl(id) {
+      const current = selectedTopN();
+      const options = TOP_N_OPTIONS.map(value => `<option value="${value}" ${value === current ? 'selected' : ''}>${value}</option>`).join('');
+      return `<label class="chart-top-control" for="${id}"><span>Show top</span><select id="${id}" data-top-n-control>${options}</select></label>`;
+    }
+
+    function card(title, id, span = 6, tall = false, options = {}) {
+      const controls = options.topControl ? topNControl(`${id}-top-n`) : (options.controls || '');
+      const header = controls
+        ? `<div class="card-title-row"><h3>${title}</h3><div class="card-controls">${controls}</div></div>`
+        : `<h3>${title}</h3>`;
+      return `<div class="card span-${span}">${header}<div id="${id}" class="chart ${tall ? 'tall' : ''}"></div></div>`;
     }
 
     function treemapCard(title, id, subtitle, path, kind, span = 6) {
@@ -1284,7 +1343,10 @@
               <h3>${escapeHtml(title)}</h3>
               <p>${escapeHtml(subtitle)}</p>
             </div>
-            <button class="card-back ${(path || []).length ? '' : 'is-hidden'}" type="button" onclick="drillBack('${kind}')">Back</button>
+            <div class="card-actions">
+              ${topNControl(`${id}-top-n`)}
+              <button class="card-back ${(path || []).length ? '' : 'is-hidden'}" type="button" onclick="drillBack('${kind}')">Back</button>
+            </div>
           </div>
         </div>
         <div class="treemap-body">
@@ -1401,7 +1463,7 @@
           group.drillable = true;
         }
       });
-      const limit = Number($('top-n-select')?.value || 8);
+      const limit = selectedTopN();
       return [...groups.values()]
         .map(row => ({
           ...row,
@@ -1513,9 +1575,9 @@
       if (state.viewMode === 'snapshot') {
         $('content').innerHTML = [
           ...overviewMetrics(o),
-          card('Top Majors in Current Slice', 'overview-major-bars', 6, true),
-          card('Top Career Employers', 'employer-bars', 6, true),
-          card('Top Cities by Alumni Share', 'overview-geo', 12),
+          card('Top Majors in Current Slice', 'overview-major-bars', 6, true, { topControl: true }),
+          card('Top Career Employers', 'employer-bars', 6, true, { topControl: true }),
+          card('Top Cities by Alumni Share', 'overview-geo', 12, false, { topControl: true }),
         ].join('');
         drawTopMajorsVolume('overview-major-bars');
         drawEmployerBars('employer-bars');
@@ -1538,7 +1600,7 @@
       if (state.viewMode === 'snapshot') {
         $('content').innerHTML = [
           card(`Salary Distribution (${salaryHorizon})`, 'salary-distribution', 7, true),
-          card(`Top Majors by Median Salary (${salaryHorizon})`, 'top-major-salary', 5, true),
+          card(`Top Majors by Median Salary (${salaryHorizon})`, 'top-major-salary', 5, true, { topControl: true }),
           card('Current Slice Earnings Table', 'salary-table', 12),
         ].join('');
         drawSalaryDistribution('salary-distribution');
@@ -1549,7 +1611,7 @@
       } else {
         $('content').innerHTML = [
           card(`Salary Trend by Graduation Year (${salaryHorizon})`, 'earn-salary-trend', 7, true),
-          card(`Top Majors by Salary (${salaryHorizon})`, 'top-major-salary', 5, true),
+          card(`Top Majors by Salary (${salaryHorizon})`, 'top-major-salary', 5, true, { topControl: true }),
           card('Cohort Salary Table', 'salary-table', 12),
         ].join('');
         drawSalaryTrend('earn-salary-trend', true);
@@ -1568,16 +1630,16 @@
         : `Broad Roles at ${escapeHtml(employerData.selected_employer || 'Selected Employer')}`;
       if (state.viewMode === 'snapshot') {
         $('content').innerHTML = [
-          card('Top Career Employers', 'emp-top', 5, true),
-          card(roleTitle, 'emp-roles', 7, true),
+          card('Top Career Employers', 'emp-top', 5, true, { topControl: true }),
+          card(roleTitle, 'emp-roles', 7, true, { topControl: true }),
         ].join('');
         drawEmployerBars('emp-top', true);
         drawEmployerRoles('emp-roles', true);
       } else {
         $('content').innerHTML = [
-          card('Career Employer Share Over Time', 'emp-trend', 7, true),
-          card(roleTitle, 'emp-roles', 5, true),
-          card('Current Top Career Employers', 'emp-top', 12),
+          card('Career Employer Share Over Time', 'emp-trend', 7, true, { topControl: true }),
+          card(roleTitle, 'emp-roles', 5, true, { topControl: true }),
+          card('Current Top Career Employers', 'emp-top', 12, false, { topControl: true }),
         ].join('');
         drawTrendLines('emp-trend', state.data.employer_trend || [], 'employer', 'share_pct', {
           yTitle: 'Share of career employers %',
@@ -1592,15 +1654,15 @@
     function renderGeography() {
       if (state.viewMode === 'snapshot') {
         $('content').innerHTML = [
-          card('Top Cities by Alumni Share', 'geo-share', 7, true),
-          card('Median Earnings by City', 'geo-salary', 5, true),
+          card('Top Cities by Alumni Share', 'geo-share', 7, true, { topControl: true }),
+          card('Median Earnings by City', 'geo-salary', 5, true, { topControl: true }),
         ].join('');
         drawGeo('geo-share', 'share_pct');
         drawGeo('geo-salary', 'median_salary');
       } else {
         $('content').innerHTML = [
-          card('City Share Over Time', 'geo-share-trend', 8, true),
-          card('Current City Earnings', 'geo-salary', 4, true),
+          card('City Share Over Time', 'geo-share-trend', 8, true, { topControl: true }),
+          card('Current City Earnings', 'geo-salary', 4, true, { topControl: true }),
         ].join('');
         drawTrendLines('geo-share-trend', state.data.geography_trend || [], 'location', 'share_pct', {
           yTitle: 'Share of located alumni %',
@@ -1660,8 +1722,8 @@
         }, { payDomain: sharedPayDomain });
       } else {
         $('content').innerHTML = [
-          card('Roles Over Time', 'role-trend', 6, true),
-          card('Industries Over Time', 'industry-trend', 6, true),
+          card('Roles Over Time', 'role-trend', 6, true, { topControl: true }),
+          card('Industries Over Time', 'industry-trend', 6, true, { topControl: true }),
         ].join('');
         drawTrendLines('role-trend', state.data.role_trend?.roles || [], 'label', 'share_pct', {
           yTitle: 'Share of alumni %',
@@ -1718,11 +1780,11 @@
         : `Top Programs for ${escapeHtml(detailLabel)}`;
       if (state.viewMode === 'snapshot') {
         const cards = [
-          card('Further Education Paths', 'postgrad-flow', showPrograms ? 4 : 6, true),
-          card(schoolTitle, 'postgrad-schools', showPrograms ? 4 : 6, true),
+          card('Further Education Paths', 'postgrad-flow', showPrograms ? 4 : 6, true, { topControl: true }),
+          card(schoolTitle, 'postgrad-schools', showPrograms ? 4 : 6, true, { topControl: true }),
         ];
         if (showPrograms) {
-          cards.push(card(programTitle, 'postgrad-programs', 4, true));
+          cards.push(card(programTitle, 'postgrad-programs', 4, true, { topControl: true }));
         }
         $('content').innerHTML = cards.join('');
         drawPostgradFlows('postgrad-flow');
@@ -1744,8 +1806,8 @@
         });
       } else {
         $('content').innerHTML = [
-          card('Further Education Paths Over Time', 'postgrad-trend', 8, true),
-          card(schoolTitle, 'postgrad-schools', 4, true),
+          card('Further Education Paths Over Time', 'postgrad-trend', 8, true, { topControl: true }),
+          card(schoolTitle, 'postgrad-schools', 4, true, { topControl: true }),
         ].join('');
         drawTrendLines('postgrad-trend', state.data.postgrad_trend || [], 'degree_type', 'share_pct', {
           yTitle: 'Share of alumni %',
@@ -2563,13 +2625,20 @@
           refresh({ reloadOptions: true, resetDrill: true });
         });
       });
-      ['horizon-select', 'from-year-select', 'to-year-select', 'major-select', 'gender-select', 'race-select', 'later-degree-filter', 'no-further-select', 'current-select', 'school-employer-select', 'top-n-select'].forEach(id => {
+      ['horizon-select', 'from-year-select', 'to-year-select', 'major-select', 'gender-select', 'race-select', 'later-degree-filter', 'no-further-select', 'current-select', 'school-employer-select'].forEach(id => {
         $(id).addEventListener('change', () => {
           if (id === 'horizon-select') syncHorizonToggle();
           if (id === 'later-degree-filter' && $('later-degree-filter').value) $('no-further-select').value = 'false';
           if (id === 'no-further-select' && $('no-further-select').value === 'true') $('later-degree-filter').value = '';
           refresh({ resetDrill: true });
         });
+      });
+      $('content').addEventListener('change', event => {
+        const select = event.target.closest('[data-top-n-control]');
+        if (!select) return;
+        $('top-n-select').value = select.value;
+        storage.setItem('outcomes.topN', select.value);
+        refresh();
       });
     }
 
@@ -2605,8 +2674,10 @@
     function init() {
       const configuredApiUrl = normalizeApiUrl(defaultApiUrl());
       const savedApiUrl = normalizeApiUrl(storage.getItem('outcomes.apiUrl'));
+      const savedTopN = Number(storage.getItem('outcomes.topN'));
       $('api-url').value = configuredApiUrl || savedApiUrl;
       $('api-password').value = storage.getItem('outcomes.apiPassword') || '';
+      if (TOP_N_OPTIONS.includes(savedTopN)) $('top-n-select').value = String(savedTopN);
       applyDefaultViewForTab(state.tab);
       syncViewToggle();
       syncSelectionMode();
