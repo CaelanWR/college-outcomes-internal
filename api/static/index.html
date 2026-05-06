@@ -966,8 +966,13 @@
       .connection, .filters, .advanced { grid-template-columns: repeat(2, minmax(260px, 1fr)); }
       .controls-main { grid-template-columns: repeat(2, minmax(280px, 1fr)); }
       .span-3, .span-4, .span-5, .span-6, .span-7, .span-8, .span-12 { grid-column: span 12; }
+      .treemap-card.span-6 { grid-column: span 6; }
       .metric.span-3 { grid-column: span 6; }
       .metric.span-4 { grid-column: span 4; }
+    }
+
+    @media (max-width: 980px) {
+      .treemap-card.span-6 { grid-column: span 12; }
     }
 
     @media (max-width: 720px) {
@@ -2128,8 +2133,8 @@
           ? `${hierarchyTrail(state.industryTreePath)}. Filtered by role: ${hierarchyTrail(state.roleTreePath)}`
           : `${hierarchyTrail(state.industryTreePath)}. Click an industry to zoom.`;
         $('content').innerHTML = [
-          treemapCard('Role Treemap', 'role-tree', roleSubtitle, state.roleTreePath, 'roleTree', 12),
-          treemapCard('Industry Treemap', 'industry-tree', industrySubtitle, state.industryTreePath, 'industryTree', 12),
+          treemapCard('Role Treemap', 'role-tree', roleSubtitle, state.roleTreePath, 'roleTree', 6),
+          treemapCard('Industry Treemap', 'industry-tree', industrySubtitle, state.industryTreePath, 'industryTree', 6),
         ].join('');
         drawHierarchyTreemap('role-tree', roleContextRows, roleLevels, state.roleTreePath, node => {
           if (!node.drillable) return;
