@@ -2225,10 +2225,12 @@
         traces = schools.map((school, i) => {
           const slice = rows.filter(r => r.school_name === school);
           const color = COLORS[i % COLORS.length];
+          const legendgroup = `${id}-school-${i}`;
           return {
             type: 'scatter',
             mode: 'lines+markers',
             name: shortSchool(school),
+            legendgroup,
             x: slice.map(r => r.grad_year),
             y: slice.map(r => r.median_salary),
             text: slice.map(r => r.partial_horizon ? `${school}<br>2025 early earnings` : `${school}<br>${horizonLabel}`),
@@ -2242,7 +2244,7 @@
             hovertemplate: '%{text}<br>Class of %{x}<br>%{y:$,.0f}<extra></extra>',
           };
         });
-        traces.push(...schools.map((school, i) => legendDotTrace(shortSchool(school), COLORS[i % COLORS.length])));
+        traces.push(...schools.map((school, i) => legendDotTrace(shortSchool(school), COLORS[i % COLORS.length], `${id}-school-${i}`)));
       } else {
         traces = [{
           type: 'scatter',
@@ -2265,7 +2267,9 @@
         yaxis: { title: `Median salary (${horizonLabel})`, tickprefix: '$', tickformat: ',', automargin: true },
         xaxis: { title: 'Graduation year', automargin: true },
         legend: { orientation: 'h', y: 1.12, itemwidth: 30 },
-      }, plotConfig);
+      }, plotConfig).then(plot => {
+        if (bySchool) bindLegendGroupToggles(plot);
+      });
     }
 
     function drawAlumniTrend(id) {
@@ -2313,17 +2317,32 @@
       return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength - 3).trim()}...` : cleaned;
     }
 
-    function legendDotTrace(name, color) {
+    function legendDotTrace(name, color, legendgroup = null) {
       return {
         type: 'scatter',
         mode: 'markers',
         name: legendLabel(name),
+        legendgroup,
         x: [null],
         y: [null],
         marker: { color, size: 9 },
         hoverinfo: 'skip',
         showlegend: true,
       };
+    }
+
+    function bindLegendGroupToggles(plot) {
+      plot.on('plotly_legendclick', event => {
+        const clicked = plot.data?.[event.curveNumber];
+        const group = clicked?.legendgroup;
+        if (!group) return true;
+        const indices = plot.data
+          .map((trace, idx) => trace.legendgroup === group ? idx : -1)
+          .filter(idx => idx >= 0);
+        const visible = indices.some(idx => plot.data[idx].visible !== 'legendonly');
+        Plotly.restyle(plot, { visible: visible ? 'legendonly' : true }, indices);
+        return false;
+      });
     }
 
     function topSeriesLabels(rows, labelKey, limit) {
@@ -2345,10 +2364,12 @@
       const traces = labels.map((label, i) => {
         const slice = options.fixedLabel ? cleanRows : cleanRows.filter(row => row[labelKey] === label);
         const displayLabel = options.labelTransform ? options.labelTransform(label) : label;
+        const legendgroup = `${id}-series-${i}`;
         return {
           type: 'scatter',
           mode: 'lines+markers',
           name: displayLabel,
+          legendgroup,
           x: slice.map(row => row.grad_year),
           y: slice.map(row => row[valueKey]),
           line: { color: COLORS[i % COLORS.length], width: 3 },
@@ -2358,7 +2379,7 @@
           hovertemplate: `${displayLabel}<br>Class of %{x}<br>${options.hover || '%{y:,.1f}'}<extra></extra>`,
         };
       });
-      const legendTraces = labels.map((label, i) => legendDotTrace(options.labelTransform ? options.labelTransform(label) : label, COLORS[i % COLORS.length]));
+      const legendTraces = labels.map((label, i) => legendDotTrace(options.labelTransform ? options.labelTransform(label) : label, COLORS[i % COLORS.length], `${id}-series-${i}`));
       Plotly.newPlot(id, [...traces, ...legendTraces], {
         ...layoutBase,
         height: options.height || 420,
@@ -2373,6 +2394,7 @@
         },
         legend: { orientation: 'h', y: 1.18, x: 0, itemwidth: 30 },
       }, plotConfig).then(plot => {
+        bindLegendGroupToggles(plot);
         if (!options.onClick) return;
         plot.on('plotly_click', event => {
           const point = event.points?.[0];
@@ -2398,11 +2420,13 @@
         const current = (trend.current_series || []).filter(r => r.code === code);
         const currentBridge = historic.length && current.length ? [historic[historic.length - 1], ...current] : current;
         const title = (historic[0] || current[0] || {}).title || code;
+        const legendgroup = `${id}-major-${i}`;
         return [
           {
             type: 'scatter',
             mode: 'lines+markers',
             name: title,
+            legendgroup,
             x: historic.map(r => r.grad_year),
             y: historic.map(r => r.share_pct),
             line: { color: COLORS[i % COLORS.length], width: 3 },
@@ -2415,6 +2439,7 @@
             type: 'scatter',
             mode: 'lines+markers',
             name: `${title} current`,
+            legendgroup,
             x: currentBridge.map(r => r.grad_year),
             y: currentBridge.map(r => r.share_pct),
             line: { color: COLORS[i % COLORS.length], width: 3, dash: 'dot' },
@@ -2430,7 +2455,7 @@
       }).flat();
       const legendTraces = codes.map((code, i) => {
         const row = rows.find(r => r.code === code) || {};
-        return legendDotTrace(row.title || code, COLORS[i % COLORS.length]);
+        return legendDotTrace(row.title || code, COLORS[i % COLORS.length], `${id}-major-${i}`);
       });
       const shapes = trend.current_series?.length ? [{
         type: 'line', x0: 2025.5, x1: 2025.5, y0: 0, y1: 1, xref: 'x', yref: 'paper',
@@ -2448,7 +2473,7 @@
         legend: { orientation: 'h', y: 1.16, itemwidth: 30 },
         shapes,
         annotations,
-      }, plotConfig);
+      }, plotConfig).then(plot => bindLegendGroupToggles(plot));
     }
 
     function drawSchoolComparison(id) {
@@ -2753,6 +2778,7 @@
       const summaryFor = new Map(summaries.map(row => [String(row.code), row]));
       const traces = codes.map((code, i) => {
         const color = COLORS[i % COLORS.length];
+        const legendgroup = `${id}-dist-${i}`;
         const slice = bins
           .filter(row => String(row.code) === code)
           .sort((a, b) => Number(a.bin_start || 0) - Number(b.bin_start || 0));
@@ -2762,6 +2788,7 @@
           type: 'scatter',
           mode: 'lines',
           name: label,
+          legendgroup,
           x: slice.map(row => (Number(row.bin_start || 0) + Number(row.bin_end || 0)) / 2),
           y: slice.map(row => row.share_pct),
           line: { color, width: 4.5, shape: 'spline', smoothing: 1.3 },
@@ -2778,7 +2805,7 @@
           hovertemplate: '<b>%{customdata[0]}</b><br>%{customdata[1]:$,.0f}-%{customdata[2]:$,.0f}<br>%{y:.1f}% of salary observations<br>Weighted observations %{customdata[3]:,.0f}<br>P25 %{customdata[4]:$,.0f} | Median %{customdata[5]:$,.0f} | P75 %{customdata[6]:$,.0f}<extra></extra>',
         };
       });
-      const legendTraces = codes.map((code, i) => legendDotTrace(labelFor.get(code) || code, COLORS[i % COLORS.length]));
+      const legendTraces = codes.map((code, i) => legendDotTrace(labelFor.get(code) || code, COLORS[i % COLORS.length], `${id}-dist-${i}`));
       Plotly.newPlot(id, [...traces, ...legendTraces], {
         ...layoutBase,
         height: 470,
@@ -2786,7 +2813,7 @@
         xaxis: { title: `Salary (${horizonLabel})`, tickprefix: '$', tickformat: ',.0s', automargin: true, rangemode: 'tozero' },
         yaxis: { title: 'Share of salary observations %', ticksuffix: '%', automargin: true, rangemode: 'tozero' },
         legend: { orientation: 'h', y: 1.16, x: 0, itemwidth: 30 },
-      }, plotConfig);
+      }, plotConfig).then(plot => bindLegendGroupToggles(plot));
     }
 
     function drawEmployerBars(id, clickable = false) {
