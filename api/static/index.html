@@ -1079,6 +1079,17 @@
       return all.filter(year => year >= from && year <= to);
     }
 
+    function activeHorizonLabel(compact = false) {
+      const horizon = $('horizon-select')?.value || '1yr';
+      const labels = {
+        '1yr': compact ? '1 yr out' : '1 year after graduation',
+        '5yr': compact ? '5 yrs out' : '5 years after graduation',
+        '10yr': compact ? '10 yrs out' : '10 years after graduation',
+        'early_2025': compact ? '2025 early' : '2025 early earnings',
+      };
+      return labels[horizon] || horizon;
+    }
+
     function currentFilters(extra = {}) {
       const noFurtherValue = $('no-further-select').value;
       return {
@@ -1456,6 +1467,7 @@
     function renderCompare() {
       const rows = state.data.school_comparison || [];
       const o = state.data.overview || {};
+      const salaryHorizon = activeHorizonLabel();
       if (rows.length < 2) {
         $('content').innerHTML = [card('Comparison Mode', 'compare-empty', 12)].join('');
         $('compare-empty').innerHTML = '<div class="empty">Pick at least one comparison school in Advanced Options.</div>';
@@ -1467,7 +1479,7 @@
           metric('Schools', num(rows.length), 4),
           metric('Alumni', num(o.alumni), 4),
           metric('Weighted Median Salary', money(o.median_salary), 4),
-          card('Median Salary by School', 'compare-salary', 6, true),
+          card(`Median Salary by School (${salaryHorizon})`, 'compare-salary', 6, true),
           card('Alumni by School', 'compare-alumni', 6, true),
           card('Further Education Rate by School', 'compare-postgrad', 6, true),
           card('Comparison Table', 'compare-table', 6, true),
@@ -1481,7 +1493,7 @@
           metric('Schools', num(rows.length), 4),
           metric('Alumni', num(o.alumni), 4),
           metric('Weighted Median Salary', money(o.median_salary), 4),
-          card('Salary Trend by School', 'compare-salary-trend', 7, true),
+          card(`Salary Trend by School (${salaryHorizon})`, 'compare-salary-trend', 7, true),
           card('Alumni Trend by School', 'compare-alumni-trend', 5, true),
           card('Comparison Table', 'compare-table', 12),
         ].join('');
@@ -1497,6 +1509,7 @@
 
     function renderOverview() {
       const o = state.data.overview || {};
+      const salaryHorizon = activeHorizonLabel();
       if (state.viewMode === 'snapshot') {
         $('content').innerHTML = [
           ...overviewMetrics(o),
@@ -1510,7 +1523,7 @@
       } else {
         $('content').innerHTML = [
           ...overviewMetrics(o),
-          card('Salary Trend by Graduation Year', 'salary-trend', 6),
+          card(`Salary Trend by Graduation Year (${salaryHorizon})`, 'salary-trend', 6),
           card('Alumni by Graduation Year', 'alumni-trend', 6),
           card('Top Majors Over Time', 'major-trend', 12, true),
         ].join('');
@@ -1521,10 +1534,11 @@
     }
 
     function renderEarnings() {
+      const salaryHorizon = activeHorizonLabel();
       if (state.viewMode === 'snapshot') {
         $('content').innerHTML = [
-          card('Salary Distribution', 'salary-distribution', 7, true),
-          card('Top Majors by Median Salary', 'top-major-salary', 5, true),
+          card(`Salary Distribution (${salaryHorizon})`, 'salary-distribution', 7, true),
+          card(`Top Majors by Median Salary (${salaryHorizon})`, 'top-major-salary', 5, true),
           card('Current Slice Earnings Table', 'salary-table', 12),
         ].join('');
         drawSalaryDistribution('salary-distribution');
@@ -1534,8 +1548,8 @@
         ]);
       } else {
         $('content').innerHTML = [
-          card('Salary Trend by Graduation Year', 'earn-salary-trend', 7, true),
-          card('Top Majors by Salary', 'top-major-salary', 5, true),
+          card(`Salary Trend by Graduation Year (${salaryHorizon})`, 'earn-salary-trend', 7, true),
+          card(`Top Majors by Salary (${salaryHorizon})`, 'top-major-salary', 5, true),
           card('Cohort Salary Table', 'salary-table', 12),
         ].join('');
         drawSalaryTrend('earn-salary-trend', true);
@@ -1875,6 +1889,7 @@
     }
 
     function drawSalaryTrend(id, forceSchool = false) {
+      const horizonLabel = activeHorizonLabel();
       const schools = getSelectedSchools();
       const bySchool = forceSchool || schools.length > 1;
       const rows = (bySchool ? (state.data.salary_trend_by_school || []) : (state.data.salary_trend || []))
@@ -1892,7 +1907,7 @@
             name: shortSchool(school),
             x: slice.map(r => r.grad_year),
             y: slice.map(r => r.median_salary),
-            text: slice.map(r => r.partial_horizon ? `${school}<br>2025 early earnings` : school),
+            text: slice.map(r => r.partial_horizon ? `${school}<br>2025 early earnings` : `${school}<br>${horizonLabel}`),
             line: { color, width: 3 },
             marker: {
               size: slice.map(r => r.partial_horizon ? 12 : 7),
@@ -1909,7 +1924,7 @@
           name: 'Median salary',
           x: rows.map(r => r.grad_year),
           y: rows.map(r => r.median_salary),
-          text: rows.map(r => r.partial_horizon ? '2025 early earnings' : 'Median salary'),
+          text: rows.map(r => r.partial_horizon ? '2025 early earnings' : horizonLabel),
           line: { color: COLORS[0], width: 4 },
           marker: {
             size: rows.map(r => r.partial_horizon ? 13 : 9),
@@ -1921,7 +1936,7 @@
       }
       Plotly.newPlot(id, traces, {
         ...layoutBase,
-        yaxis: { tickprefix: '$', tickformat: ',', automargin: true },
+        yaxis: { title: `Median salary (${horizonLabel})`, tickprefix: '$', tickformat: ',', automargin: true },
         xaxis: { title: 'Graduation year', automargin: true },
         legend: { orientation: 'h', y: 1.12 },
       }, plotConfig);
@@ -2060,6 +2075,8 @@
       const rows = state.data.school_comparison || [];
       if (!rows.length) return noData(id);
       const ordered = rows.slice().reverse();
+      const horizonLabel = activeHorizonLabel();
+      const layout = horizontalLayout(rows, '$');
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
@@ -2070,8 +2087,11 @@
         cliponaxis: false,
         customdata: ordered.map(r => shortSchool(r.school_name)),
         marker: { color: COLORS[0] },
-        hovertemplate: '%{customdata}<br>%{x:$,.0f}<extra></extra>',
-      }], horizontalLayout(rows, '$'), plotConfig);
+        hovertemplate: `%{customdata}<br>${horizonLabel}<br>%{x:$,.0f}<extra></extra>`,
+      }], {
+        ...layout,
+        xaxis: { ...layout.xaxis, title: `Median salary (${horizonLabel})` },
+      }, plotConfig);
     }
 
     function drawSchoolAlumniComparison(id) {
@@ -2123,6 +2143,8 @@
     function drawMajorSalary(id) {
       const rows = (state.data.top_majors || []).filter(r => r.median_salary).sort((a, b) => a.median_salary - b.median_salary);
       if (!rows.length) return noData(id);
+      const horizonLabel = activeHorizonLabel();
+      const layout = horizontalLayout(rows, '$');
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
@@ -2133,8 +2155,11 @@
         cliponaxis: false,
         customdata: rows.map(r => r.title),
         marker: { color: COLORS[1] },
-        hovertemplate: '%{customdata}<br>%{x:$,.0f}<extra></extra>',
-      }], horizontalLayout(rows, '$'), plotConfig);
+        hovertemplate: `%{customdata}<br>${horizonLabel}<br>%{x:$,.0f}<extra></extra>`,
+      }], {
+        ...layout,
+        xaxis: { ...layout.xaxis, title: `Median salary (${horizonLabel})` },
+      }, plotConfig);
     }
 
     function drawTopMajorsVolume(id) {
@@ -2158,6 +2183,7 @@
       const dist = state.data.salary_distribution || {};
       const rows = dist.bins || [];
       if (!rows.length) return noData(id);
+      const horizonLabel = activeHorizonLabel();
       const labels = rows.map(r => `${money(r.bin_start)}-${money(r.bin_end)}`);
       Plotly.newPlot(id, [{
         type: 'bar',
@@ -2165,18 +2191,18 @@
         y: rows.map(r => r.n),
         marker: { color: 'rgba(47, 128, 237, 0.72)' },
         customdata: rows.map(r => [r.bin_start, r.bin_end]),
-        hovertemplate: '%{customdata[0]:$,.0f}-%{customdata[1]:$,.0f}<br>%{y:,.0f} weighted observations<extra></extra>',
+        hovertemplate: `%{customdata[0]:$,.0f}-%{customdata[1]:$,.0f}<br>${horizonLabel}<br>%{y:,.0f} weighted observations<extra></extra>`,
       }], {
         ...layoutBase,
         margin: { ...layoutBase.margin, l: 70, r: 24, t: 24, b: 82 },
-        xaxis: { title: 'Salary range', automargin: true, tickangle: -35 },
+        xaxis: { title: `Salary range (${horizonLabel})`, automargin: true, tickangle: -35 },
         yaxis: { title: 'Weighted observations', automargin: true, rangemode: 'tozero' },
         annotations: dist.summary?.p25 ? [{
           x: 0.99,
           y: 1.12,
           xref: 'paper',
           yref: 'paper',
-          text: `P25 ${money(dist.summary.p25)} · Median ${money(dist.summary.median)} · P75 ${money(dist.summary.p75)}`,
+          text: `${horizonLabel} · P25 ${money(dist.summary.p25)} · Median ${money(dist.summary.median)} · P75 ${money(dist.summary.p75)}`,
           showarrow: false,
           xanchor: 'right',
           font: { size: 13, color: '#40556e' },
