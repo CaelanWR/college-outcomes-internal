@@ -191,6 +191,55 @@ WITH cpi_u AS (
         (2021, 270.970), (2022, 292.655), (2023, 304.702), (2024, 313.689),
         (2025, 321.943)
 ),
+recent_school_cip4_calibration AS (
+    SELECT *
+    FROM (
+        SELECT
+            CAST(unitid AS VARCHAR) AS unitid,
+            degree,
+            cip4,
+            cohort_year AS calibration_year,
+            AVG(ipeds_calibration_weight) AS ipeds_calibration_weight,
+            ANY_VALUE(ipeds_calibration_source) AS ipeds_calibration_source,
+            AVG(calibration_observed_completions) AS calibration_observed_completions,
+            AVG(calibration_ipeds_completions) AS calibration_ipeds_completions,
+            ROW_NUMBER() OVER (
+                PARTITION BY CAST(unitid AS VARCHAR), degree, cip4
+                ORDER BY cohort_year DESC
+            ) AS calibration_rank
+        FROM {SCRATCH}.SCHOOL_GRADS_CALIBRATED
+        WHERE cohort_year < 2025
+          AND cip4 IS NOT NULL
+          AND ipeds_calibration_weight IS NOT NULL
+          AND COALESCE(ipeds_calibration_source, 'none') <> 'none'
+        GROUP BY CAST(unitid AS VARCHAR), degree, cip4, cohort_year
+    )
+    WHERE calibration_rank = 1
+),
+recent_global_cip4_calibration AS (
+    SELECT *
+    FROM (
+        SELECT
+            degree,
+            cip4,
+            cohort_year AS calibration_year,
+            AVG(ipeds_calibration_weight) AS ipeds_calibration_weight,
+            ANY_VALUE(ipeds_calibration_source) AS ipeds_calibration_source,
+            AVG(calibration_observed_completions) AS calibration_observed_completions,
+            AVG(calibration_ipeds_completions) AS calibration_ipeds_completions,
+            ROW_NUMBER() OVER (
+                PARTITION BY degree, cip4
+                ORDER BY cohort_year DESC
+            ) AS calibration_rank
+        FROM {SCRATCH}.SCHOOL_GRADS_CALIBRATED
+        WHERE cohort_year < 2025
+          AND cip4 IS NOT NULL
+          AND ipeds_calibration_weight IS NOT NULL
+          AND COALESCE(ipeds_calibration_source, 'none') <> 'none'
+        GROUP BY degree, cip4, cohort_year
+    )
+    WHERE calibration_rank = 1
+),
 standard_outcomes AS (
     SELECT
         b.user_id,
@@ -229,12 +278,42 @@ standard_outcomes AS (
         b.seniority,
         b.title_raw,
         b.position_weight,
-        b.education_weight,
-        b.analysis_weight,
-        b.ipeds_calibration_source,
-        b.calibration_observed_completions,
-        b.calibration_ipeds_completions
+        CASE
+            WHEN b.cohort_year = 2025 AND b.calibration_ipeds_completions IS NULL
+            THEN COALESCE(rsc.ipeds_calibration_weight, rgc.ipeds_calibration_weight, b.education_weight, 1.0)
+            ELSE COALESCE(b.education_weight, 1.0)
+        END AS education_weight,
+        GREATEST(0.0, COALESCE(b.position_weight, 1.0))
+          * CASE
+                WHEN b.cohort_year = 2025 AND b.calibration_ipeds_completions IS NULL
+                THEN COALESCE(rsc.ipeds_calibration_weight, rgc.ipeds_calibration_weight, b.education_weight, 1.0)
+                ELSE COALESCE(b.education_weight, 1.0)
+            END AS analysis_weight,
+        CASE
+            WHEN b.cohort_year = 2025 AND b.calibration_ipeds_completions IS NULL AND rsc.ipeds_calibration_weight IS NOT NULL
+                THEN 'recent_school_year_cip4'
+            WHEN b.cohort_year = 2025 AND b.calibration_ipeds_completions IS NULL AND rgc.ipeds_calibration_weight IS NOT NULL
+                THEN 'recent_global_year_cip4'
+            ELSE b.ipeds_calibration_source
+        END AS ipeds_calibration_source,
+        CASE
+            WHEN b.cohort_year = 2025 AND b.calibration_ipeds_completions IS NULL
+            THEN COALESCE(rsc.calibration_observed_completions, rgc.calibration_observed_completions, b.calibration_observed_completions)
+            ELSE b.calibration_observed_completions
+        END AS calibration_observed_completions,
+        CASE
+            WHEN b.cohort_year = 2025 AND b.calibration_ipeds_completions IS NULL
+            THEN COALESCE(rsc.calibration_ipeds_completions, rgc.calibration_ipeds_completions, b.calibration_ipeds_completions)
+            ELSE b.calibration_ipeds_completions
+        END AS calibration_ipeds_completions
     FROM {SCRATCH}.SCHOOL_OUTCOMES_BASE b
+    LEFT JOIN recent_school_cip4_calibration rsc
+      ON CAST(b.unitid AS VARCHAR) = rsc.unitid
+     AND b.degree = rsc.degree
+     AND b.cip4 = rsc.cip4
+    LEFT JOIN recent_global_cip4_calibration rgc
+      ON b.degree = rgc.degree
+     AND b.cip4 = rgc.cip4
 ),
 early_2025_outcomes AS (
     SELECT *
@@ -280,11 +359,34 @@ early_2025_outcomes AS (
             p.seniority,
             p.title_raw,
             GREATEST(0.0, {position_weight_sql('p')}) AS position_weight,
-            COALESCE(g.ipeds_calibration_weight, 1.0) AS education_weight,
-            GREATEST(0.0, {position_weight_sql('p')}) * COALESCE(g.ipeds_calibration_weight, 1.0) AS analysis_weight,
-            g.ipeds_calibration_source,
-            g.calibration_observed_completions,
-            g.calibration_ipeds_completions,
+            CASE
+                WHEN g.calibration_ipeds_completions IS NULL
+                THEN COALESCE(rsc.ipeds_calibration_weight, rgc.ipeds_calibration_weight, g.ipeds_calibration_weight, 1.0)
+                ELSE COALESCE(g.ipeds_calibration_weight, 1.0)
+            END AS education_weight,
+            GREATEST(0.0, {position_weight_sql('p')})
+              * CASE
+                    WHEN g.calibration_ipeds_completions IS NULL
+                    THEN COALESCE(rsc.ipeds_calibration_weight, rgc.ipeds_calibration_weight, g.ipeds_calibration_weight, 1.0)
+                    ELSE COALESCE(g.ipeds_calibration_weight, 1.0)
+                END AS analysis_weight,
+            CASE
+                WHEN g.calibration_ipeds_completions IS NULL AND rsc.ipeds_calibration_weight IS NOT NULL
+                    THEN 'recent_school_year_cip4'
+                WHEN g.calibration_ipeds_completions IS NULL AND rgc.ipeds_calibration_weight IS NOT NULL
+                    THEN 'recent_global_year_cip4'
+                ELSE g.ipeds_calibration_source
+            END AS ipeds_calibration_source,
+            CASE
+                WHEN g.calibration_ipeds_completions IS NULL
+                THEN COALESCE(rsc.calibration_observed_completions, rgc.calibration_observed_completions, g.calibration_observed_completions)
+                ELSE g.calibration_observed_completions
+            END AS calibration_observed_completions,
+            CASE
+                WHEN g.calibration_ipeds_completions IS NULL
+                THEN COALESCE(rsc.calibration_ipeds_completions, rgc.calibration_ipeds_completions, g.calibration_ipeds_completions)
+                ELSE g.calibration_ipeds_completions
+            END AS calibration_ipeds_completions,
             ROW_NUMBER() OVER (
                 PARTITION BY g.user_id, g.unitid, g.degree, g.cohort_year
                 ORDER BY
@@ -299,6 +401,13 @@ early_2025_outcomes AS (
          AND (p.enddate >= CURRENT_DATE() OR p.enddate IS NULL)
         LEFT JOIN cpi_u cpi
           ON LEAST(YEAR(CURRENT_DATE()), 2025) = cpi.cpi_year
+        LEFT JOIN recent_school_cip4_calibration rsc
+          ON CAST(g.unitid AS VARCHAR) = rsc.unitid
+         AND g.degree = rsc.degree
+         AND g.cip4 = rsc.cip4
+        LEFT JOIN recent_global_cip4_calibration rgc
+          ON g.degree = rgc.degree
+         AND g.cip4 = rgc.cip4
         WHERE g.cohort_year = 2025
     )
     WHERE pos_rank = 1
@@ -505,6 +614,49 @@ def _current_students_sql() -> str:
         """
 
     return f"""
+WITH recent_school_cip4_calibration AS (
+    SELECT *
+    FROM (
+        SELECT
+            CAST(unitid AS VARCHAR) AS unitid,
+            degree,
+            cip4,
+            cohort_year AS calibration_year,
+            AVG(ipeds_calibration_weight) AS ipeds_calibration_weight,
+            ROW_NUMBER() OVER (
+                PARTITION BY CAST(unitid AS VARCHAR), degree, cip4
+                ORDER BY cohort_year DESC
+            ) AS calibration_rank
+        FROM {SCRATCH}.SCHOOL_GRADS_CALIBRATED
+        WHERE cohort_year < 2025
+          AND cip4 IS NOT NULL
+          AND ipeds_calibration_weight IS NOT NULL
+          AND COALESCE(ipeds_calibration_source, 'none') <> 'none'
+        GROUP BY CAST(unitid AS VARCHAR), degree, cip4, cohort_year
+    )
+    WHERE calibration_rank = 1
+),
+recent_global_cip4_calibration AS (
+    SELECT *
+    FROM (
+        SELECT
+            degree,
+            cip4,
+            cohort_year AS calibration_year,
+            AVG(ipeds_calibration_weight) AS ipeds_calibration_weight,
+            ROW_NUMBER() OVER (
+                PARTITION BY degree, cip4
+                ORDER BY cohort_year DESC
+            ) AS calibration_rank
+        FROM {SCRATCH}.SCHOOL_GRADS_CALIBRATED
+        WHERE cohort_year < 2025
+          AND cip4 IS NOT NULL
+          AND ipeds_calibration_weight IS NOT NULL
+          AND COALESCE(ipeds_calibration_source, 'none') <> 'none'
+        GROUP BY degree, cip4, cohort_year
+    )
+    WHERE calibration_rank = 1
+)
 SELECT * EXCLUDE (current_rank)
 FROM (
     SELECT
@@ -522,9 +674,20 @@ FROM (
         COALESCE(NULLIF(d.sex_predicted, ''), 'Unknown') AS gender,
         COALESCE(NULLIF(d.ethnicity_predicted, ''), 'Unknown') AS race_ethnicity,
         d.prestige,
-        '{current_profile_weight_source}' AS profile_weight_source,
-        {current_profile_weight_expr} AS profile_weight,
-        {current_profile_weight_expr} AS final_weight,
+        CASE
+            WHEN rsc.ipeds_calibration_weight IS NOT NULL THEN '{current_profile_weight_source}+recent_school_year_cip4'
+            WHEN rgc.ipeds_calibration_weight IS NOT NULL THEN '{current_profile_weight_source}+recent_global_year_cip4'
+            ELSE '{current_profile_weight_source}'
+        END AS profile_weight_source,
+        COALESCE(rsc.ipeds_calibration_weight, rgc.ipeds_calibration_weight, 1.0) AS ipeds_calibration_weight,
+        CASE
+            WHEN rsc.ipeds_calibration_weight IS NOT NULL THEN 'recent_school_year_cip4'
+            WHEN rgc.ipeds_calibration_weight IS NOT NULL THEN 'recent_global_year_cip4'
+            ELSE 'none'
+        END AS ipeds_calibration_source,
+        COALESCE(rsc.calibration_year, rgc.calibration_year) AS calibration_year,
+        {current_profile_weight_expr} * COALESCE(rsc.ipeds_calibration_weight, rgc.ipeds_calibration_weight, 1.0) AS profile_weight,
+        {current_profile_weight_expr} * COALESCE(rsc.ipeds_calibration_weight, rgc.ipeds_calibration_weight, 1.0) AS final_weight,
         {cip_probability_expr} AS cip_probability,
         CASE WHEN {cip_probability_rank_expr} >= 0.8 THEN 1 ELSE 0 END AS high_conf_major_flag,
         ROW_NUMBER() OVER (
@@ -541,13 +704,20 @@ FROM (
                 {cip_probability_rank_expr} DESC,
                 e.enddate DESC NULLS LAST,
                 {startdate_rank_sql}
-                {current_profile_weight_expr} DESC
+                {current_profile_weight_expr} * COALESCE(rsc.ipeds_calibration_weight, rgc.ipeds_calibration_weight, 1.0) DESC
         ) AS current_rank
     FROM {EDUCATION_CIP} e
     LEFT JOIN {SCRATCH}.CIP4_TITLES c4
       ON {assigned_cip4_expr} = c4.code
     LEFT JOIN {demographics_table} d
       ON e.user_id = d.user_id
+    LEFT JOIN recent_school_cip4_calibration rsc
+      ON CAST(e.unitid AS VARCHAR) = rsc.unitid
+     AND rsc.degree = 'Bachelors'
+     AND {assigned_cip4_expr} = rsc.cip4
+    LEFT JOIN recent_global_cip4_calibration rgc
+      ON rgc.degree = 'Bachelors'
+     AND {assigned_cip4_expr} = rgc.cip4
     WHERE e.unitid IN ({UNITID_SQL})
       AND e.degree = 'Bachelor'
       AND {assigned_cip4_expr} IS NOT NULL

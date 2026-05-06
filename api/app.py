@@ -276,11 +276,15 @@ def _cohort_profile_weight_sql(columns: frozenset[str]) -> str:
     has_recent_calibration_fields = {"degree", "grad_year", "calibration_ipeds_completions"}.issubset(columns)
     if not has_recent_calibration_fields:
         return calibrated_weight
+    recent_source_guard = ""
+    if "ipeds_calibration_source" in columns:
+        recent_source_guard = "\n          AND COALESCE(ipeds_calibration_source, '') NOT LIKE 'recent_%'"
     return f"""
       CASE
         WHEN degree = 'Bachelors'
           AND grad_year >= 2023
           AND calibration_ipeds_completions IS NULL
+          {recent_source_guard}
         THEN {position_weight}
         ELSE {calibrated_weight}
       END
