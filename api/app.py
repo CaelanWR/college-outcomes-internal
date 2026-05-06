@@ -602,6 +602,18 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
     with _query_slot():
         cip_col = _cip_col(filters)
         limit = 500
+        static = _static_options()
+        if not filters.schools and static.get("schools"):
+            default_school = next(
+                (
+                    row
+                    for row in static["schools"]
+                    if "columbia university in the city of new york" in str(row.get("name", "")).lower()
+                ),
+                static["schools"][0],
+            )
+            filters = filters.model_copy(deep=True)
+            filters.schools = [str(default_school["unitid"])]
         con = _connect()
         try:
             base_columns = _dataset_columns("base_fact")
@@ -715,7 +727,6 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
                     """,
                 )
             ]
-            static = _static_options()
             return {
                 **static,
                 "major_options": majors,
