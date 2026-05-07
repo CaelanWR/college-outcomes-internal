@@ -1613,6 +1613,7 @@ def _major_role_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest
 def _major_concentration(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, list[dict[str, Any]]]:
     cip_col = _cip_col(filters)
     same_school_filter = _same_school_employer_filter(filters)
+    location_expr = _location_label_expr()
 
     def group(label_sql: str, where_extra: str, min_weight: float) -> list[dict[str, Any]]:
         return _records_from_query(
@@ -1685,6 +1686,23 @@ def _major_concentration(con: duckdb.DuckDBPyConnection, filters: QueryRequest) 
                 AND industry_k50 <> ''
             """,
             MIN_CELL_WEIGHT,
+        ),
+        "roles": group(
+            "role_k50_v3",
+            """
+                AND role_k50_v3 IS NOT NULL
+                AND role_k50_v3 <> ''
+                AND NOT (degree = 'Bachelors' AND horizon = '1yr' AND role_k50_v3 = 'Corporate Attorney')
+            """,
+            MIN_CELL_WEIGHT,
+        ),
+        "geography": group(
+            location_expr,
+            """
+                AND COALESCE(location, city) IS NOT NULL
+                AND LOWER(COALESCE(location, city)) NOT IN ('empty', 'unknown')
+            """,
+            GEOGRAPHY_ROW_MIN_WEIGHT,
         ),
     }
 
@@ -3003,6 +3021,7 @@ def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password
                         result["major_concentration"] = _major_concentration(con, filters)
                     if tab == "geography":
                         result["major_geography_comparison"] = _major_geography_comparison(con, filters)
+                        result["major_concentration"] = _major_concentration(con, filters)
                     if tab == "roles":
                         result["major_role_comparison"] = _major_role_comparison(con, filters)
                         result["major_concentration"] = _major_concentration(con, filters)
