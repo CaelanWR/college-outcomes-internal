@@ -1292,6 +1292,31 @@ def _current_student_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest
     )
 
 
+def _current_student_trend_by_major(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    if not _current_students_applicable(filters) or not _dataset_exists("current_students_fact"):
+        return []
+    if not _create_current_slice(con, filters):
+        return []
+    cip_col = _cip_col(filters)
+    return _records_from_query(
+        con,
+        f"""
+        SELECT
+          {cip_col} AS code,
+          COALESCE(MAX(major_title), {cip_col}) AS title,
+          grad_year,
+          ROUND(SUM(profile_weight), 2) AS current_students
+        FROM current_slice
+        WHERE grad_year IS NOT NULL
+          AND {cip_col} IS NOT NULL
+        GROUP BY {cip_col}, grad_year
+        HAVING SUM(profile_weight) > ?
+        ORDER BY title, grad_year
+        """,
+        [MIN_CELL_WEIGHT],
+    )
+
+
 def _school_comparison(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
     return _records_from_query(
         con,
@@ -2961,6 +2986,7 @@ def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password
                     result["major_comparison"] = _major_comparison(con, filters)
                     if view_mode == "overtime" and tab == "overview":
                         result["alumni_trend_by_major"] = _alumni_trend_by_major(con, filters)
+                        result["current_student_trend_by_major"] = _current_student_trend_by_major(con, filters)
                     if view_mode == "overtime" and tab == "earnings":
                         result["salary_trend_by_major"] = _salary_trend_by_major(con, filters)
                     if tab == "employers":

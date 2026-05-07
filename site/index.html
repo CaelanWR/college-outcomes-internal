@@ -3683,12 +3683,77 @@
       drawSalaryTrend(id, true);
     }
 
+    function drawMajorCompareAlumniTrend(id) {
+      const alumniRows = state.data.alumni_trend_by_major || [];
+      const currentRows = state.data.current_student_trend_by_major || [];
+      if (!alumniRows.length && !currentRows.length) return noData(id);
+      const majorRows = majorRowsForChart(id, [...alumniRows, ...currentRows]);
+      const majors = majorRows.length
+        ? majorRows.map(row => ({ code: String(row.code), title: majorName(row) }))
+        : [...new Map([...alumniRows, ...currentRows].map(row => [String(row.code || row.title), { code: String(row.code || row.title), title: row.title || row.code }])).values()];
+      const traces = majors.map((major, idx) => {
+        const color = COLORS[idx % COLORS.length];
+        const historic = alumniRows.filter(row => String(row.code) === major.code || row.title === major.title);
+        const current = currentRows.filter(row => String(row.code) === major.code || row.title === major.title);
+        const bridge = historic.length && current.length ? [historic[historic.length - 1], ...current] : current;
+        const legendgroup = `${id}-major-${idx}`;
+        return [
+          historic.length ? {
+            type: 'scatter',
+            mode: 'lines+markers',
+            name: major.title,
+            legendgroup,
+            x: historic.map(row => row.grad_year),
+            y: historic.map(row => row.alumni),
+            line: { color, width: 3 },
+            marker: { color, size: 7 },
+            showlegend: false,
+            customdata: historic.map(() => [major.title, 'Alumni']),
+            hovertemplate: '%{customdata[0]}<br>Class of %{x}<br>%{y:,.0f} alumni<extra></extra>',
+          } : null,
+          current.length ? {
+            type: 'scatter',
+            mode: 'lines+markers',
+            name: `${major.title} current`,
+            legendgroup,
+            x: bridge.map(row => row.grad_year),
+            y: bridge.map(row => row.current_students ?? row.alumni),
+            line: { color, width: 3, dash: 'dot' },
+            marker: {
+              color,
+              size: bridge.map((_, pointIdx) => historic.length && pointIdx === 0 ? 0 : 8),
+              symbol: 'diamond',
+            },
+            showlegend: false,
+            customdata: bridge.map(() => [major.title, 'Current students']),
+            hovertemplate: '%{customdata[0]}<br>Class of %{x}<br>%{y:,.0f} current students<extra></extra>',
+          } : null,
+          legendDotTrace(major.title, color, legendgroup),
+        ].filter(Boolean);
+      }).flat();
+      const shapes = currentRows.length ? [{
+        type: 'line', x0: 2025.5, x1: 2025.5, y0: 0, y1: 1, xref: 'x', yref: 'paper',
+        line: { color: '#8091a7', dash: 'dot', width: 2 },
+      }] : [];
+      const annotations = currentRows.length ? [{
+        x: 2026.1, y: 1.04, xref: 'x', yref: 'paper', text: 'Current students', showarrow: false,
+        font: { color: '#40556e', size: 14 },
+      }] : [];
+      Plotly.newPlot(id, traces, {
+        ...layoutBase,
+        height: 430,
+        margin: { ...layoutBase.margin, l: 80, r: 88, t: 22, b: 62 },
+        xaxis: { title: 'Graduation year', automargin: true, dtick: currentRows.length ? 2 : 5 },
+        yaxis: { title: 'Alumni / current students', automargin: true, rangemode: 'tozero' },
+        legend: { orientation: 'h', y: 1.18, x: 0, itemwidth: 30 },
+        shapes,
+        annotations,
+      }, plotConfig).then(plot => bindLegendGroupToggles(plot));
+    }
+
     function drawCompareAlumniTrend(id) {
       if (state.selectionMode === 'major_compare') {
-        drawTrendLines(id, state.data.alumni_trend_by_major || [], 'title', 'alumni', {
-          yTitle: 'Alumni',
-          hover: '%{y:,.0f}',
-        });
+        drawMajorCompareAlumniTrend(id);
         return;
       }
       drawTrendLines(id, state.data.alumni_trend_by_school || [], 'school_name', 'alumni', {
