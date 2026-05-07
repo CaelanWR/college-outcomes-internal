@@ -2268,8 +2268,24 @@
     }
 
     async function dataUrlToBlob(dataUrl) {
-      const response = await fetch(dataUrl);
-      return response.blob();
+      if (!dataUrl || typeof dataUrl !== 'string') {
+        throw new Error('Plotly returned an empty image payload');
+      }
+      const match = dataUrl.match(/^data:([^;,]+)?(;base64)?,(.*)$/);
+      if (!match) {
+        const response = await fetch(dataUrl);
+        const blob = await response.blob();
+        if (!blob.size) throw new Error('Exported PNG is empty');
+        return blob;
+      }
+      const mimeType = match[1] || 'image/png';
+      const payload = match[3] || '';
+      const bytes = match[2]
+        ? Uint8Array.from(atob(payload), char => char.charCodeAt(0))
+        : new TextEncoder().encode(decodeURIComponent(payload));
+      const blob = new Blob([bytes], { type: mimeType });
+      if (!blob.size) throw new Error('Exported PNG is empty');
+      return blob;
     }
 
     function showExportTray(item, note = '') {
@@ -2403,6 +2419,8 @@
       if (!plot || !plot._fullLayout) return null;
       const title = chartExportTitle(chartId);
       const filename = chartExportFilename(chartId);
+      await Plotly.Plots.resize(plot);
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const rect = plot.getBoundingClientRect();
       const dataUrl = await Plotly.toImage(plot, {
         format: 'png',
@@ -2410,7 +2428,11 @@
         height: Math.max(520, Math.round(rect.height || 520)),
         scale: 2,
       });
-      return { blob: await dataUrlToBlob(dataUrl), filename, title };
+      const blob = await dataUrlToBlob(dataUrl);
+      if (blob.size < 2048) {
+        throw new Error(`Exported PNG is unexpectedly small (${blob.size} bytes)`);
+      }
+      return { blob, filename, title };
     }
 
     async function downloadChart(chartId, mode = 'save') {
@@ -2421,12 +2443,6 @@
       }
       const button = Array.from(document.querySelectorAll('[data-save-chart-menu]'))
         .find(node => node.dataset.saveChartMenu === chartId);
-      const filename = chartExportFilename(chartId);
-      const destination = mode === 'save' ? await pickSinglePngDestination(filename) : null;
-      if (destination?.canceled) {
-        setStatus('ok', 'PNG save canceled');
-        return;
-      }
       try {
         if (button) {
           button.disabled = true;
@@ -2440,6 +2456,11 @@
         } else if (mode === 'copy') {
           result = await copyPngBlob(exportFile.blob, exportFile.filename, exportFile.title);
         } else {
+          const destination = await pickSinglePngDestination(exportFile.filename);
+          if (destination?.canceled) {
+            setStatus('ok', 'PNG save canceled');
+            return;
+          }
           result = await savePngBlob(exportFile.blob, exportFile.filename, exportFile.title, destination);
         }
         const label = {
