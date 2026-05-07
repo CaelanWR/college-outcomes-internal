@@ -1379,6 +1379,310 @@ def _major_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> 
     )
 
 
+def _major_employer_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    cip_col = _cip_col(filters)
+    limit = _safe_limit(filters.top_n)
+    same_school_filter = _same_school_employer_filter(filters)
+    return _records_from_query(
+        con,
+        f"""
+        WITH eligible AS (
+          SELECT
+            {cip_col} AS code,
+            COALESCE(major_title, {cip_col}) AS title,
+            employer AS label,
+            final_weight,
+            salary
+          FROM slice
+          WHERE {cip_col} IS NOT NULL
+            AND employer IS NOT NULL
+            AND employer <> ''
+            AND unknown_employer_flag = 0
+            AND named_employer_flag = 1
+            AND career_employer_flag = 1
+            {same_school_filter}
+        ),
+        top_labels AS (
+          SELECT label, SUM(final_weight) AS total_n
+          FROM eligible
+          GROUP BY label
+          HAVING SUM(final_weight) > ?
+          ORDER BY total_n DESC
+          LIMIT {limit}
+        ),
+        denom AS (
+          SELECT code, SUM(final_weight) AS total_n
+          FROM eligible
+          GROUP BY code
+        ),
+        grouped AS (
+          SELECT
+            e.code,
+            MAX(e.title) AS title,
+            e.label,
+            SUM(e.final_weight) AS n,
+            SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight ELSE 0 END) AS salary_weight,
+            SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight * e.salary ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight ELSE 0 END), 0) AS weighted_mean_salary
+          FROM eligible e
+          JOIN top_labels t USING (label)
+          GROUP BY e.code, e.label
+        )
+        SELECT
+          g.code,
+          g.title,
+          g.label,
+          ROUND(g.n) AS n,
+          ROUND(100.0 * g.n / NULLIF(d.total_n, 0), 2) AS share_pct,
+          CASE WHEN g.salary_weight > ? THEN ROUND(g.weighted_mean_salary) ELSE NULL END AS weighted_mean_salary
+        FROM grouped g
+        JOIN denom d USING (code)
+        WHERE g.n > ?
+        ORDER BY g.label, g.title
+        """,
+        [EMPLOYER_ROW_MIN_WEIGHT, SALARY_MIN_WEIGHT, EMPLOYER_ROW_MIN_WEIGHT],
+    )
+
+
+def _major_geography_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    cip_col = _cip_col(filters)
+    limit = min(_safe_limit(filters.top_n), 12)
+    location_expr = _location_label_expr()
+    return _records_from_query(
+        con,
+        f"""
+        WITH eligible AS (
+          SELECT
+            {cip_col} AS code,
+            COALESCE(major_title, {cip_col}) AS title,
+            {location_expr} AS label,
+            final_weight,
+            salary
+          FROM slice
+          WHERE {cip_col} IS NOT NULL
+            AND COALESCE(location, city) IS NOT NULL
+            AND LOWER(COALESCE(location, city)) NOT IN ('empty', 'unknown')
+        ),
+        top_labels AS (
+          SELECT label, SUM(final_weight) AS total_n
+          FROM eligible
+          GROUP BY label
+          HAVING SUM(final_weight) > ?
+          ORDER BY total_n DESC
+          LIMIT {limit}
+        ),
+        denom AS (
+          SELECT code, SUM(final_weight) AS total_n
+          FROM eligible
+          GROUP BY code
+        ),
+        grouped AS (
+          SELECT
+            e.code,
+            MAX(e.title) AS title,
+            e.label,
+            SUM(e.final_weight) AS n,
+            SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight ELSE 0 END) AS salary_weight,
+            SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight * e.salary ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight ELSE 0 END), 0) AS weighted_mean_salary
+          FROM eligible e
+          JOIN top_labels t USING (label)
+          GROUP BY e.code, e.label
+        )
+        SELECT
+          g.code,
+          g.title,
+          g.label,
+          ROUND(g.n, 2) AS n,
+          ROUND(100.0 * g.n / NULLIF(d.total_n, 0), 2) AS share_pct,
+          CASE WHEN g.salary_weight > ? THEN ROUND(g.weighted_mean_salary) ELSE NULL END AS weighted_mean_salary
+        FROM grouped g
+        JOIN denom d USING (code)
+        WHERE g.n > ?
+        ORDER BY g.label, g.title
+        """,
+        [GEOGRAPHY_ROW_MIN_WEIGHT, SALARY_MIN_WEIGHT, GEOGRAPHY_ROW_MIN_WEIGHT],
+    )
+
+
+def _major_role_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, list[dict[str, Any]]]:
+    cip_col = _cip_col(filters)
+    limit = _safe_limit(filters.top_n)
+
+    def group(column: str, *, exclude_corporate_attorney: bool = False) -> list[dict[str, Any]]:
+        exclusion = "AND NOT (degree = 'Bachelors' AND horizon = '1yr' AND role_k50_v3 = 'Corporate Attorney')" if exclude_corporate_attorney else ""
+        return _records_from_query(
+            con,
+            f"""
+            WITH eligible AS (
+              SELECT
+                {cip_col} AS code,
+                COALESCE(major_title, {cip_col}) AS title,
+                {column} AS label,
+                final_weight,
+                salary
+              FROM slice
+              WHERE {cip_col} IS NOT NULL
+                AND {column} IS NOT NULL
+                AND {column} <> ''
+                AND LOWER(TRIM({column})) NOT IN ('empty', 'unknown', 'other')
+                {exclusion}
+            ),
+            top_labels AS (
+              SELECT label, SUM(final_weight) AS total_n
+              FROM eligible
+              GROUP BY label
+              HAVING SUM(final_weight) > ?
+              ORDER BY total_n DESC
+              LIMIT {limit}
+            ),
+            denom AS (
+              SELECT {cip_col} AS code, SUM(final_weight) AS total_n
+              FROM slice
+              WHERE {cip_col} IS NOT NULL
+              GROUP BY {cip_col}
+            ),
+            grouped AS (
+              SELECT
+                e.code,
+                MAX(e.title) AS title,
+                e.label,
+                SUM(e.final_weight) AS n,
+                SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight ELSE 0 END) AS salary_weight,
+                SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight * e.salary ELSE 0 END)
+                  / NULLIF(SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight ELSE 0 END), 0) AS weighted_mean_salary
+              FROM eligible e
+              JOIN top_labels t USING (label)
+              GROUP BY e.code, e.label
+            )
+            SELECT
+              g.code,
+              g.title,
+              g.label,
+              ROUND(g.n, 2) AS n,
+              ROUND(100.0 * g.n / NULLIF(d.total_n, 0), 2) AS share_pct,
+              CASE WHEN g.salary_weight > ? THEN ROUND(g.weighted_mean_salary) ELSE NULL END AS weighted_mean_salary
+            FROM grouped g
+            JOIN denom d USING (code)
+            WHERE g.n > ?
+            ORDER BY g.label, g.title
+            """,
+            [MIN_CELL_WEIGHT, SALARY_MIN_WEIGHT, MIN_CELL_WEIGHT],
+        )
+
+    return {
+        "roles": group("role_k50_v3", exclude_corporate_attorney=True),
+        "industries": group("industry_k50"),
+    }
+
+
+def _major_demographic_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, list[dict[str, Any]]]:
+    cip_col = _cip_col(filters)
+
+    def group(column: str) -> list[dict[str, Any]]:
+        return _records_from_query(
+            con,
+            f"""
+            WITH eligible AS (
+              SELECT
+                {cip_col} AS code,
+                COALESCE(major_title, {cip_col}) AS title,
+                {column} AS label,
+                profile_weight
+              FROM cohort_slice
+              WHERE {cip_col} IS NOT NULL
+                AND {column} IS NOT NULL
+                AND {column} <> ''
+                AND LOWER(TRIM({column})) NOT IN ('empty', 'unknown')
+            ),
+            denom AS (
+              SELECT code, SUM(profile_weight) AS total_n
+              FROM eligible
+              GROUP BY code
+            ),
+            grouped AS (
+              SELECT
+                code,
+                MAX(title) AS title,
+                label,
+                SUM(profile_weight) AS n
+              FROM eligible
+              GROUP BY code, label
+            )
+            SELECT
+              g.code,
+              g.title,
+              g.label,
+              ROUND(g.n, 2) AS n,
+              ROUND(100.0 * g.n / NULLIF(d.total_n, 0), 2) AS share_pct
+            FROM grouped g
+            JOIN denom d USING (code)
+            WHERE g.n > ?
+            ORDER BY g.label, g.title
+            """,
+            [MIN_CELL_WEIGHT],
+        )
+
+    return {"gender": group("gender"), "race_ethnicity": group("race_ethnicity")}
+
+
+def _major_postgrad_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    cip_col = _cip_col(filters)
+    limit = min(_safe_limit(filters.top_n), 10)
+    return _records_from_query(
+        con,
+        f"""
+        WITH eligible AS (
+          SELECT
+            {cip_col} AS code,
+            COALESCE(major_title, {cip_col}) AS title,
+            COALESCE(
+              later_degree_type,
+              CASE WHEN no_further_education_flag = 1 THEN 'No further education' ELSE 'Unknown' END
+            ) AS label,
+            profile_weight
+          FROM cohort_slice
+          WHERE {cip_col} IS NOT NULL
+        ),
+        top_labels AS (
+          SELECT label, SUM(profile_weight) AS total_n
+          FROM eligible
+          WHERE label <> 'Unknown'
+          GROUP BY label
+          HAVING SUM(profile_weight) > ?
+          ORDER BY CASE WHEN label = 'No further education' THEN 1 ELSE 0 END, total_n DESC
+          LIMIT {limit}
+        ),
+        denom AS (
+          SELECT code, SUM(profile_weight) AS total_n
+          FROM eligible
+          GROUP BY code
+        ),
+        grouped AS (
+          SELECT
+            e.code,
+            MAX(e.title) AS title,
+            e.label,
+            SUM(e.profile_weight) AS n
+          FROM eligible e
+          JOIN top_labels t USING (label)
+          GROUP BY e.code, e.label
+        )
+        SELECT
+          g.code,
+          g.title,
+          g.label,
+          ROUND(g.n, 2) AS n,
+          ROUND(100.0 * g.n / NULLIF(d.total_n, 0), 2) AS share_pct
+        FROM grouped g
+        JOIN denom d USING (code)
+        WHERE g.n > ?
+        ORDER BY g.label, g.title
+        """,
+        [MIN_CELL_WEIGHT, MIN_CELL_WEIGHT],
+    )
+
+
 def _top_majors(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
     cip_col = _cip_col(filters)
     limit = _safe_limit(filters.top_n)
@@ -2580,6 +2884,16 @@ def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password
                         result["alumni_trend_by_major"] = _alumni_trend_by_major(con, filters)
                     if view_mode == "overtime" and tab == "earnings":
                         result["salary_trend_by_major"] = _salary_trend_by_major(con, filters)
+                    if tab == "employers":
+                        result["major_employer_comparison"] = _major_employer_comparison(con, filters)
+                    if tab == "geography":
+                        result["major_geography_comparison"] = _major_geography_comparison(con, filters)
+                    if tab == "roles":
+                        result["major_role_comparison"] = _major_role_comparison(con, filters)
+                    if tab == "demographics":
+                        result["major_demographic_comparison"] = _major_demographic_comparison(con, filters)
+                    if tab == "postgrad":
+                        result["major_postgrad_comparison"] = _major_postgrad_comparison(con, filters)
                 else:
                     result["school_comparison"] = _school_comparison(con)
                     if view_mode == "overtime" and tab == "overview":
