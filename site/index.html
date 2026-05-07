@@ -857,6 +857,36 @@
       font-weight: 800;
     }
 
+    .chart-download {
+      min-height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.84);
+      color: var(--muted);
+      padding: 4px 11px;
+      box-shadow: 0 8px 18px rgba(20,44,65,0.05);
+      cursor: pointer;
+      font-size: 0.78rem;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .chart-download:hover {
+      color: #225ea8;
+      border-color: rgba(34,94,168,0.24);
+      background: rgba(34,94,168,0.08);
+    }
+
+    .export-actions {
+      display: inline-flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-right: auto;
+    }
+
     .hidden-control {
       display: none !important;
     }
@@ -1105,6 +1135,40 @@
       .salary-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       select[multiple] { min-height: 92px; }
       .compare-picker-body { grid-template-columns: 1fr; }
+      .advanced-actions { justify-content: flex-start; }
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      .hero,
+      .controls,
+      .tabs,
+      .api-status,
+      .card-controls,
+      .card-actions,
+      .chart-download {
+        display: none !important;
+      }
+
+      .content {
+        width: 100%;
+        max-width: none;
+        padding: 0;
+      }
+
+      .content .grid {
+        gap: 12px;
+      }
+
+      .card,
+      .metric {
+        break-inside: avoid;
+        box-shadow: none;
+        border-color: rgba(22,50,74,0.16);
+      }
     }
 
     @media (max-width: 520px) {
@@ -1254,6 +1318,10 @@
           <option>50</option>
         </select>
         <div class="advanced-actions">
+          <div class="export-actions">
+            <button id="download-visible-btn" class="btn" type="button">Download Visible Charts</button>
+            <button id="print-page-btn" class="btn" type="button">Save Page PDF</button>
+          </div>
           <button id="advanced-apply-btn" class="btn active" type="button">Apply Advanced Options</button>
         </div>
       </div>
@@ -1357,6 +1425,15 @@
       hoverlabel: { bgcolor: '#102a43', bordercolor: '#102a43', font: { family: '"Source Sans 3", ui-sans-serif, system-ui, sans-serif', color: '#fff', size: 13 } },
     };
     const plotConfig = { responsive: true, displayModeBar: false };
+
+    const nativePlotlyNewPlot = Plotly.newPlot.bind(Plotly);
+    Plotly.newPlot = function patchedNewPlot(id, ...args) {
+      const chartId = typeof id === 'string' ? id : id?.id;
+      return Promise.resolve(nativePlotlyNewPlot(id, ...args)).then(plot => {
+        markChartExportable(chartId || plot?.id);
+        return plot;
+      });
+    };
 
     function compactWindow() {
       return window.innerWidth < 820;
@@ -1934,6 +2011,81 @@
       return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
     }
 
+    function slug(value) {
+      return String(value || '')
+        .toLowerCase()
+        .replace(/&/g, 'and')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 72) || 'chart';
+    }
+
+    function markChartExportable(chartId) {
+      if (!chartId) return;
+      const button = Array.from(document.querySelectorAll('[data-download-chart]'))
+        .find(node => node.dataset.downloadChart === chartId);
+      if (button) button.hidden = false;
+    }
+
+    function chartExportTitle(chartId) {
+      const cardEl = $(chartId)?.closest('.card');
+      return cardEl?.querySelector('h3')?.textContent || chartId;
+    }
+
+    function chartExportFilename(chartId) {
+      const school = $('school-select')?.selectedOptions?.[0]?.textContent || 'outcomes';
+      const parts = [
+        'college-outcomes',
+        school,
+        state.tab,
+        state.viewMode,
+        chartExportTitle(chartId),
+      ].filter(Boolean).map(slug);
+      return `${parts.join('-')}.png`;
+    }
+
+    function downloadDataUrl(dataUrl, filename) {
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+
+    async function downloadChart(chartId) {
+      const plot = $(chartId);
+      if (!plot || !plot._fullLayout) {
+        setStatus('bad', 'No chart available to export');
+        return;
+      }
+      const rect = plot.getBoundingClientRect();
+      const dataUrl = await Plotly.toImage(plot, {
+        format: 'png',
+        width: Math.max(900, Math.round(rect.width || 900)),
+        height: Math.max(520, Math.round(rect.height || 520)),
+        scale: 2,
+      });
+      downloadDataUrl(dataUrl, chartExportFilename(chartId));
+      setStatus('ok', `Downloaded ${chartExportTitle(chartId)}`);
+    }
+
+    async function downloadVisibleCharts() {
+      const chartIds = Array.from(document.querySelectorAll('[data-download-chart]:not([hidden])'))
+        .map(button => button.dataset.downloadChart)
+        .filter((value, index, list) => value && list.indexOf(value) === index && $(value)?._fullLayout);
+      if (!chartIds.length) {
+        setStatus('bad', 'No visible charts to export');
+        return;
+      }
+      setStatus('ok', `Downloading ${chartIds.length} charts...`);
+      for (const chartId of chartIds) {
+        await downloadChart(chartId);
+        await new Promise(resolve => setTimeout(resolve, 180));
+      }
+      setStatus('ok', `Downloaded ${chartIds.length} charts`);
+    }
+
     function selectedTopN() {
       return Number($('top-n-select')?.value || 8);
     }
@@ -1976,8 +2128,16 @@
       return `<label class="chart-top-control" for="${id}"><span>Show top</span><select id="${id}" data-top-n-control data-chart-id="${chartId}">${options}</select></label>`;
     }
 
+    function chartDownloadControl(id) {
+      return `<button type="button" class="chart-download" data-download-chart="${id}" hidden>PNG</button>`;
+    }
+
     function card(title, id, span = 6, tall = false, options = {}) {
-      const controls = options.topControl ? topNControl(`${id}-top-n`) : (options.controls || '');
+      const controls = [
+        options.topControl ? topNControl(`${id}-top-n`) : '',
+        options.controls || '',
+        options.export === false ? '' : chartDownloadControl(id),
+      ].filter(Boolean).join('');
       const header = controls
         ? `<div class="card-title-row"><h3>${title}</h3><div class="card-controls">${controls}</div></div>`
         : `<h3>${title}</h3>`;
@@ -1994,6 +2154,7 @@
             </div>
             <div class="card-actions">
               ${topNControl(`${id}-top-n`)}
+              ${chartDownloadControl(id)}
               <button class="card-back ${(path || []).length ? '' : 'is-hidden'}" type="button" onclick="drillBack('${kind}')">Back</button>
             </div>
           </div>
@@ -4111,6 +4272,8 @@
         setAdvancedOpen(!$('advanced-panel').classList.contains('open'));
       });
       $('advanced-apply-btn').addEventListener('click', () => applyAdvancedOptions());
+      $('download-visible-btn').addEventListener('click', () => downloadVisibleCharts());
+      $('print-page-btn').addEventListener('click', () => window.print());
       $('tabs').addEventListener('click', event => {
         const tab = event.target.closest('.tab');
         if (!tab) return;
@@ -4215,6 +4378,12 @@
         state.topNByChart = { ...(state.topNByChart || {}), [chartId]: value };
         storage.setItem('outcomes.topNByChart', JSON.stringify(state.topNByChart));
         refresh();
+      });
+      $('content').addEventListener('click', event => {
+        const button = event.target.closest('[data-download-chart]');
+        if (!button || button.hidden) return;
+        event.preventDefault();
+        downloadChart(button.dataset.downloadChart);
       });
     }
 
