@@ -2800,8 +2800,8 @@
           metric('Majors', num(rows.length), 4),
           metric('Alumni', num(o.alumni), 4),
           metric('Weighted Median Salary', money(o.median_salary), 4),
-          card('Alumni Trend by Major', 'compare-alumni-trend', 8, true, { topControl: true }),
-          card('Current Major Mix', 'compare-alumni', 4, true, { topControl: true }),
+          card('Major Share Over Time', 'compare-alumni-trend', 8, true, { topControl: true }),
+          card('Major Share', 'compare-alumni', 4, true, { topControl: true }),
           card('Major Comparison Table', 'compare-table', 12),
         ].join('');
         drawCompareAlumniTrend('compare-alumni-trend');
@@ -2813,7 +2813,7 @@
           metric('Alumni', num(o.alumni), 4),
           metric('Weighted Median Salary', money(o.median_salary), 4),
           card('Salary vs Later Education', 'major-compare-scatter', 7, true),
-          card('Alumni by Major', 'compare-alumni', 5, true, { topControl: true }),
+          card('Major Share', 'compare-alumni', 5, true, { topControl: true }),
           card('Major Comparison Table', 'compare-table', 12),
         ].join('');
         drawMajorCompareOutcomeScatter('major-compare-scatter');
@@ -3594,24 +3594,75 @@
     }
 
     function drawMajorCompareAlumni(id) {
+      const currentTotalsByCode = new Map();
+      const currentTotalsByYear = new Map();
+      (state.data.current_student_trend_by_major || []).forEach(row => {
+        const code = String(row.code || row.title || '');
+        if (!code) return;
+        currentTotalsByCode.set(code, (currentTotalsByCode.get(code) || 0) + Number(row.current_students || 0));
+        const year = String(row.grad_year || '');
+        if (year && row.total_current_students !== null && row.total_current_students !== undefined) {
+          currentTotalsByYear.set(year, Math.max(Number(row.total_current_students || 0), currentTotalsByYear.get(year) || 0));
+        }
+      });
+      const totalCurrentStudents = [...currentTotalsByYear.values()].reduce((total, value) => total + Number(value || 0), 0);
       const rows = (state.data.major_comparison || [])
-        .filter(row => row.alumni)
-        .sort((a, b) => Number(b.alumni || 0) - Number(a.alumni || 0))
+        .filter(row => row.alumni_share_pct || currentTotalsByCode.has(String(row.code)))
+        .map(row => {
+          const currentStudents = currentTotalsByCode.get(String(row.code)) || 0;
+          const currentSharePct = totalCurrentStudents > 0
+            ? 100 * currentStudents / totalCurrentStudents
+            : null;
+          return {
+            ...row,
+            current_students: currentStudents || null,
+            current_share_pct: currentSharePct,
+            display_share_pct: Math.max(Number(row.alumni_share_pct || 0), Number(currentSharePct || 0)),
+          };
+        })
+        .sort((a, b) => Number(b.display_share_pct || 0) - Number(a.display_share_pct || 0))
         .slice(0, topNFor(id))
         .reverse();
       if (!rows.length) return noData(id);
-      Plotly.newPlot(id, [{
+      const y = rows.map(row => wrapAxisLabel(majorName(row), 28));
+      const traces = [{
         type: 'bar',
         orientation: 'h',
-        y: rows.map(row => wrapAxisLabel(majorName(row), 28)),
-        x: rows.map(row => row.alumni),
-        text: rows.map(row => num(row.alumni)),
+        name: 'Alumni',
+        y,
+        x: rows.map(row => row.alumni_share_pct),
+        text: rows.map(row => pct(row.alumni_share_pct)),
         textposition: 'outside',
         cliponaxis: false,
-        customdata: rows.map(row => [majorName(row), row.code]),
+        customdata: rows.map(row => [majorName(row), row.alumni]),
         marker: { color: COLORS[1] },
-        hovertemplate: '%{customdata[0]}<br>%{x:,.0f} alumni<extra></extra>',
-      }], horizontalBarLayout(id, rows.map(row => ({ label: majorName(row) }))), plotConfig);
+        hovertemplate: '%{customdata[0]}<br>%{x:.1f}% of alumni<br>%{customdata[1]:,.0f} alumni<extra></extra>',
+      }];
+      if (totalCurrentStudents > 0) {
+        traces.push({
+          type: 'bar',
+          orientation: 'h',
+          name: 'Current students',
+          y,
+          x: rows.map(row => row.current_share_pct),
+          text: rows.map(row => row.current_share_pct === null ? '' : pct(row.current_share_pct)),
+          textposition: 'outside',
+          cliponaxis: false,
+          customdata: rows.map(row => [majorName(row), row.current_students]),
+          marker: { color: COLORS[2], opacity: 0.72 },
+          hovertemplate: '%{customdata[0]}<br>%{x:.1f}% of current students<br>%{customdata[1]:,.0f} current students<extra></extra>',
+        });
+      }
+      const layout = horizontalBarLayout(id, rows.map(row => ({ label: majorName(row) })), '%', { rightMargin: 132 });
+      Plotly.newPlot(id, traces, {
+        ...layout,
+        barmode: 'group',
+        xaxis: {
+          ...layout.xaxis,
+          title: 'Share of total major mix',
+        },
+        legend: { orientation: 'h', y: 1.14, x: 0 },
+      }, plotConfig);
     }
 
     function drawMajorCompareFurtherEd(id) {
@@ -3926,12 +3977,12 @@
             name: major.title,
             legendgroup,
             x: historic.map(row => row.grad_year),
-            y: historic.map(row => row.alumni),
+            y: historic.map(row => row.share_pct),
             line: { color, width: 3 },
             marker: { color, size: 7 },
             showlegend: false,
-            customdata: historic.map(() => [major.title, 'Alumni']),
-            hovertemplate: '%{customdata[0]}<br>Class of %{x}<br>%{y:,.0f} alumni<extra></extra>',
+            customdata: historic.map(row => [major.title, row.alumni]),
+            hovertemplate: '%{customdata[0]}<br>Class of %{x}<br>%{y:.1f}% of alumni<br>%{customdata[1]:,.0f} alumni<extra></extra>',
           } : null,
           current.length ? {
             type: 'scatter',
@@ -3939,7 +3990,7 @@
             name: `${major.title} current`,
             legendgroup,
             x: bridge.map(row => row.grad_year),
-            y: bridge.map(row => row.current_students ?? row.alumni),
+            y: bridge.map(row => row.share_pct),
             line: { color, width: 3, dash: 'dot' },
             marker: {
               color,
@@ -3947,8 +3998,8 @@
               symbol: 'diamond',
             },
             showlegend: false,
-            customdata: bridge.map(() => [major.title, 'Current students']),
-            hovertemplate: '%{customdata[0]}<br>Class of %{x}<br>%{y:,.0f} current students<extra></extra>',
+            customdata: bridge.map(row => [major.title, row.current_students ?? row.alumni, row.current_students === undefined ? 'alumni' : 'current students']),
+            hovertemplate: '%{customdata[0]}<br>Class of %{x}<br>%{y:.1f}% of %{customdata[2]}<br>%{customdata[1]:,.0f} %{customdata[2]}<extra></extra>',
           } : null,
           legendDotTrace(major.title, color, legendgroup),
         ].filter(Boolean);
@@ -3966,7 +4017,7 @@
         height: 430,
         margin: { ...layoutBase.margin, l: 80, r: 88, t: 22, b: 62 },
         xaxis: { title: 'Graduation year', automargin: true, dtick: currentRows.length ? 2 : 5 },
-        yaxis: { title: 'Alumni / current students', automargin: true, rangemode: 'tozero' },
+        yaxis: { title: 'Share of total major mix %', ticksuffix: '%', automargin: true, rangemode: 'tozero' },
         legend: { orientation: 'h', y: 1.18, x: 0, itemwidth: 30 },
         shapes,
         annotations,

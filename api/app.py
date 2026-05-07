@@ -1094,6 +1094,9 @@ def _early_2025_salary_trend_by_major(con: duckdb.DuckDBPyConnection, filters: Q
 
 def _alumni_trend_by_major(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
     cip_col = _cip_col(filters)
+    denominator_filters = filters.model_copy(deep=True)
+    denominator_filters.majors = []
+    _create_cohort_slice_table(con, denominator_filters, "alumni_trend_major_total")
     return _records_from_query(
         con,
         f"""
@@ -1107,11 +1110,27 @@ def _alumni_trend_by_major(con: duckdb.DuckDBPyConnection, filters: QueryRequest
           WHERE grad_year IS NOT NULL
             AND {cip_col} IS NOT NULL
           GROUP BY {cip_col}, grad_year
+        ),
+        totals AS (
+          SELECT
+            grad_year,
+            SUM(profile_weight) AS total_alumni
+          FROM alumni_trend_major_total
+          WHERE grad_year IS NOT NULL
+            AND {cip_col} IS NOT NULL
+          GROUP BY grad_year
         )
-        SELECT code, COALESCE(title, code) AS title, grad_year, ROUND(alumni, 2) AS alumni
-        FROM by_year
-        WHERE alumni > ?
-        ORDER BY title, grad_year
+        SELECT
+          b.code,
+          COALESCE(b.title, b.code) AS title,
+          b.grad_year,
+          ROUND(b.alumni, 2) AS alumni,
+          ROUND(t.total_alumni, 2) AS total_alumni,
+          ROUND(100.0 * b.alumni / NULLIF(t.total_alumni, 0), 2) AS share_pct
+        FROM by_year b
+        JOIN totals t USING (grad_year)
+        WHERE b.alumni > ?
+        ORDER BY title, b.grad_year
         """,
         [MIN_CELL_WEIGHT],
     )
@@ -1307,20 +1326,44 @@ def _current_student_trend_by_major(con: duckdb.DuckDBPyConnection, filters: Que
     if not _create_current_slice(con, filters):
         return []
     cip_col = _cip_col(filters)
+    denominator_filters = filters.model_copy(deep=True)
+    denominator_filters.majors = []
+    if not _create_current_slice_table(con, denominator_filters, "current_major_total_slice"):
+        return []
     return _records_from_query(
         con,
         f"""
+        WITH by_year AS (
+          SELECT
+            {cip_col} AS code,
+            COALESCE(MAX(major_title), {cip_col}) AS title,
+            grad_year,
+            SUM(profile_weight) AS current_students
+          FROM current_slice
+          WHERE grad_year IS NOT NULL
+            AND {cip_col} IS NOT NULL
+          GROUP BY {cip_col}, grad_year
+        ),
+        totals AS (
+          SELECT
+            grad_year,
+            SUM(profile_weight) AS total_current_students
+          FROM current_major_total_slice
+          WHERE grad_year IS NOT NULL
+            AND {cip_col} IS NOT NULL
+          GROUP BY grad_year
+        )
         SELECT
-          {cip_col} AS code,
-          COALESCE(MAX(major_title), {cip_col}) AS title,
-          grad_year,
-          ROUND(SUM(profile_weight), 2) AS current_students
-        FROM current_slice
-        WHERE grad_year IS NOT NULL
-          AND {cip_col} IS NOT NULL
-        GROUP BY {cip_col}, grad_year
-        HAVING SUM(profile_weight) > ?
-        ORDER BY title, grad_year
+          b.code,
+          b.title,
+          b.grad_year,
+          ROUND(b.current_students, 2) AS current_students,
+          ROUND(t.total_current_students, 2) AS total_current_students,
+          ROUND(100.0 * b.current_students / NULLIF(t.total_current_students, 0), 2) AS share_pct
+        FROM by_year b
+        JOIN totals t USING (grad_year)
+        WHERE b.current_students > ?
+        ORDER BY b.title, b.grad_year
         """,
         [MIN_CELL_WEIGHT],
     )
@@ -1370,6 +1413,9 @@ def _school_comparison(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
 
 def _major_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
     cip_col = _cip_col(filters)
+    denominator_filters = filters.model_copy(deep=True)
+    denominator_filters.majors = []
+    _create_cohort_slice_table(con, denominator_filters, "major_compare_total_cohort")
     return _records_from_query(
         con,
         f"""
@@ -1394,17 +1440,25 @@ def _major_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> 
           FROM slice
           WHERE {cip_col} IS NOT NULL
           GROUP BY {cip_col}
+        ),
+        total_cohort AS (
+          SELECT SUM(profile_weight) AS total_alumni
+          FROM major_compare_total_cohort
+          WHERE {cip_col} IS NOT NULL
         )
         SELECT
           c.code,
           COALESCE(c.title, c.code) AS title,
           ROUND(c.alumni, 2) AS alumni,
+          ROUND(t.total_alumni, 2) AS total_alumni,
+          ROUND(100.0 * c.alumni / NULLIF(t.total_alumni, 0), 2) AS alumni_share_pct,
           ROUND(o.salary_weight) AS salary_weight,
           CASE WHEN o.salary_weight > ? THEN ROUND(o.weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
           CASE WHEN o.salary_weight > ? THEN ROUND(o.median_salary) ELSE NULL END AS median_salary,
           o.unique_employers,
           ROUND(100.0 * c.later_degree_n / NULLIF(c.alumni, 0), 1) AS later_degree_pct
         FROM cohort c
+        CROSS JOIN total_cohort t
         LEFT JOIN outcomes o USING (code)
         WHERE c.alumni > ?
         ORDER BY o.weighted_mean_salary DESC NULLS LAST, c.alumni DESC
@@ -3011,9 +3065,10 @@ def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password
                 result["overview"] = _overview(con)
                 if filters.compare_dimension == "major":
                     result["major_comparison"] = _major_comparison(con, filters)
+                    if tab == "overview":
+                        result["current_student_trend_by_major"] = _current_student_trend_by_major(con, filters)
                     if view_mode == "overtime" and tab == "overview":
                         result["alumni_trend_by_major"] = _alumni_trend_by_major(con, filters)
-                        result["current_student_trend_by_major"] = _current_student_trend_by_major(con, filters)
                     if view_mode == "overtime" and tab == "earnings":
                         result["salary_trend_by_major"] = _salary_trend_by_major(con, filters)
                     if tab == "employers":
