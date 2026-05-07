@@ -32,6 +32,7 @@ DUCKDB_MEMORY_LIMIT = os.environ.get("OUTCOMES_DUCKDB_MEMORY_LIMIT", "1200MB")
 DUCKDB_TEMP_DIR = Path(os.environ.get("OUTCOMES_DUCKDB_TEMP_DIR", "/tmp/duckdb")).expanduser()
 DEFAULT_SCHOOL_CACHE_DIR = "/var/data/outcomes_school_cache" if Path("/var/data").exists() else "/tmp/outcomes_school_cache"
 SCHOOL_CACHE_DIR = Path(os.environ.get("OUTCOMES_SCHOOL_CACHE_DIR", DEFAULT_SCHOOL_CACHE_DIR)).expanduser()
+MAX_COMPARE_SCHOOLS = int(os.environ.get("OUTCOMES_MAX_COMPARE_SCHOOLS", "3"))
 QUERY_SEMAPHORE = threading.BoundedSemaphore(int(os.environ.get("OUTCOMES_QUERY_CONCURRENCY", "1")))
 SCHOOL_CACHE_LOCK = threading.Lock()
 APP_PASSWORD = os.environ.get("OUTCOMES_APP_PASSWORD")
@@ -175,9 +176,17 @@ def _dataset_glob(dataset: str) -> list[str]:
 
 
 def _base_source_for_filters(filters: QueryRequest) -> list[str]:
-    if (filters.compare_mode and filters.compare_dimension == "school") or len(set(filters.schools)) != 1:
-        return _dataset_glob("base_fact")
-    return _school_base_cache(filters.schools[0])
+    schools = list(dict.fromkeys(str(school) for school in filters.schools if str(school)))
+    if len(schools) == 1:
+        return _school_base_cache(schools[0])
+    if filters.compare_mode and filters.compare_dimension == "school" and schools:
+        if len(schools) > MAX_COMPARE_SCHOOLS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"School compare is capped at {MAX_COMPARE_SCHOOLS} schools for performance.",
+            )
+        return [path for school in schools for path in _school_base_cache(school)]
+    return _dataset_glob("base_fact")
 
 
 def _school_cache_key(unitid: str) -> str:
@@ -3099,6 +3108,28 @@ def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password
             return result
         finally:
             con.close()
+
+
+@app.post("/api/warm-cache")
+def warm_cache(filters: QueryRequest, _: None = Depends(require_internal_password)) -> dict[str, Any]:
+    """Build per-school cache files before compare-mode drilldowns."""
+    schools = list(dict.fromkeys(str(school) for school in filters.schools if str(school)))
+    if not schools:
+        return {"status": "skipped", "reason": "no schools selected", "schools": []}
+    if len(schools) > MAX_COMPARE_SCHOOLS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"School compare is capped at {MAX_COMPARE_SCHOOLS} schools for performance.",
+        )
+    with _query_slot():
+        paths = [path for school in schools for path in _school_base_cache(school)]
+    return {
+        "status": "ok",
+        "schools": schools,
+        "files": len(paths),
+        "bytes": sum(Path(path).stat().st_size for path in paths if Path(path).exists()),
+        "max_compare_schools": MAX_COMPARE_SCHOOLS,
+    }
 
 
 @app.get("/", include_in_schema=False)

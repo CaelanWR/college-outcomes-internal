@@ -1040,6 +1040,12 @@
     }
 
     .compare-option:hover { background: rgba(34,94,168,0.07); }
+    .compare-option:disabled {
+      cursor: not-allowed;
+      color: #8aa0b8;
+      background: #f3f6fa;
+      opacity: 0.72;
+    }
 
     .compare-option.is-selected {
       background: rgba(34,94,168,0.12);
@@ -1415,7 +1421,9 @@
     };
     const pct = value => value === null || value === undefined ? 'No data' : `${Number(value).toFixed(1)}%`;
     const TOP_N_OPTIONS = [5, 8, 12, 16, 20, 30, 50];
+    const MAX_COMPARE_SCHOOLS = 3;
     let resizeTimer = null;
+    let compareWarmupTimer = null;
 
     const layoutBase = {
       font: { family: '"Source Sans 3", ui-sans-serif, system-ui, sans-serif', color: '#243b53', size: 13 },
@@ -1634,6 +1642,13 @@
     function applyAdvancedOptions() {
       normalizeAdvancedControls();
       const advanced = readAdvancedControls();
+      if (advanced.selectionMode === 'compare') {
+        advanced.compareSchools = trimCompareSchools(advanced.compareSchools);
+        Array.from($('compare-school-select').options).forEach(opt => {
+          opt.selected = advanced.compareSchools.includes(String(opt.value));
+        });
+        renderCompareSchoolPicker(state.options?.schools || [], new Set(advanced.compareSchools));
+      }
       state.appliedAdvanced = advanced;
       state.selectionMode = advanced.selectionMode;
       persistAdvancedControls(advanced);
@@ -1658,8 +1673,15 @@
     function getSelectedSchools(advanced = activeAdvancedControls()) {
       const primary = $('school-select').value ? [$('school-select').value] : [];
       if (advanced.selectionMode !== 'compare') return primary;
-      const compare = advanced.compareSchools || [];
+      const compare = trimCompareSchools(advanced.compareSchools || [], primary[0] || '');
       return [...new Set([...primary, ...compare])].filter(Boolean);
+    }
+
+    function trimCompareSchools(values, primary = String($('school-select')?.value || '')) {
+      const maxComparisonSchools = Math.max(0, MAX_COMPARE_SCHOOLS - (primary ? 1 : 0));
+      return [...new Set((values || []).map(String))]
+        .filter(value => value && value !== primary)
+        .slice(0, maxComparisonSchools);
     }
 
     function getSelectedMajors(advanced = activeAdvancedControls()) {
@@ -1725,6 +1747,33 @@
       };
     }
 
+    function scheduleCompareSchoolWarmup(delay = 350) {
+      clearTimeout(compareWarmupTimer);
+      const primary = String($('school-select')?.value || '');
+      const compare = trimCompareSchools(selectedValues($('compare-school-select')), primary);
+      const schools = [...new Set([primary, ...compare])].filter(Boolean);
+      if (!state.apiUrl || schools.length < 2 || schools.length > MAX_COMPARE_SCHOOLS) return;
+      compareWarmupTimer = window.setTimeout(async () => {
+        const key = JSON.stringify({ apiUrl: state.apiUrl, schools });
+        if (state.lastCompareWarmupKey === key) return;
+        try {
+          state.lastCompareWarmupKey = key;
+          setStatus('', 'Preparing selected schools');
+          await apiFetch('/api/warm-cache', currentFilters({
+            schools,
+            compare_mode: true,
+            compare_dimension: 'school',
+            active_tab: 'overview',
+            view_mode: 'overtime',
+          }));
+          if (!state.loading) setStatus('ok', 'Selected schools ready');
+        } catch (error) {
+          state.lastCompareWarmupKey = '';
+          if (!state.loading) setStatus('bad', 'School cache prep failed');
+        }
+      }, delay);
+    }
+
     function option(label, value, selected = false) {
       const opt = document.createElement('option');
       opt.value = value;
@@ -1755,6 +1804,8 @@
       selectedTitle = 'Selected',
       emptyText = 'Click items on the left to add them here.',
       baseLabel = '',
+      maxSelections = Infinity,
+      selectedCountLabel = '',
     }) {
       const picker = $(pickerId);
       if (!picker) return;
@@ -1762,6 +1813,7 @@
       const selectedRows = safeRows.filter(row => selectedSet.has(String(getValue(row))));
       const availableRows = safeRows.filter(row => !selectedSet.has(String(getValue(row))));
       const count = selectedValues($(selectId)).length;
+      const maxReached = Number.isFinite(maxSelections) && count >= maxSelections;
       const baseMarkup = baseLabel
         ? `<span class="compare-bead is-base"><span>Base: ${escapeHtml(comparePickerLabel(baseLabel, 34))}</span></span>`
         : '';
@@ -1779,7 +1831,7 @@
         : `<div class="compare-empty">${escapeHtml(emptyText)}</div>`;
       picker.innerHTML = `
         <div class="compare-picker-head">
-          <span>${num(count)} selected</span>
+          <span>${escapeHtml(selectedCountLabel || `${num(count)} selected`)}</span>
           <button type="button" class="compare-picker-clear" ${clearAttr}>Clear</button>
         </div>
         <div class="compare-picker-body">
@@ -1788,7 +1840,7 @@
               const value = String(getValue(row));
               const label = getLabel(row);
               return `
-                <button type="button" class="compare-option" ${addAttr}="${escapeHtml(value)}" title="${escapeHtml(label)}">
+                <button type="button" class="compare-option" ${addAttr}="${escapeHtml(value)}" title="${escapeHtml(label)}" ${maxReached ? 'disabled' : ''}>
                   <span>${escapeHtml(comparePickerLabel(label, 58))}</span>
                 </button>
               `;
@@ -1805,11 +1857,13 @@
     function renderCompareSchoolPicker(rows, selectedSet = new Set()) {
       const currentSchool = state.options?.schools?.find(s => String(s.unitid) === String($('school-select')?.value));
       const currentUnitid = String(currentSchool?.unitid || $('school-select')?.value || '');
+      const selectedValuesSet = new Set(trimCompareSchools([...selectedSet], currentUnitid));
+      const totalSelected = (currentUnitid ? 1 : 0) + selectedValuesSet.size;
       renderComparePicker({
         pickerId: 'compare-school-picker',
         selectId: 'compare-school-select',
         rows: (rows || []).filter(row => String(row.unitid) !== currentUnitid),
-        selectedSet,
+        selectedSet: selectedValuesSet,
         getValue: row => row.unitid,
         getLabel: row => row.name,
         addAttr: 'data-add-compare-school',
@@ -1818,6 +1872,8 @@
         selectedTitle: 'Comparison set',
         emptyText: 'Click schools to add them to the comparison.',
         baseLabel: currentSchool?.name || '',
+        maxSelections: Math.max(0, MAX_COMPARE_SCHOOLS - (currentUnitid ? 1 : 0)),
+        selectedCountLabel: `${num(totalSelected)} of ${MAX_COMPARE_SCHOOLS} schools selected`,
       });
     }
 
@@ -1847,9 +1903,7 @@
         savedCompare = [];
       }
       const currentCompare = selectedValues($('compare-school-select')).map(String);
-      const existingCompare = new Set((currentCompare.length ? currentCompare : savedCompare)
-        .map(String)
-        .filter(value => value !== String(existingPrimary)));
+      const existingCompare = new Set(trimCompareSchools(currentCompare.length ? currentCompare : savedCompare, String(existingPrimary)));
       populateSelect($('school-select'), options.schools, s => s.name, s => s.unitid, new Set([String(existingPrimary)]));
       populateSelect($('compare-school-select'), options.schools, s => s.name, s => s.unitid, existingCompare);
       renderCompareSchoolPicker(options.schools || [], existingCompare);
@@ -4348,15 +4402,14 @@
 
     function refreshCompareSchoolPicker() {
       const primary = String($('school-select')?.value || '');
-      const values = selectedValues($('compare-school-select'))
-        .map(String)
-        .filter(value => value !== primary);
+      const values = trimCompareSchools(selectedValues($('compare-school-select')), primary);
       Array.from($('compare-school-select').options).forEach(opt => {
-        if (String(opt.value) === primary) opt.selected = false;
+        opt.selected = values.includes(String(opt.value));
       });
       storage.setItem('outcomes.compareSchools', JSON.stringify(values));
       renderCompareSchoolPicker(state.options?.schools || [], new Set(values));
       setAdvancedOpen(true);
+      scheduleCompareSchoolWarmup();
     }
 
     function refreshCompareMajorPicker() {
