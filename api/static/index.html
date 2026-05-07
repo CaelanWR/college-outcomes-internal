@@ -1418,6 +1418,7 @@
             <button id="download-visible-btn" class="btn" type="button">Download Visible Charts</button>
             <button id="print-page-btn" class="btn" type="button">Save Page PDF</button>
           </div>
+          <button id="advanced-reset-btn" class="btn" type="button">Reset Advanced Filters</button>
           <button id="advanced-apply-btn" class="btn active" type="button">Apply Advanced Options</button>
         </div>
       </div>
@@ -1758,6 +1759,37 @@
         setStatus('ok', `${state.options?.meta?.data_version || 'Connected'} | pick comparison items`);
         return;
       }
+      setAdvancedOpen(false);
+      refresh({ reloadOptions: true, resetDrill: true });
+    }
+
+    function resetAdvancedOptions() {
+      clearTimeout(compareWarmupTimer);
+      state.lastCompareWarmupKey = '';
+      Array.from($('compare-school-select').options).forEach(opt => { opt.selected = false; });
+      Array.from($('compare-major-select').options).forEach(opt => { opt.selected = false; });
+      $('cip-level-select').value = 'cip4';
+      const years = state.options?.grad_years || [];
+      if (years.length) {
+        $('from-year-select').value = String(years[0]);
+        $('to-year-select').value = String(years[years.length - 1]);
+      }
+      if (Array.from($('horizon-select').options).some(opt => opt.value === '1yr')) {
+        $('horizon-select').value = '1yr';
+      }
+      $('gender-select').value = '';
+      $('race-select').value = '';
+      $('later-degree-filter').value = '';
+      $('no-further-select').value = '';
+      $('current-select').value = 'true';
+      $('school-employer-select').value = 'false';
+      state.selectionMode = 'single';
+      syncSelectionMode('single');
+      syncHorizonToggle();
+      renderCompareSchoolPicker(state.options?.schools || [], new Set());
+      renderCompareMajorPicker(state.options?.major_options || [], new Set());
+      state.appliedAdvanced = readAdvancedControls();
+      persistAdvancedControls(state.appliedAdvanced);
       setAdvancedOpen(false);
       refresh({ reloadOptions: true, resetDrill: true });
     }
@@ -4655,6 +4687,7 @@
       $('advanced-btn').addEventListener('click', () => {
         setAdvancedOpen(!$('advanced-panel').classList.contains('open'));
       });
+      $('advanced-reset-btn').addEventListener('click', () => resetAdvancedOptions());
       $('advanced-apply-btn').addEventListener('click', () => applyAdvancedOptions());
       $('download-visible-btn').addEventListener('click', () => downloadVisibleCharts());
       $('print-page-btn').addEventListener('click', () => window.print());
