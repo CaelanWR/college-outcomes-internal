@@ -2414,6 +2414,55 @@
       return 'copied';
     }
 
+    function chartSvgBlob(plot, width, height) {
+      const sourceSvg = plot.querySelector('svg.main-svg');
+      if (!sourceSvg) throw new Error('No SVG chart layer found');
+      const svg = sourceSvg.cloneNode(true);
+      svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      svg.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+      svg.setAttribute('width', String(width));
+      svg.setAttribute('height', String(height));
+      svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+      svg.setAttribute('style', 'background:#fff;font-family:Source Sans 3,Arial,sans-serif;');
+      const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      bg.setAttribute('x', '0');
+      bg.setAttribute('y', '0');
+      bg.setAttribute('width', String(width));
+      bg.setAttribute('height', String(height));
+      bg.setAttribute('fill', '#fff');
+      svg.insertBefore(bg, svg.firstChild);
+      const serialized = new XMLSerializer().serializeToString(svg);
+      return new Blob([`<?xml version="1.0" encoding="UTF-8"?>\n${serialized}`], {
+        type: 'image/svg+xml;charset=utf-8',
+      });
+    }
+
+    async function svgBlobToPngBlob(svgBlob, width, height) {
+      const url = URL.createObjectURL(svgBlob);
+      try {
+        const image = new Image();
+        await new Promise((resolve, reject) => {
+          image.onload = resolve;
+          image.onerror = () => reject(new Error('Could not rasterize chart SVG'));
+          image.src = url;
+        });
+        const scale = 2;
+        const canvas = document.createElement('canvas');
+        canvas.width = width * scale;
+        canvas.height = height * scale;
+        const context = canvas.getContext('2d');
+        context.fillStyle = '#fff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.scale(scale, scale);
+        context.drawImage(image, 0, 0, width, height);
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        if (!blob?.size) throw new Error('Canvas produced an empty PNG');
+        return blob;
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    }
+
     function clonePlain(value) {
       try {
         return structuredClone(value);
@@ -2496,7 +2545,13 @@
       const rect = plot.getBoundingClientRect();
       const width = Math.max(900, Math.round(rect.width || 900));
       const height = Math.max(520, Math.round(rect.height || 520));
-      const blob = await exportPlotCloneToPng(plot, width, height);
+      let blob = null;
+      try {
+        blob = await svgBlobToPngBlob(chartSvgBlob(plot, width, height), width, height);
+      } catch (error) {
+        console.warn('SVG chart export failed; falling back to isolated Plotly export', error);
+        blob = await exportPlotCloneToPng(plot, width, height);
+      }
       if (blob.size < 2048) {
         throw new Error(`Exported PNG is unexpectedly small (${blob.size} bytes)`);
       }
@@ -2527,12 +2582,7 @@
         } else if (mode === 'copy') {
           result = await copyPngBlob(exportFile.blob, exportFile.filename, exportFile.title);
         } else {
-          const destination = await pickSinglePngDestination(exportFile.filename);
-          if (destination?.canceled) {
-            setStatus('ok', 'PNG save canceled');
-            return;
-          }
-          result = await savePngBlob(exportFile.blob, exportFile.filename, exportFile.title, destination);
+          result = await savePngBlob(exportFile.blob, exportFile.filename, exportFile.title);
         }
         const label = {
           copied: 'Copied',
@@ -2561,25 +2611,20 @@
         setStatus('bad', 'No visible charts to export');
         return;
       }
-      const destination = await pickPngDirectoryDestination();
-      if (destination?.canceled) {
-        setStatus('ok', 'PNG export canceled');
-        return;
-      }
       setStatus('ok', `Preparing ${chartIds.length} PNGs...`);
       let saved = 0;
       for (const chartId of chartIds) {
         try {
           const exportFile = await chartPngBlob(chartId);
           if (!exportFile) continue;
-          await savePngBlob(exportFile.blob, exportFile.filename, exportFile.title, destination);
+          await savePngBlob(exportFile.blob, exportFile.filename, exportFile.title);
           saved += 1;
         } catch (error) {
           console.error('PNG export failed', chartId, error);
         }
         await new Promise(resolve => setTimeout(resolve, 180));
       }
-      setStatus(saved ? 'ok' : 'bad', saved ? `Prepared ${saved} PNGs` : 'PNG export failed');
+      setStatus(saved ? 'ok' : 'bad', saved ? `Prepared ${saved} PNGs. Use the export tray if downloads are blocked.` : 'PNG export failed');
     }
 
     function selectedTopN() {
