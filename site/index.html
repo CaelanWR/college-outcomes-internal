@@ -884,6 +884,48 @@
       opacity: 0.62;
     }
 
+    .save-menu {
+      position: relative;
+      display: inline-flex;
+    }
+
+    .save-options {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      z-index: 35;
+      display: grid;
+      min-width: 142px;
+      padding: 6px;
+      border: 1px solid rgba(34,94,168,0.16);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.98);
+      box-shadow: 0 18px 42px rgba(20,44,65,0.16);
+    }
+
+    .save-options[hidden] {
+      display: none;
+    }
+
+    .save-options button {
+      width: 100%;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      color: #243b53;
+      cursor: pointer;
+      padding: 8px 10px;
+      text-align: left;
+      font-size: 0.86rem;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+
+    .save-options button:hover {
+      background: rgba(34,94,168,0.09);
+      color: #174a7c;
+    }
+
     .export-actions {
       display: inline-flex;
       flex-wrap: wrap;
@@ -2201,8 +2243,10 @@
 
     function markChartExportable(chartId) {
       if (!chartId) return;
-      const button = Array.from(document.querySelectorAll('[data-download-chart]'))
-        .find(node => node.dataset.downloadChart === chartId);
+      const button = Array.from(document.querySelectorAll('[data-save-chart-menu]'))
+        .find(node => node.dataset.saveChartMenu === chartId)
+        || Array.from(document.querySelectorAll('[data-download-chart]'))
+          .find(node => node.dataset.downloadChart === chartId);
       if (button) button.hidden = false;
     }
 
@@ -2338,6 +2382,22 @@
       return 'downloaded';
     }
 
+    async function openPngBlob(blob, filename, title) {
+      const url = addExportLink(blob, filename, title, 'Opened in a browser tab. Direct Save/Open links are also available below.');
+      const opened = window.open(url, '_blank', 'noopener');
+      return opened ? 'opened' : 'blocked';
+    }
+
+    async function copyPngBlob(blob, filename, title) {
+      if (!navigator.clipboard?.write || !window.ClipboardItem) {
+        addExportLink(blob, filename, title, 'This browser cannot copy PNGs directly. Use Save or Open below.');
+        return 'unsupported';
+      }
+      await navigator.clipboard.write([new ClipboardItem({ [blob.type || 'image/png']: blob })]);
+      addExportLink(blob, filename, title, 'Copied PNG to clipboard. Direct Save/Open links are also available below.');
+      return 'copied';
+    }
+
     async function chartPngBlob(chartId) {
       const plot = $(chartId);
       if (!plot || !plot._fullLayout) return null;
@@ -2353,16 +2413,16 @@
       return { blob: await dataUrlToBlob(dataUrl), filename, title };
     }
 
-    async function downloadChart(chartId) {
+    async function downloadChart(chartId, mode = 'save') {
       const plot = $(chartId);
       if (!plot || !plot._fullLayout) {
         setStatus('bad', 'No chart available to export');
         return;
       }
-      const button = Array.from(document.querySelectorAll('[data-download-chart]'))
-        .find(node => node.dataset.downloadChart === chartId);
+      const button = Array.from(document.querySelectorAll('[data-save-chart-menu]'))
+        .find(node => node.dataset.saveChartMenu === chartId);
       const filename = chartExportFilename(chartId);
-      const destination = await pickSinglePngDestination(filename);
+      const destination = mode === 'save' ? await pickSinglePngDestination(filename) : null;
       if (destination?.canceled) {
         setStatus('ok', 'PNG save canceled');
         return;
@@ -2374,15 +2434,29 @@
         }
         const exportFile = await chartPngBlob(chartId);
         if (!exportFile) throw new Error('Chart is not ready');
-        const result = await savePngBlob(exportFile.blob, exportFile.filename, exportFile.title, destination);
-        setStatus('ok', `${result === 'saved' ? 'Saved' : 'PNG ready'}: ${exportFile.title}`);
+        let result = 'downloaded';
+        if (mode === 'open') {
+          result = await openPngBlob(exportFile.blob, exportFile.filename, exportFile.title);
+        } else if (mode === 'copy') {
+          result = await copyPngBlob(exportFile.blob, exportFile.filename, exportFile.title);
+        } else {
+          result = await savePngBlob(exportFile.blob, exportFile.filename, exportFile.title, destination);
+        }
+        const label = {
+          copied: 'Copied',
+          opened: 'Opened',
+          saved: 'Saved',
+          blocked: 'PNG ready',
+          unsupported: 'PNG ready',
+        }[result] || 'PNG ready';
+        setStatus('ok', `${label}: ${exportFile.title}`);
       } catch (error) {
         console.error('PNG export failed', error);
         setStatus('bad', `PNG export failed for ${chartExportTitle(chartId)}`);
       } finally {
         if (button) {
           button.disabled = false;
-          button.textContent = 'PNG';
+          button.textContent = 'Save As';
         }
       }
     }
@@ -2465,7 +2539,16 @@
     }
 
     function chartDownloadControl(id) {
-      return `<button type="button" class="chart-download" data-download-chart="${id}" hidden>PNG</button>`;
+      return `
+        <div class="save-menu" data-save-menu>
+          <button type="button" class="chart-download" data-save-chart-menu="${id}" hidden>Save As</button>
+          <div class="save-options" data-save-options hidden>
+            <button type="button" data-download-chart="${id}" data-save-mode="save">Save PNG</button>
+            <button type="button" data-download-chart="${id}" data-save-mode="open">Open PNG</button>
+            <button type="button" data-download-chart="${id}" data-save-mode="copy">Copy PNG</button>
+          </div>
+        </div>
+      `;
     }
 
     function card(title, id, span = 6, tall = false, options = {}) {
@@ -4890,10 +4973,24 @@
         refresh();
       });
       $('content').addEventListener('click', event => {
+        const saveMenuButton = event.target.closest('[data-save-chart-menu]');
+        if (saveMenuButton && !saveMenuButton.hidden) {
+          event.preventDefault();
+          const menu = saveMenuButton.closest('[data-save-menu]')?.querySelector('[data-save-options]');
+          const willOpen = menu?.hidden;
+          document.querySelectorAll('[data-save-options]').forEach(node => { node.hidden = true; });
+          if (menu) menu.hidden = !willOpen;
+          return;
+        }
         const button = event.target.closest('[data-download-chart]');
-        if (!button || button.hidden) return;
+        if (!button) {
+          document.querySelectorAll('[data-save-options]').forEach(node => { node.hidden = true; });
+          return;
+        }
         event.preventDefault();
-        downloadChart(button.dataset.downloadChart);
+        const menu = button.closest('[data-save-options]');
+        if (menu) menu.hidden = true;
+        downloadChart(button.dataset.downloadChart, button.dataset.saveMode || 'save');
       });
       $('export-tray').addEventListener('click', event => {
         const close = event.target.closest('.export-tray-close');
