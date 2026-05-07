@@ -1517,6 +1517,7 @@
     let resizeTimer = null;
     let compareWarmupTimer = null;
     const exportLinks = [];
+    let exportTrayNote = '';
 
     const layoutBase = {
       font: { family: '"Source Sans 3", ui-sans-serif, system-ui, sans-serif', color: '#243b53', size: 13 },
@@ -2227,7 +2228,8 @@
       return response.blob();
     }
 
-    function showExportTray(item) {
+    function showExportTray(item, note = '') {
+      if (note) exportTrayNote = note;
       if (item) {
         exportLinks.unshift(item);
         while (exportLinks.length > 12) {
@@ -2247,7 +2249,7 @@
           <h3>PNG export ready</h3>
           <button type="button" class="export-tray-close" aria-label="Close export links">x</button>
         </div>
-        <p>If your browser blocked the automatic save, use these direct file links.</p>
+        <p>${escapeHtml(exportTrayNote || 'Use these direct file links if the browser did not save automatically.')}</p>
         <div class="export-link-list">
           ${exportLinks.map(link => `
             <div class="export-link-row">
@@ -2260,15 +2262,95 @@
       `;
     }
 
-    function downloadBlob(blob, filename, title) {
+    function addExportLink(blob, filename, title, note = '') {
       const url = URL.createObjectURL(blob);
+      showExportTray({ url, filename, title }, note);
+      return url;
+    }
+
+    function downloadBlob(blob, filename, title) {
+      const url = addExportLink(blob, filename, title, 'Use Save or Open below if your browser blocked the automatic download.');
       const link = document.createElement('a');
       link.href = url;
       link.download = filename;
       document.body.appendChild(link);
       link.click();
       link.remove();
-      showExportTray({ url, filename, title });
+    }
+
+    async function writeBlobToFileHandle(blob, handle) {
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+    }
+
+    function pngPickerTypes() {
+      return [{
+        description: 'PNG image',
+        accept: { 'image/png': ['.png'] },
+      }];
+    }
+
+    async function pickSinglePngDestination(filename) {
+      if (!window.showSaveFilePicker) return null;
+      try {
+        return {
+          kind: 'file',
+          handle: await window.showSaveFilePicker({
+            suggestedName: filename,
+            types: pngPickerTypes(),
+          }),
+        };
+      } catch (error) {
+        if (error?.name === 'AbortError') return { canceled: true };
+        console.warn('Native file picker unavailable', error);
+        return null;
+      }
+    }
+
+    async function pickPngDirectoryDestination() {
+      if (!window.showDirectoryPicker) return null;
+      try {
+        return {
+          kind: 'directory',
+          handle: await window.showDirectoryPicker({ mode: 'readwrite' }),
+        };
+      } catch (error) {
+        if (error?.name === 'AbortError') return { canceled: true };
+        console.warn('Native directory picker unavailable', error);
+        return null;
+      }
+    }
+
+    async function savePngBlob(blob, filename, title, destination = null) {
+      if (destination?.kind === 'file') {
+        await writeBlobToFileHandle(blob, destination.handle);
+        addExportLink(blob, filename, title, 'Saved with the browser file picker. Direct links are also available below.');
+        return 'saved';
+      }
+      if (destination?.kind === 'directory') {
+        const fileHandle = await destination.handle.getFileHandle(filename, { create: true });
+        await writeBlobToFileHandle(blob, fileHandle);
+        addExportLink(blob, filename, title, 'Saved to the folder you selected. Direct links are also available below.');
+        return 'saved';
+      }
+      downloadBlob(blob, filename, title);
+      return 'downloaded';
+    }
+
+    async function chartPngBlob(chartId) {
+      const plot = $(chartId);
+      if (!plot || !plot._fullLayout) return null;
+      const title = chartExportTitle(chartId);
+      const filename = chartExportFilename(chartId);
+      const rect = plot.getBoundingClientRect();
+      const dataUrl = await Plotly.toImage(plot, {
+        format: 'png',
+        width: Math.max(900, Math.round(rect.width || 900)),
+        height: Math.max(520, Math.round(rect.height || 520)),
+        scale: 2,
+      });
+      return { blob: await dataUrlToBlob(dataUrl), filename, title };
     }
 
     async function downloadChart(chartId) {
@@ -2279,26 +2361,24 @@
       }
       const button = Array.from(document.querySelectorAll('[data-download-chart]'))
         .find(node => node.dataset.downloadChart === chartId);
-      const title = chartExportTitle(chartId);
       const filename = chartExportFilename(chartId);
+      const destination = await pickSinglePngDestination(filename);
+      if (destination?.canceled) {
+        setStatus('ok', 'PNG save canceled');
+        return;
+      }
       try {
         if (button) {
           button.disabled = true;
           button.textContent = 'Preparing';
         }
-        const rect = plot.getBoundingClientRect();
-        const dataUrl = await Plotly.toImage(plot, {
-          format: 'png',
-          width: Math.max(900, Math.round(rect.width || 900)),
-          height: Math.max(520, Math.round(rect.height || 520)),
-          scale: 2,
-        });
-        const blob = await dataUrlToBlob(dataUrl);
-        downloadBlob(blob, filename, title);
-        setStatus('ok', `PNG ready: ${title}`);
+        const exportFile = await chartPngBlob(chartId);
+        if (!exportFile) throw new Error('Chart is not ready');
+        const result = await savePngBlob(exportFile.blob, exportFile.filename, exportFile.title, destination);
+        setStatus('ok', `${result === 'saved' ? 'Saved' : 'PNG ready'}: ${exportFile.title}`);
       } catch (error) {
         console.error('PNG export failed', error);
-        setStatus('bad', `PNG export failed for ${title}`);
+        setStatus('bad', `PNG export failed for ${chartExportTitle(chartId)}`);
       } finally {
         if (button) {
           button.disabled = false;
@@ -2315,12 +2395,25 @@
         setStatus('bad', 'No visible charts to export');
         return;
       }
+      const destination = await pickPngDirectoryDestination();
+      if (destination?.canceled) {
+        setStatus('ok', 'PNG export canceled');
+        return;
+      }
       setStatus('ok', `Preparing ${chartIds.length} PNGs...`);
+      let saved = 0;
       for (const chartId of chartIds) {
-        await downloadChart(chartId);
+        try {
+          const exportFile = await chartPngBlob(chartId);
+          if (!exportFile) continue;
+          await savePngBlob(exportFile.blob, exportFile.filename, exportFile.title, destination);
+          saved += 1;
+        } catch (error) {
+          console.error('PNG export failed', chartId, error);
+        }
         await new Promise(resolve => setTimeout(resolve, 180));
       }
-      setStatus('ok', `Prepared ${chartIds.length} PNGs`);
+      setStatus(saved ? 'ok' : 'bad', saved ? `Prepared ${saved} PNGs` : 'PNG export failed');
     }
 
     function selectedTopN() {
