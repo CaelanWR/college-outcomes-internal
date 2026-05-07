@@ -2486,10 +2486,11 @@
       }
 
       if (tab === 'employers') {
+        const concentration = state.data.major_concentration || {};
         $('content').innerHTML = [
           card('Employer Mix by Major', 'major-employer-heatmap', 8, true, { topControl: true }),
           card('Employer Breadth by Major', 'major-employer-reach', 4, true),
-          card('Top Employer Share by Major', 'major-employer-concentration', 12, false),
+          card('Employer Concentration by Major', 'major-employer-concentration', 12, true),
         ].join('');
         drawMajorComparisonHeatmap('major-employer-heatmap', state.data.major_employer_comparison || [], {
           yTitle: 'Employer',
@@ -2497,7 +2498,7 @@
           hoverLabel: 'Employer share',
         });
         drawMajorCompareEmployerReach('major-employer-reach');
-        drawMajorCompareTopShare('major-employer-concentration', state.data.major_employer_comparison || [], 'Top employer share');
+        drawMajorConcentration('major-employer-concentration', concentration.employers || [], 'Employer');
         return;
       }
 
@@ -2517,9 +2518,11 @@
 
       if (tab === 'roles') {
         const roleCompare = state.data.major_role_comparison || {};
+        const concentration = state.data.major_concentration || {};
         $('content').innerHTML = [
           card('Broad Role Mix by Major', 'major-role-heatmap', 6, true, { topControl: true }),
           card('Industry Mix by Major', 'major-industry-heatmap', 6, true, { topControl: true }),
+          card('Industry Concentration by Major', 'major-industry-concentration', 12, true),
         ].join('');
         drawMajorComparisonHeatmap('major-role-heatmap', roleCompare.roles || [], {
           yTitle: 'Role',
@@ -2531,6 +2534,7 @@
           labelTransform: label => legendLabel(label, 32),
           hoverLabel: 'Industry share',
         });
+        drawMajorConcentration('major-industry-concentration', concentration.industries || [], 'Industry');
         return;
       }
 
@@ -3522,6 +3526,49 @@
         marker: { color: COLORS[3] },
         hovertemplate: `%{customdata[0]}<br>%{customdata[1]}<br>%{x:.1f}%<br>%{customdata[2]:,.0f} people<extra></extra>`,
       }], horizontalBarLayout(id, topRows.map(row => ({ label: majorName(row) })), '%', { rightMargin: 150 }), plotConfig);
+    }
+
+    function drawMajorConcentration(id, rows, entityLabel) {
+      const cleanRows = (rows || [])
+        .filter(row => row.code && row.top1_share_pct !== null && row.top1_share_pct !== undefined)
+        .sort((a, b) => Number(b.top1_share_pct || 0) - Number(a.top1_share_pct || 0))
+        .slice(0, topNFor(id))
+        .reverse();
+      if (!cleanRows.length) return noData(id);
+      const layout = horizontalBarLayout(id, cleanRows.map(row => ({ label: majorName(row) })), '%', {
+        rightMargin: 190,
+        height: Math.max(380, 170 + cleanRows.length * 42),
+      });
+      Plotly.newPlot(id, [
+        {
+          type: 'bar',
+          orientation: 'h',
+          name: `Top 3 ${entityLabel.toLowerCase()}s`,
+          y: cleanRows.map(row => wrapAxisLabel(majorName(row), 28)),
+          x: cleanRows.map(row => row.top3_share_pct),
+          marker: { color: 'rgba(34, 94, 168, 0.22)' },
+          customdata: cleanRows.map(row => [majorName(row), row.top_label, row.top3_share_pct, row.hhi, row.unique_labels]),
+          hovertemplate: `%{customdata[0]}<br>Top 3 ${entityLabel.toLowerCase()}s: %{x:.1f}%<br>Top ${entityLabel.toLowerCase()}: %{customdata[1]}<br>HHI: %{customdata[3]:,.0f}<extra></extra>`,
+        },
+        {
+          type: 'bar',
+          orientation: 'h',
+          name: `Top ${entityLabel.toLowerCase()}`,
+          y: cleanRows.map(row => wrapAxisLabel(majorName(row), 28)),
+          x: cleanRows.map(row => row.top1_share_pct),
+          text: cleanRows.map(row => `${pct(row.top1_share_pct)} | ${legendLabel(row.top_label, 22)}`),
+          textposition: 'outside',
+          cliponaxis: false,
+          marker: { color: COLORS[0] },
+          customdata: cleanRows.map(row => [majorName(row), row.top_label, row.top_n, row.hhi, row.unique_labels]),
+          hovertemplate: `%{customdata[0]}<br>Top ${entityLabel.toLowerCase()}: %{customdata[1]}<br>%{x:.1f}% | %{customdata[2]:,.0f} people<br>HHI: %{customdata[3]:,.0f}<br>Unique ${entityLabel.toLowerCase()}s: %{customdata[4]:,.0f}<extra></extra>`,
+        },
+      ], {
+        ...layout,
+        barmode: 'overlay',
+        xaxis: { ...layout.xaxis, title: `${entityLabel} concentration`, range: [0, Math.min(100, Math.max(...cleanRows.map(row => Number(row.top3_share_pct || 0))) * 1.22)] },
+        legend: { orientation: 'h', y: 1.12 },
+      }, plotConfig);
     }
 
     function drawMajorCompareEmployerReach(id) {

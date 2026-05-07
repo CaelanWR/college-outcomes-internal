@@ -1576,6 +1576,85 @@ def _major_role_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest
     }
 
 
+def _major_concentration(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, list[dict[str, Any]]]:
+    cip_col = _cip_col(filters)
+    same_school_filter = _same_school_employer_filter(filters)
+
+    def group(label_sql: str, where_extra: str, min_weight: float) -> list[dict[str, Any]]:
+        return _records_from_query(
+            con,
+            f"""
+            WITH eligible AS (
+              SELECT
+                {cip_col} AS code,
+                COALESCE(major_title, {cip_col}) AS title,
+                {label_sql} AS label,
+                final_weight
+              FROM slice
+              WHERE {cip_col} IS NOT NULL
+                AND {label_sql} IS NOT NULL
+                AND TRIM({label_sql}) <> ''
+                AND LOWER(TRIM({label_sql})) NOT IN ('empty', 'unknown', 'other')
+                {where_extra}
+            ),
+            grouped AS (
+              SELECT
+                code,
+                MAX(title) AS title,
+                label,
+                SUM(final_weight) AS n
+              FROM eligible
+              GROUP BY code, label
+            ),
+            ranked AS (
+              SELECT
+                *,
+                SUM(n) OVER (PARTITION BY code) AS total_n,
+                ROW_NUMBER() OVER (PARTITION BY code ORDER BY n DESC, label) AS rn
+              FROM grouped
+            )
+            SELECT
+              code,
+              MAX(title) AS title,
+              MAX(CASE WHEN rn = 1 THEN label ELSE NULL END) AS top_label,
+              ROUND(MAX(CASE WHEN rn = 1 THEN n ELSE NULL END)) AS top_n,
+              ROUND(100.0 * SUM(CASE WHEN rn = 1 THEN n ELSE 0 END) / NULLIF(MAX(total_n), 0), 2) AS top1_share_pct,
+              ROUND(100.0 * SUM(CASE WHEN rn <= 3 THEN n ELSE 0 END) / NULLIF(MAX(total_n), 0), 2) AS top3_share_pct,
+              ROUND(SUM(POWER(100.0 * n / NULLIF(total_n, 0), 2)), 1) AS hhi,
+              COUNT(*) AS unique_labels,
+              ROUND(MAX(total_n), 2) AS n
+            FROM ranked
+            GROUP BY code
+            HAVING MAX(total_n) > ?
+            ORDER BY top1_share_pct DESC
+            """,
+            [min_weight],
+        )
+
+    return {
+        "employers": group(
+            "employer",
+            f"""
+                AND employer IS NOT NULL
+                AND employer <> ''
+                AND unknown_employer_flag = 0
+                AND named_employer_flag = 1
+                AND career_employer_flag = 1
+                {same_school_filter}
+            """,
+            EMPLOYER_ROW_MIN_WEIGHT,
+        ),
+        "industries": group(
+            "industry_k50",
+            """
+                AND industry_k50 IS NOT NULL
+                AND industry_k50 <> ''
+            """,
+            MIN_CELL_WEIGHT,
+        ),
+    }
+
+
 def _major_demographic_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, list[dict[str, Any]]]:
     cip_col = _cip_col(filters)
 
@@ -2886,10 +2965,12 @@ def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password
                         result["salary_trend_by_major"] = _salary_trend_by_major(con, filters)
                     if tab == "employers":
                         result["major_employer_comparison"] = _major_employer_comparison(con, filters)
+                        result["major_concentration"] = _major_concentration(con, filters)
                     if tab == "geography":
                         result["major_geography_comparison"] = _major_geography_comparison(con, filters)
                     if tab == "roles":
                         result["major_role_comparison"] = _major_role_comparison(con, filters)
+                        result["major_concentration"] = _major_concentration(con, filters)
                     if tab == "demographics":
                         result["major_demographic_comparison"] = _major_demographic_comparison(con, filters)
                     if tab == "postgrad":
