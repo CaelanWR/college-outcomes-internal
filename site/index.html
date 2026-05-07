@@ -2204,8 +2204,8 @@
         drawGeo('geo-salary', 'median_salary');
       } else {
         $('content').innerHTML = [
-          card('City Share Over Time', 'geo-share-trend', 8, true, { topControl: true }),
-          card('Current City Earnings', 'geo-salary', 4, true, { topControl: true }),
+          card('City Share Over Time', 'geo-share-trend', 7, true, { topControl: true }),
+          card('Current City Earnings', 'geo-salary', 5, true, { topControl: true }),
         ].join('');
         drawTrendLines('geo-share-trend', state.data.geography_trend || [], 'location', 'share_pct', {
           yTitle: 'Share of located alumni %',
@@ -3278,18 +3278,24 @@
       if (!rows.length) return noData(id);
       const isSalary = metric === 'median_salary';
       const isShare = metric === 'share_pct';
+      const fullLabels = rows.map(r => titleCase(r.location));
+      const displayLabels = rows.map(r => shortLocationLabel(r.location));
+      const layoutOptions = isSalary
+        ? { leftMargin: compactWindow() ? 150 : 190, rightMargin: compactWindow() ? 58 : 116, yAutoMargin: false }
+        : {};
+      const layout = horizontalBarLayout(id, rows.map((r, i) => ({ label: displayLabels[i] })), isSalary ? '$' : (isShare ? '%' : ''), layoutOptions);
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
-        y: rows.map(r => wrapAxisLabel(titleCase(r.location))),
+        y: displayLabels.map(label => escapeHtml(label)),
         x: rows.map(r => r[metric]),
         text: rows.map(r => isSalary ? money(r[metric]) : (isShare ? pct(r[metric]) : num(r[metric]))),
         textposition: 'outside',
         cliponaxis: false,
-        customdata: rows.map(r => titleCase(r.location)),
+        customdata: fullLabels,
         marker: { color: isSalary ? COLORS[1] : COLORS[0] },
         hovertemplate: isSalary ? '%{customdata}<br>%{x:$,.0f}<extra></extra>' : (isShare ? '%{customdata}<br>%{x:.1f}%<extra></extra>' : '%{customdata}<br>%{x:,.0f}<extra></extra>'),
-      }], horizontalBarLayout(id, rows, isSalary ? '$' : (isShare ? '%' : '')), plotConfig);
+      }], layout, plotConfig);
     }
 
     function drawRoleBars(id, rows, title) {
@@ -3541,6 +3547,18 @@
         .replace('English Language and Literature, General', 'English Lit.')
         .replace('Political Science and Government, General', 'Political Science')
         .replace(', General', ''), 28);
+    }
+
+    function shortLocationLabel(value) {
+      return legendLabel(titleCase(value)
+        .replace(/\s+Metropolitan Area\b/g, '')
+        .replace(/\s+\(United States\)$/g, '')
+        .replace(/\s+\(United Kingdom\)$/g, '')
+        .replace(/\s+\(Canada\)$/g, '')
+        .replace(/\s+\(France\)$/g, '')
+        .replace(/\s+\(Germany\)$/g, '')
+        .replace('New York City', 'New York')
+        .replace('Washington, D.c.', 'Washington DC'), 24);
     }
 
     function titleCase(value) {
