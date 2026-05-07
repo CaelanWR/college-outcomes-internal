@@ -2414,23 +2414,94 @@
       return 'copied';
     }
 
+    function clonePlain(value) {
+      try {
+        return structuredClone(value);
+      } catch {
+        return JSON.parse(JSON.stringify(value || {}));
+      }
+    }
+
+    async function pngHasVisibleInk(blob) {
+      if (!window.createImageBitmap) return true;
+      const bitmap = await createImageBitmap(blob);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.min(220, bitmap.width);
+      canvas.height = Math.min(160, bitmap.height);
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close?.();
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      let ink = 0;
+      for (let i = 0; i < pixels.length; i += 16) {
+        const alpha = pixels[i + 3];
+        const distanceFromWhite = Math.abs(255 - pixels[i]) + Math.abs(255 - pixels[i + 1]) + Math.abs(255 - pixels[i + 2]);
+        if (alpha > 20 && distanceFromWhite > 28) {
+          ink += 1;
+          if (ink > 40) return true;
+        }
+      }
+      return false;
+    }
+
+    async function exportPlotCloneToPng(plot, width, height) {
+      const exportNode = document.createElement('div');
+      exportNode.style.cssText = [
+        'position: fixed',
+        'left: -12000px',
+        'top: 0',
+        `width: ${width}px`,
+        `height: ${height}px`,
+        'background: #fff',
+        'pointer-events: none',
+        'z-index: -1',
+      ].join(';');
+      document.body.appendChild(exportNode);
+      try {
+        const data = clonePlain(plot.data || []);
+        const layout = {
+          ...clonePlain(plot.layout || {}),
+          width,
+          height,
+          autosize: false,
+          paper_bgcolor: '#fff',
+          plot_bgcolor: plot.layout?.plot_bgcolor || 'rgba(0,0,0,0)',
+        };
+        await Plotly.newPlot(exportNode, data, layout, {
+          ...plotConfig,
+          responsive: false,
+          staticPlot: true,
+        });
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const dataUrl = await Plotly.toImage(exportNode, {
+          format: 'png',
+          width,
+          height,
+          scale: 2,
+        });
+        return await dataUrlToBlob(dataUrl);
+      } finally {
+        try {
+          Plotly.purge(exportNode);
+        } catch {}
+        exportNode.remove();
+      }
+    }
+
     async function chartPngBlob(chartId) {
       const plot = $(chartId);
       if (!plot || !plot._fullLayout) return null;
       const title = chartExportTitle(chartId);
       const filename = chartExportFilename(chartId);
-      await Plotly.Plots.resize(plot);
-      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const rect = plot.getBoundingClientRect();
-      const dataUrl = await Plotly.toImage(plot, {
-        format: 'png',
-        width: Math.max(900, Math.round(rect.width || 900)),
-        height: Math.max(520, Math.round(rect.height || 520)),
-        scale: 2,
-      });
-      const blob = await dataUrlToBlob(dataUrl);
+      const width = Math.max(900, Math.round(rect.width || 900));
+      const height = Math.max(520, Math.round(rect.height || 520));
+      const blob = await exportPlotCloneToPng(plot, width, height);
       if (blob.size < 2048) {
         throw new Error(`Exported PNG is unexpectedly small (${blob.size} bytes)`);
+      }
+      if (!(await pngHasVisibleInk(blob))) {
+        throw new Error('Exported PNG appears blank');
       }
       return { blob, filename, title };
     }
