@@ -2415,22 +2415,41 @@
     }
 
     function chartSvgBlob(plot, width, height) {
-      const sourceSvg = plot.querySelector('svg.main-svg');
-      if (!sourceSvg) throw new Error('No SVG chart layer found');
-      const svg = sourceSvg.cloneNode(true);
+      const sourceSvgs = Array.from(plot.querySelectorAll('.svg-container svg.main-svg, svg.main-svg'));
+      if (!sourceSvgs.length) throw new Error('No SVG chart layer found');
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
       svg.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
       svg.setAttribute('width', String(width));
       svg.setAttribute('height', String(height));
       svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
       svg.setAttribute('style', 'background:#fff;font-family:Source Sans 3,Arial,sans-serif;');
+      const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+      style.textContent = `
+        text { font-family: "Source Sans 3", Arial, sans-serif; }
+        .xtick text, .ytick text, .ztick text, .legendtext, .gtitle, .annotation-text,
+        .bartext, .textpoint, .pielabel, .cbtitle, .colorbar text { fill: #243b53; }
+        .slicetext { fill: #fff; font-weight: 800; }
+      `;
       const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
       bg.setAttribute('x', '0');
       bg.setAttribute('y', '0');
       bg.setAttribute('width', String(width));
       bg.setAttribute('height', String(height));
       bg.setAttribute('fill', '#fff');
-      svg.insertBefore(bg, svg.firstChild);
+      svg.appendChild(style);
+      svg.appendChild(bg);
+      sourceSvgs.forEach(sourceSvg => {
+        const layer = sourceSvg.cloneNode(true);
+        layer.setAttribute('x', '0');
+        layer.setAttribute('y', '0');
+        layer.setAttribute('width', String(width));
+        layer.setAttribute('height', String(height));
+        layer.setAttribute('viewBox', `0 0 ${width} ${height}`);
+        layer.setAttribute('overflow', 'visible');
+        layer.removeAttribute('style');
+        svg.appendChild(layer);
+      });
       const serialized = new XMLSerializer().serializeToString(svg);
       return new Blob([`<?xml version="1.0" encoding="UTF-8"?>\n${serialized}`], {
         type: 'image/svg+xml;charset=utf-8',
