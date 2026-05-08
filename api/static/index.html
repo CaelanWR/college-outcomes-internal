@@ -3260,7 +3260,7 @@
           card('Current Top Career Employers', 'emp-top', 12, false, { topControl: true }),
         ].join('');
         drawTrendLines('emp-trend', state.data.employer_trend || [], 'employer', 'share_pct', {
-          yTitle: 'Share of career employers %',
+          yTitle: 'Share of alumni',
           suffix: '%',
           hover: '%{y:.1f}%',
         });
@@ -3283,7 +3283,7 @@
           card('Current City Earnings', 'geo-salary', 5, true, { topControl: true }),
         ].join('');
         drawTrendLines('geo-share-trend', state.data.geography_trend || [], 'location', 'share_pct', {
-          yTitle: 'Share of located alumni %',
+          yTitle: 'Share of alumni',
           suffix: '%',
           hover: '%{y:.1f}%',
           labelTransform: titleCase,
@@ -3344,12 +3344,12 @@
           card('Industries Over Time', 'industry-trend', 6, true, { topControl: true }),
         ].join('');
         drawTrendLines('role-trend', state.data.role_trend?.roles || [], 'label', 'share_pct', {
-          yTitle: 'Share of alumni %',
+          yTitle: 'Share of alumni',
           suffix: '%',
           hover: '%{y:.1f}%',
         });
         drawTrendLines('industry-trend', state.data.role_trend?.industries || [], 'label', 'share_pct', {
-          yTitle: 'Share of alumni %',
+          yTitle: 'Share of alumni',
           suffix: '%',
           hover: '%{y:.1f}%',
         });
@@ -3375,12 +3375,12 @@
           card('Race/Ethnicity Mix Over Time', 'race-trend', 6),
         ].join('');
         drawTrendLines('gender-trend', state.data.demographic_trend?.gender || [], 'label', 'share_pct', {
-          yTitle: 'Share of known gender %',
+          yTitle: 'Share of alumni',
           suffix: '%',
           hover: '%{y:.1f}%',
           height: 330,
         });
-        drawDemoStackedTrend('race-trend', state.data.demographic_trend?.race_ethnicity || [], 'Share of known race/ethnicity %', 330);
+        drawDemoStackedTrend('race-trend', state.data.demographic_trend?.race_ethnicity || [], 'Share of alumni', 330);
       }
     }
 
@@ -3450,7 +3450,7 @@
           card(schoolTitle, 'postgrad-schools', 4, true, { topControl: true }),
         ].join('');
         drawTrendLines('postgrad-trend', state.data.postgrad_trend || [], 'degree_type', 'share_pct', {
-          yTitle: 'Share of alumni %',
+          yTitle: 'Share of alumni',
           suffix: '%',
           hover: '%{y:.1f}%',
           onClick: label => {
@@ -3509,7 +3509,7 @@
         ].join('');
         drawCoverageTrendBars('coverage-trend-bars', coverage.trend || []);
         drawTrendLines('coverage-trend-line', (coverage.trend || []).map(row => ({ ...row, series: 'Grad coverage' })), 'series', 'coverage_pct', {
-          yTitle: 'Grad coverage %',
+          yTitle: 'Grad coverage',
           suffix: '%',
           hover: '%{y:.1f}%',
           fixedLabel: 'Grad coverage',
@@ -3850,7 +3850,7 @@
       Plotly.newPlot(id, [...traces, ...legendTraces], {
         ...layoutBase,
         margin: { ...layoutBase.margin, r: 90 },
-        yaxis: { title: trend.current_series?.length ? 'Share of total class %' : 'Share of total grads %', ticksuffix: '%', automargin: true },
+        yaxis: { title: trend.current_series?.length ? 'Share of class' : 'Share of graduates', ticksuffix: '%', automargin: true },
         xaxis: { title: 'Graduation year', automargin: true, dtick: trend.current_series?.length ? 2 : 5 },
         legend: { orientation: 'h', y: 1.16, itemwidth: 30 },
         shapes,
@@ -4023,7 +4023,7 @@
         barmode: 'group',
         xaxis: {
           ...layout.xaxis,
-          title: 'Share of total major mix',
+          title: 'Share of students',
         },
         legend: { orientation: 'h', y: 1.14, x: 0 },
       }, plotConfig);
@@ -4185,7 +4185,7 @@
           x: cleanRows.map(row => row.top3_share_pct),
           marker: { color: 'rgba(34, 94, 168, 0.22)' },
           customdata: cleanRows.map(row => [majorName(row), row.top_label, row.top3_share_pct, row.hhi, row.unique_labels]),
-          hovertemplate: `%{customdata[0]}<br>Top 3 ${entityPlural}: %{x:.1f}%<br>Top ${entityLower}: %{customdata[1]}<br>HHI: %{customdata[3]:,.0f}<extra></extra>`,
+          hovertemplate: `%{customdata[0]}<br>Top 3 ${entityPlural}: %{x:.1f}%<br>Top ${entityLower}: %{customdata[1]}<br>Concentration score: %{customdata[3]:,.0f}<extra></extra>`,
         },
         {
           type: 'bar',
@@ -4198,12 +4198,12 @@
           cliponaxis: false,
           marker: { color: COLORS[0] },
           customdata: cleanRows.map(row => [majorName(row), row.top_label, row.top_n, row.hhi, row.unique_labels]),
-          hovertemplate: `%{customdata[0]}<br>Top ${entityLower}: %{customdata[1]}<br>%{x:.1f}% | %{customdata[2]:,.0f} people<br>HHI: %{customdata[3]:,.0f}<br>Unique ${entityPlural}: %{customdata[4]:,.0f}<extra></extra>`,
+          hovertemplate: `%{customdata[0]}<br>Top ${entityLower}: %{customdata[1]}<br>%{x:.1f}% | %{customdata[2]:,.0f} people<br>Concentration score: %{customdata[3]:,.0f}<br>Unique ${entityPlural}: %{customdata[4]:,.0f}<extra></extra>`,
         },
       ], {
         ...layout,
         barmode: 'overlay',
-        xaxis: { ...layout.xaxis, title: `${entityLabel} concentration`, range: [0, Math.min(100, Math.max(...cleanRows.map(row => Number(row.top3_share_pct || 0))) * 1.22)] },
+        xaxis: { ...layout.xaxis, title: 'Share of alumni', range: [0, Math.min(100, Math.max(...cleanRows.map(row => Number(row.top3_share_pct || 0))) * 1.22)] },
         legend: { orientation: 'h', y: 1.12 },
       }, plotConfig);
     }
@@ -4270,7 +4270,7 @@
         barmode: 'stack',
         margin: { ...layoutBase.margin, l: 68, r: 24, t: 20, b: 90 },
         xaxis: { title: 'Major', automargin: true },
-        yaxis: { title: 'Known-profile share', ticksuffix: '%', range: [0, 100], automargin: true },
+        yaxis: { title: 'Share of alumni', ticksuffix: '%', range: [0, 100], automargin: true },
         legend: { orientation: 'h', y: 1.15 },
       }, plotConfig);
     }
@@ -4381,7 +4381,7 @@
         height: 430,
         margin: { ...layoutBase.margin, l: 80, r: 88, t: 22, b: 62 },
         xaxis: { title: 'Graduation year', automargin: true, dtick: currentRows.length ? 2 : 5 },
-        yaxis: { title: 'Share of total major mix %', ticksuffix: '%', automargin: true, rangemode: 'tozero' },
+        yaxis: { title: 'Share of class', ticksuffix: '%', automargin: true, rangemode: 'tozero' },
         legend: { orientation: 'h', y: 1.18, x: 0, itemwidth: 30 },
         shapes,
         annotations,
@@ -4611,7 +4611,7 @@
         height: 470,
         margin: { ...layoutBase.margin, l: 74, r: 32, t: 18, b: 62 },
         xaxis: { title: `Salary (${horizonLabel})`, tickprefix: '$', tickformat: '~s', automargin: true, range: globalSpec ? [globalSpec.start, globalSpec.end] : undefined },
-        yaxis: { title: 'Smoothed share of salary observations %', ticksuffix: '%', automargin: true, rangemode: 'tozero' },
+        yaxis: { title: 'Share of salary observations', ticksuffix: '%', automargin: true, rangemode: 'tozero' },
         legend: { orientation: 'h', y: 1.16, x: 0, itemwidth: 30 },
       }, plotConfig).then(plot => bindLegendGroupToggles(plot));
     }
@@ -4785,7 +4785,7 @@
         height,
         barmode: 'stack',
         margin: { ...layoutBase.margin, l: 80, r: 24, t: 12, b: 50 },
-        xaxis: { title: 'Share %', range: [0, 100], ticksuffix: '%', automargin: true },
+        xaxis: { title: 'Share of alumni', range: [0, 100], ticksuffix: '%', automargin: true },
         yaxis: { automargin: true },
         legend: { orientation: 'h', y: 1.14 },
         uniformtext: { mode: 'hide', minsize: 11 },
