@@ -2494,6 +2494,15 @@
       return `0 0 ${width} ${height}`;
     }
 
+    function exportChartDimensions(plot) {
+      const rect = plot.getBoundingClientRect();
+      const liveWidth = Number(rect.width) || 0;
+      const liveHeight = Number(rect.height) || 0;
+      const width = Math.round(Math.min(1500, Math.max(1180, liveWidth || 1180)));
+      const height = Math.round(Math.min(860, Math.max(660, liveHeight || 660)));
+      return { width, height };
+    }
+
     function chartSvgBlob(plot, width, height, header) {
       const sourceSvgs = Array.from(plot.querySelectorAll('.svg-container svg.main-svg, svg.main-svg'));
       if (!sourceSvgs.length) throw new Error('No SVG chart layer found');
@@ -2542,7 +2551,7 @@
         layer.setAttribute('height', String(height));
         layer.setAttribute('viewBox', sourceSvgViewBox(sourceSvg, width, height));
         layer.setAttribute('overflow', 'visible');
-        layer.setAttribute('preserveAspectRatio', 'none');
+        layer.setAttribute('preserveAspectRatio', 'xMidYMid meet');
         layer.removeAttribute('style');
         svg.appendChild(layer);
       });
@@ -2652,22 +2661,68 @@
       }
     }
 
+    async function exportPlotCloneSvgBlob(plot, width, height, header) {
+      const exportNode = document.createElement('div');
+      exportNode.style.cssText = [
+        'position: fixed',
+        'left: -12000px',
+        'top: 0',
+        `width: ${width}px`,
+        `height: ${height}px`,
+        'background: #fff',
+        'pointer-events: none',
+        'z-index: -1',
+      ].join(';');
+      document.body.appendChild(exportNode);
+      try {
+        const data = clonePlain(plot.data || []);
+        const layout = {
+          ...clonePlain(plot.layout || {}),
+          width,
+          height,
+          autosize: false,
+          paper_bgcolor: '#fff',
+          plot_bgcolor: plot.layout?.plot_bgcolor || 'rgba(0,0,0,0)',
+        };
+        layout.margin = {
+          ...clonePlain(plot.layout?.margin || {}),
+          r: Math.max(28, Number(plot.layout?.margin?.r || 28)),
+        };
+        await Plotly.newPlot(exportNode, data, layout, {
+          ...plotConfig,
+          responsive: false,
+          staticPlot: true,
+        });
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        return chartSvgBlob(exportNode, width, height, header);
+      } finally {
+        try {
+          Plotly.purge(exportNode);
+        } catch {}
+        exportNode.remove();
+      }
+    }
+
     async function chartPngBlob(chartId) {
       const plot = $(chartId);
       if (!plot || !plot._fullLayout) return null;
       const title = chartExportTitle(chartId);
       const filename = chartExportFilename(chartId);
-      const rect = plot.getBoundingClientRect();
-      const width = Math.max(900, Math.round(rect.width || 900));
-      const height = Math.max(520, Math.round(rect.height || 520));
+      const { width, height } = exportChartDimensions(plot);
       const header = exportHeaderLines(chartId);
       const exportHeight = height + exportHeaderHeight(header);
       let blob = null;
       try {
-        blob = await svgBlobToPngBlob(chartSvgBlob(plot, width, height, header), width, exportHeight);
+        const svgBlob = await exportPlotCloneSvgBlob(plot, width, height, header);
+        blob = await svgBlobToPngBlob(svgBlob, width, exportHeight);
       } catch (error) {
-        console.warn('SVG chart export failed; falling back to isolated Plotly export', error);
-        blob = await exportPlotCloneToPng(plot, width, height);
+        console.warn('Isolated SVG chart export failed; falling back to live SVG export', error);
+        try {
+          blob = await svgBlobToPngBlob(chartSvgBlob(plot, width, height, header), width, exportHeight);
+        } catch (fallbackError) {
+          console.warn('Live SVG chart export failed; falling back to Plotly PNG export', fallbackError);
+          blob = await exportPlotCloneToPng(plot, width, height);
+        }
       }
       if (blob.size < 2048) {
         throw new Error(`Exported PNG is unexpectedly small (${blob.size} bytes)`);
