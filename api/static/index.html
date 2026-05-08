@@ -2280,12 +2280,10 @@
     function exportMajorLabel() {
       const advanced = activeAdvancedControls();
       if (advanced.selectionMode === 'major_compare') {
-        const labels = optionLabelsByValue($('compare-major-select')?.options || [], getSelectedMajors(advanced))
-          .map(label => label.replace(/\s+\([^)]+\)$/, ''));
-        return labels.length ? labels.join(' vs ') : 'Selected majors';
+        return '';
       }
       const major = selectedOptionLabel('major-select', 'All majors').replace(/\s+\([^)]+\)$/, '');
-      return major || 'All majors';
+      return major && major !== 'All majors' ? major : '';
     }
 
     function exportYearLabel() {
@@ -2299,7 +2297,7 @@
 
     function exportHeaderLines(chartId) {
       const degree = selectedOptionLabel('degree-select', 'Selected degree');
-      const parts = [degree, exportMajorLabel(), exportYearLabel(), activeHorizonLabel(true)].filter(Boolean);
+      const parts = [degree, exportMajorLabel(), exportYearLabel()].filter(Boolean);
       return {
         title: chartExportTitle(chartId),
         school: exportSchoolLabel(),
@@ -2483,10 +2481,23 @@
       svg.appendChild(node);
     }
 
+    function exportHeaderHeight(header) {
+      if (!header) return 0;
+      return header.detail ? 88 : 68;
+    }
+
+    function sourceSvgViewBox(sourceSvg, fallbackWidth, fallbackHeight) {
+      const viewBox = sourceSvg.getAttribute('viewBox');
+      if (viewBox) return viewBox;
+      const width = Number.parseFloat(sourceSvg.getAttribute('width')) || fallbackWidth;
+      const height = Number.parseFloat(sourceSvg.getAttribute('height')) || fallbackHeight;
+      return `0 0 ${width} ${height}`;
+    }
+
     function chartSvgBlob(plot, width, height, header) {
       const sourceSvgs = Array.from(plot.querySelectorAll('.svg-container svg.main-svg, svg.main-svg'));
       if (!sourceSvgs.length) throw new Error('No SVG chart layer found');
-      const headerHeight = header ? 96 : 0;
+      const headerHeight = exportHeaderHeight(header);
       const exportHeight = height + headerHeight;
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
@@ -2511,9 +2522,9 @@
       svg.appendChild(style);
       svg.appendChild(bg);
       if (header) {
-        appendExportText(svg, trimExportText(header.title, 86), 28, 32, { size: 24, weight: 900 });
-        appendExportText(svg, trimExportText(header.school, 118), 28, 58, { size: 15, weight: 800, fill: '#40556e' });
-        appendExportText(svg, trimExportText(header.detail, 132), 28, 80, { size: 14, weight: 700, fill: '#6b7c93' });
+        appendExportText(svg, trimExportText(header.title, 88), 28, 31, { size: 23, weight: 900 });
+        appendExportText(svg, trimExportText(header.school, 120), 28, 57, { size: 15, weight: 800, fill: '#40556e' });
+        if (header.detail) appendExportText(svg, trimExportText(header.detail, 130), 28, 77, { size: 13, weight: 700, fill: '#6b7c93' });
         const rule = document.createElementNS('http://www.w3.org/2000/svg', 'line');
         rule.setAttribute('x1', '28');
         rule.setAttribute('x2', String(width - 28));
@@ -2529,8 +2540,9 @@
         layer.setAttribute('y', String(headerHeight));
         layer.setAttribute('width', String(width));
         layer.setAttribute('height', String(height));
-        layer.setAttribute('viewBox', `0 0 ${width} ${height}`);
+        layer.setAttribute('viewBox', sourceSvgViewBox(sourceSvg, width, height));
         layer.setAttribute('overflow', 'visible');
+        layer.setAttribute('preserveAspectRatio', 'none');
         layer.removeAttribute('style');
         svg.appendChild(layer);
       });
@@ -2649,7 +2661,7 @@
       const width = Math.max(900, Math.round(rect.width || 900));
       const height = Math.max(520, Math.round(rect.height || 520));
       const header = exportHeaderLines(chartId);
-      const exportHeight = height + 96;
+      const exportHeight = height + exportHeaderHeight(header);
       let blob = null;
       try {
         blob = await svgBlobToPngBlob(chartSvgBlob(plot, width, height, header), width, exportHeight);
