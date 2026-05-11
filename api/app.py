@@ -291,6 +291,13 @@ def _position_profile_weight_sql(columns: frozenset[str]) -> str:
     return f"GREATEST(0.0, COALESCE({', '.join(available)}, 1.0))"
 
 
+def _qualified_weight_sql(columns: frozenset[str], candidates: list[str], alias: str) -> str:
+    available = [f"{alias}.{column}" for column in candidates if column in columns]
+    if not available:
+        return "1.0"
+    return f"GREATEST(0.0, COALESCE({', '.join(available)}, 1.0))"
+
+
 def _cohort_profile_weight_sql(columns: frozenset[str]) -> str:
     calibrated_weight = _profile_weight_sql(columns)
     position_weight = _position_profile_weight_sql(columns)
@@ -314,6 +321,88 @@ def _cohort_profile_weight_sql(columns: frozenset[str]) -> str:
 
 def _source_star_without_profile(columns: frozenset[str]) -> str:
     return "* EXCLUDE (profile_weight)" if "profile_weight" in columns else "*"
+
+
+def _source_star_excluding(columns: frozenset[str], names: list[str], alias: str = "b") -> str:
+    excluded = [name for name in names if name in columns]
+    if excluded:
+        return f"{alias}.* EXCLUDE ({', '.join(excluded)})"
+    return f"{alias}.*"
+
+
+def _runtime_adjusted_select(columns: frozenset[str], alias: str = "b") -> str:
+    star = _source_star_excluding(columns, ["profile_weight", "final_weight", "ipeds_calibration_weight"], alias=alias)
+    calibrated_weight = _qualified_weight_sql(
+        columns,
+        [
+            "profile_weight",
+            "ipeds_calibration_weight",
+            "education_weight",
+            "individual_weight",
+            "representation_weight",
+            "universe_weight",
+            "final_weight",
+        ],
+        alias,
+    )
+    position_weight = _qualified_weight_sql(
+        columns,
+        [
+            "position_weight",
+            "profile_weight",
+            "education_weight",
+            "individual_weight",
+            "representation_weight",
+            "universe_weight",
+            "final_weight",
+        ],
+        alias,
+    )
+    if "final_weight" in columns:
+        existing_combined_weight = f"GREATEST(0.0, COALESCE({alias}.final_weight, {position_weight} * {calibrated_weight}, {calibrated_weight}))"
+    elif {"position_weight", "ipeds_calibration_weight"}.issubset(columns):
+        existing_combined_weight = f"{position_weight} * {calibrated_weight}"
+    else:
+        existing_combined_weight = calibrated_weight
+    existing_ipeds_weight = f"COALESCE({alias}.ipeds_calibration_weight, 1.0)" if "ipeds_calibration_weight" in columns else "1.0"
+    has_recent_fields = {
+        "degree",
+        "grad_year",
+        "calibration_ipeds_completions",
+        "ipeds_calibration_weight",
+        "position_weight",
+    }.issubset(columns)
+    if not has_recent_fields:
+        return f"""
+            {star},
+            {existing_ipeds_weight} AS ipeds_calibration_weight,
+            {existing_combined_weight} AS final_weight,
+            {existing_combined_weight} AS profile_weight
+        """
+    carried_weight = f"COALESCE(rsc.carried_ipeds_weight, rgc.carried_ipeds_weight, {alias}.ipeds_calibration_weight, 1.0)"
+    recent_condition = f"""
+        {alias}.degree = 'Bachelors'
+        AND {alias}.grad_year >= 2023
+        AND {alias}.calibration_ipeds_completions IS NULL
+    """
+    return f"""
+        {star},
+        CASE
+          WHEN {recent_condition}
+          THEN {carried_weight}
+          ELSE {existing_ipeds_weight}
+        END AS ipeds_calibration_weight,
+        CASE
+          WHEN {recent_condition}
+          THEN {position_weight} * {carried_weight}
+          ELSE {existing_combined_weight}
+        END AS final_weight,
+        CASE
+          WHEN {recent_condition}
+          THEN {position_weight} * {carried_weight}
+          ELSE {existing_combined_weight}
+        END AS profile_weight
+    """
 
 
 def _project_columns(columns: frozenset[str], names: list[str]) -> str:
@@ -586,13 +675,12 @@ def _career_requires_person_level(filters: QueryRequest) -> bool:
 
 def _create_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> None:
     base_columns = _dataset_columns("base_fact")
-    profile_weight_sql = _cohort_profile_weight_sql(base_columns)
-    source_star = _source_star_without_profile(base_columns)
+    adjusted_select = _runtime_adjusted_select(base_columns, "b")
     base_source = _base_source_for_filters(filters)
     where_sql, params = _where(filters)
     con.execute(
         f"""
-        CREATE OR REPLACE TEMP TABLE slice AS
+        CREATE OR REPLACE TEMP TABLE filtered_base AS
         SELECT *
         FROM read_parquet(?)
         {where_sql}
@@ -602,15 +690,93 @@ def _create_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> None
     cohort_where_sql, cohort_params = _where(filters, include_horizon=False)
     con.execute(
         f"""
+        CREATE OR REPLACE TEMP TABLE filtered_cohort_base AS
+        SELECT *
+        FROM read_parquet(?)
+        {cohort_where_sql}
+        """,
+        [base_source, *cohort_params],
+    )
+    con.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE runtime_recent_calibration_source AS
+        SELECT *
+        FROM read_parquet(?)
+        WHERE degree = 'Bachelors'
+          AND grad_year < 2023
+          AND cip4 IS NOT NULL
+          AND ipeds_calibration_weight IS NOT NULL
+          AND calibration_ipeds_completions IS NOT NULL
+          AND COALESCE(ipeds_calibration_source, 'none') <> 'none'
+        """,
+        [base_source],
+    )
+    con.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE recent_school_calibration AS
+        SELECT unitid, degree, cip4, calibration_year, carried_ipeds_weight
+        FROM (
+          SELECT
+            unitid,
+            degree,
+            cip4,
+            grad_year AS calibration_year,
+            AVG(ipeds_calibration_weight) AS carried_ipeds_weight,
+            ROW_NUMBER() OVER (
+              PARTITION BY unitid, degree, cip4
+              ORDER BY grad_year DESC
+            ) AS calibration_rank
+          FROM runtime_recent_calibration_source
+          GROUP BY unitid, degree, cip4, grad_year
+        )
+        WHERE calibration_rank = 1
+        """,
+    )
+    con.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE recent_global_calibration AS
+        SELECT degree, cip4, calibration_year, carried_ipeds_weight
+        FROM (
+          SELECT
+            degree,
+            cip4,
+            grad_year AS calibration_year,
+            AVG(ipeds_calibration_weight) AS carried_ipeds_weight,
+            ROW_NUMBER() OVER (
+              PARTITION BY degree, cip4
+              ORDER BY grad_year DESC
+            ) AS calibration_rank
+          FROM runtime_recent_calibration_source
+          GROUP BY degree, cip4, grad_year
+        )
+        WHERE calibration_rank = 1
+        """,
+    )
+    con.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE slice AS
+        SELECT
+          {adjusted_select}
+        FROM filtered_base b
+        LEFT JOIN recent_school_calibration rsc
+          ON b.unitid = rsc.unitid
+         AND b.degree = rsc.degree
+         AND b.cip4 = rsc.cip4
+        LEFT JOIN recent_global_calibration rgc
+          ON b.degree = rgc.degree
+         AND b.cip4 = rgc.cip4
+        """
+    )
+    con.execute(
+        f"""
         CREATE OR REPLACE TEMP TABLE cohort_slice AS
         SELECT *
         FROM (
           SELECT
-            {source_star},
-            {profile_weight_sql} AS profile_weight,
+            {adjusted_select},
             ROW_NUMBER() OVER (
-              PARTITION BY person_key, unitid, degree, cip2, cip4, cip6, grad_year
-              ORDER BY CASE horizon
+              PARTITION BY b.person_key, b.unitid, b.degree, b.cip2, b.cip4, b.cip6, b.grad_year
+              ORDER BY CASE b.horizon
                 WHEN '1yr' THEN 1
                 WHEN '5yr' THEN 2
                 WHEN '10yr' THEN 3
@@ -618,12 +784,17 @@ def _create_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> None
                 ELSE 5
               END
             ) AS cohort_rank
-          FROM read_parquet(?)
-          {cohort_where_sql}
+          FROM filtered_cohort_base b
+          LEFT JOIN recent_school_calibration rsc
+            ON b.unitid = rsc.unitid
+           AND b.degree = rsc.degree
+           AND b.cip4 = rsc.cip4
+          LEFT JOIN recent_global_calibration rgc
+            ON b.degree = rgc.degree
+           AND b.cip4 = rgc.cip4
         )
         WHERE cohort_rank = 1
-        """,
-        [base_source, *cohort_params],
+        """
     )
 
 
@@ -668,8 +839,7 @@ def _create_current_slice_table(con: duckdb.DuckDBPyConnection, filters: QueryRe
 
 def _create_cohort_slice_table(con: duckdb.DuckDBPyConnection, filters: QueryRequest, table_name: str) -> None:
     base_columns = _dataset_columns("base_fact")
-    profile_weight_sql = _cohort_profile_weight_sql(base_columns)
-    source_star = _source_star_without_profile(base_columns)
+    adjusted_select = _runtime_adjusted_select(base_columns, "b")
     base_source = _base_source_for_filters(filters)
     cohort_where_sql, cohort_params = _where(filters, include_horizon=False)
     con.execute(
@@ -678,11 +848,10 @@ def _create_cohort_slice_table(con: duckdb.DuckDBPyConnection, filters: QueryReq
         SELECT *
         FROM (
           SELECT
-            {source_star},
-            {profile_weight_sql} AS profile_weight,
+            {adjusted_select},
             ROW_NUMBER() OVER (
-              PARTITION BY person_key, unitid, degree, cip2, cip4, cip6, grad_year
-              ORDER BY CASE horizon
+              PARTITION BY b.person_key, b.unitid, b.degree, b.cip2, b.cip4, b.cip6, b.grad_year
+              ORDER BY CASE b.horizon
                 WHEN '1yr' THEN 1
                 WHEN '5yr' THEN 2
                 WHEN '10yr' THEN 3
@@ -690,8 +859,18 @@ def _create_cohort_slice_table(con: duckdb.DuckDBPyConnection, filters: QueryReq
                 ELSE 5
               END
             ) AS cohort_rank
-          FROM read_parquet(?)
-          {cohort_where_sql}
+          FROM (
+            SELECT *
+            FROM read_parquet(?)
+            {cohort_where_sql}
+          ) b
+          LEFT JOIN recent_school_calibration rsc
+            ON b.unitid = rsc.unitid
+           AND b.degree = rsc.degree
+           AND b.cip4 = rsc.cip4
+          LEFT JOIN recent_global_calibration rgc
+            ON b.degree = rgc.degree
+           AND b.cip4 = rgc.cip4
         )
         WHERE cohort_rank = 1
         """,
@@ -1088,6 +1267,8 @@ def _salary_trend_by_school(con: duckdb.DuckDBPyConnection, filters: QueryReques
 def _early_2025_salary_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, *, by_school: bool) -> list[dict[str, Any]]:
     early_filters = filters.model_copy(deep=True)
     early_filters.horizon = "early_2025"
+    base_columns = _dataset_columns("base_fact")
+    adjusted_select = _runtime_adjusted_select(base_columns, "b")
     base_source = _base_source_for_filters(filters)
     where_sql, params = _where(early_filters)
     year_clause = "grad_year = 2025"
@@ -1099,7 +1280,23 @@ def _early_2025_salary_trend(con: duckdb.DuckDBPyConnection, filters: QueryReque
         return _records_from_query(
             con,
             f"""
-            WITH by_year AS (
+            WITH early_slice AS (
+              SELECT
+                {adjusted_select}
+              FROM (
+                SELECT *
+                FROM read_parquet(?)
+                {where_sql}
+              ) b
+              LEFT JOIN recent_school_calibration rsc
+                ON b.unitid = rsc.unitid
+               AND b.degree = rsc.degree
+               AND b.cip4 = rsc.cip4
+              LEFT JOIN recent_global_calibration rgc
+                ON b.degree = rgc.degree
+               AND b.cip4 = rgc.cip4
+            ),
+            by_year AS (
               SELECT
                 unitid,
                 MAX(school_name) AS school_name,
@@ -1109,8 +1306,7 @@ def _early_2025_salary_trend(con: duckdb.DuckDBPyConnection, filters: QueryReque
                 SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
                   / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS weighted_mean_salary,
                 quantile_cont(salary, 0.5) AS median_salary
-              FROM read_parquet(?)
-              {where_sql}
+              FROM early_slice
               GROUP BY unitid, grad_year
             )
             SELECT
@@ -1131,7 +1327,23 @@ def _early_2025_salary_trend(con: duckdb.DuckDBPyConnection, filters: QueryReque
     return _records_from_query(
         con,
         f"""
-        WITH by_year AS (
+        WITH early_slice AS (
+          SELECT
+            {adjusted_select}
+          FROM (
+            SELECT *
+            FROM read_parquet(?)
+            {where_sql}
+          ) b
+          LEFT JOIN recent_school_calibration rsc
+            ON b.unitid = rsc.unitid
+           AND b.degree = rsc.degree
+           AND b.cip4 = rsc.cip4
+          LEFT JOIN recent_global_calibration rgc
+            ON b.degree = rgc.degree
+           AND b.cip4 = rgc.cip4
+        ),
+        by_year AS (
           SELECT
             grad_year,
             SUM(final_weight) AS alumni,
@@ -1139,8 +1351,7 @@ def _early_2025_salary_trend(con: duckdb.DuckDBPyConnection, filters: QueryReque
             SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
               / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS weighted_mean_salary,
             quantile_cont(salary, 0.5) AS median_salary
-          FROM read_parquet(?)
-          {where_sql}
+          FROM early_slice
           GROUP BY grad_year
         )
         SELECT
