@@ -3926,7 +3926,8 @@
         const score = Number(value);
         if (!Number.isFinite(score)) return '';
         if (score < 1.5) return 'Entry';
-        if (score < 2.5) return 'Mid';
+        if (score < 2.5) return 'Associate';
+        if (score < 3.5) return 'Mid';
         return 'Senior';
       };
       const traces = seriesNames.map((series, i) => {
@@ -3957,17 +3958,19 @@
         yaxis: {
           title: 'Average career stage',
           tickmode: 'array',
-          tickvals: [1, 2, 3],
-          ticktext: ['Entry', 'Mid', 'Senior'],
+          tickvals: [1, 2, 3, 4],
+          ticktext: ['Entry', 'Associate', 'Mid', 'Senior'],
           automargin: true,
-          range: [0.65, 3.35],
+          range: [0.65, 4.35],
         },
         shapes: [
           { type: 'rect', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: 0.65, y1: 1.5, fillcolor: 'rgba(93, 159, 213, 0.08)', line: { width: 0 }, layer: 'below' },
           { type: 'rect', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: 1.5, y1: 2.5, fillcolor: 'rgba(72, 169, 112, 0.08)', line: { width: 0 }, layer: 'below' },
-          { type: 'rect', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: 2.5, y1: 3.35, fillcolor: 'rgba(237, 125, 49, 0.08)', line: { width: 0 }, layer: 'below' },
+          { type: 'rect', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: 2.5, y1: 3.5, fillcolor: 'rgba(139, 111, 214, 0.08)', line: { width: 0 }, layer: 'below' },
+          { type: 'rect', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: 3.5, y1: 4.35, fillcolor: 'rgba(237, 125, 49, 0.08)', line: { width: 0 }, layer: 'below' },
           { type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: 1.5, y1: 1.5, line: { color: 'rgba(45, 66, 106, 0.18)', width: 1, dash: 'dot' }, layer: 'below' },
           { type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: 2.5, y1: 2.5, line: { color: 'rgba(45, 66, 106, 0.18)', width: 1, dash: 'dot' }, layer: 'below' },
+          { type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: 3.5, y1: 3.5, line: { color: 'rgba(45, 66, 106, 0.18)', width: 1, dash: 'dot' }, layer: 'below' },
         ],
         legend: { orientation: 'h', y: 1.16, x: 0, itemwidth: 30 },
       }, plotConfig).then(plot => bindLegendGroupToggles(plot));

@@ -4041,17 +4041,19 @@ def _base_career_stage_expr(base_columns: set[str]) -> str:
     if "seniority_band" in base_columns:
         return """
             CASE
-              WHEN seniority_band IN ('Entry I', 'Entry II', 'Mid I') THEN 'Entry level'
-              WHEN seniority_band IN ('Mid II', 'Senior I') THEN 'Mid level'
-              WHEN seniority_band IN ('Senior II', 'Manager I', 'Manager II', 'Manager III', 'Director', 'Director+', 'Executive') THEN 'Senior level'
+              WHEN seniority_band IN ('Entry I', 'Entry II') THEN 'Entry level'
+              WHEN seniority_band IN ('Mid I', 'Mid II') THEN 'Associate level'
+              WHEN seniority_band IN ('Senior I', 'Senior II') THEN 'Mid level'
+              WHEN seniority_band IN ('Manager I', 'Manager II', 'Manager III', 'Director', 'Director+', 'Executive') THEN 'Senior level'
               ELSE 'Other'
             END
         """
     return """
             CASE
               WHEN seniority IS NULL THEN 'Other'
-              WHEN seniority < 3 THEN 'Entry level'
-              WHEN seniority < 5 THEN 'Mid level'
+              WHEN seniority < 2 THEN 'Entry level'
+              WHEN seniority < 4 THEN 'Associate level'
+              WHEN seniority < 6 THEN 'Mid level'
               ELSE 'Senior level'
             END
         """
@@ -4096,7 +4098,7 @@ def _career_seniority_from_base(con: duckdb.DuckDBPyConnection, filters: QueryRe
         FROM grouped
         WHERE n_alumni > ?
         ORDER BY years_since_grad,
-          CASE career_stage WHEN 'Entry level' THEN 1 WHEN 'Mid level' THEN 2 WHEN 'Senior level' THEN 3 ELSE 4 END
+          CASE career_stage WHEN 'Entry level' THEN 1 WHEN 'Associate level' THEN 2 WHEN 'Mid level' THEN 3 WHEN 'Senior level' THEN 4 ELSE 5 END
         """,
         [source, *params, MIN_CELL_WEIGHT],
     )
@@ -4133,8 +4135,9 @@ def _career_average_seniority_from_base(con: duckdb.DuckDBPyConnection, filters:
             series,
             CASE
               WHEN career_stage = 'Entry level' THEN 1
-              WHEN career_stage = 'Mid level' THEN 2
-              WHEN career_stage = 'Senior level' THEN 3
+              WHEN career_stage = 'Associate level' THEN 2
+              WHEN career_stage = 'Mid level' THEN 3
+              WHEN career_stage = 'Senior level' THEN 4
               ELSE NULL
             END AS stage_score,
             final_weight,
@@ -4171,16 +4174,18 @@ def _career_seniority(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> 
           SELECT
             years_since_grad,
             CASE
-              WHEN seniority_band IN ('Entry I', 'Entry II', 'Mid I') THEN 'Entry level'
-              WHEN seniority_band IN ('Mid II', 'Senior I') THEN 'Mid level'
-              WHEN seniority_band IN ('Senior II', 'Manager I', 'Manager II', 'Manager III', 'Director', 'Executive') THEN 'Senior level'
+              WHEN seniority_band IN ('Entry I', 'Entry II') THEN 'Entry level'
+              WHEN seniority_band IN ('Mid I', 'Mid II') THEN 'Associate level'
+              WHEN seniority_band IN ('Senior I', 'Senior II') THEN 'Mid level'
+              WHEN seniority_band IN ('Manager I', 'Manager II', 'Manager III', 'Director', 'Director+', 'Executive') THEN 'Senior level'
               ELSE 'Other'
             END AS career_stage,
             CASE
-              WHEN seniority_band IN ('Entry I', 'Entry II', 'Mid I') THEN 1
-              WHEN seniority_band IN ('Mid II', 'Senior I') THEN 2
-              WHEN seniority_band IN ('Senior II', 'Manager I', 'Manager II', 'Manager III', 'Director', 'Executive') THEN 3
-              ELSE 4
+              WHEN seniority_band IN ('Entry I', 'Entry II') THEN 1
+              WHEN seniority_band IN ('Mid I', 'Mid II') THEN 2
+              WHEN seniority_band IN ('Senior I', 'Senior II') THEN 3
+              WHEN seniority_band IN ('Manager I', 'Manager II', 'Manager III', 'Director', 'Director+', 'Executive') THEN 4
+              ELSE 5
             END AS stage_order,
             n_alumni,
             mean_salary
@@ -4219,16 +4224,17 @@ def _career_average_seniority(con: duckdb.DuckDBPyConnection, filters: QueryRequ
           ROUND(
             SUM(
               CASE
-                WHEN seniority_band IN ('Entry I', 'Entry II', 'Mid I') THEN 1
-                WHEN seniority_band IN ('Mid II', 'Senior I') THEN 2
-                WHEN seniority_band IN ('Senior II', 'Manager I', 'Manager II', 'Manager III', 'Director', 'Executive') THEN 3
+                WHEN seniority_band IN ('Entry I', 'Entry II') THEN 1
+                WHEN seniority_band IN ('Mid I', 'Mid II') THEN 2
+                WHEN seniority_band IN ('Senior I', 'Senior II') THEN 3
+                WHEN seniority_band IN ('Manager I', 'Manager II', 'Manager III', 'Director', 'Director+', 'Executive') THEN 4
                 ELSE NULL
               END * n_alumni
             )
             / NULLIF(
               SUM(
                 CASE
-                  WHEN seniority_band IN ('Entry I', 'Entry II', 'Mid I', 'Mid II', 'Senior I', 'Senior II', 'Manager I', 'Manager II', 'Manager III', 'Director', 'Executive')
+                  WHEN seniority_band IN ('Entry I', 'Entry II', 'Mid I', 'Mid II', 'Senior I', 'Senior II', 'Manager I', 'Manager II', 'Manager III', 'Director', 'Director+', 'Executive')
                   THEN n_alumni
                   ELSE 0
                 END
