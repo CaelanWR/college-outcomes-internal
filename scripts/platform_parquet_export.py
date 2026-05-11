@@ -21,7 +21,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 
-PLATFORM_EXPORT_VERSION = "2026-05-11-nace70-plus-elite-postgrad-career-v1"
+PLATFORM_EXPORT_VERSION = "2026-05-11-nace70-plus-elite-recent-cohort-calibration-v2"
 PLATFORM_SUPPRESSION_THRESHOLD = 25
 PLATFORM_ROWS_PER_PART = 5000
 
@@ -211,6 +211,7 @@ recent_school_cip4_calibration AS (
         WHERE cohort_year < 2025
           AND cip4 IS NOT NULL
           AND ipeds_calibration_weight IS NOT NULL
+          AND calibration_ipeds_completions IS NOT NULL
           AND COALESCE(ipeds_calibration_source, 'none') <> 'none'
         GROUP BY CAST(unitid AS VARCHAR), degree, cip4, cohort_year
     )
@@ -235,6 +236,7 @@ recent_global_cip4_calibration AS (
         WHERE cohort_year < 2025
           AND cip4 IS NOT NULL
           AND ipeds_calibration_weight IS NOT NULL
+          AND calibration_ipeds_completions IS NOT NULL
           AND COALESCE(ipeds_calibration_source, 'none') <> 'none'
         GROUP BY degree, cip4, cohort_year
     )
@@ -279,30 +281,30 @@ standard_outcomes AS (
         b.title_raw,
         b.position_weight,
         CASE
-            WHEN b.cohort_year = 2025 AND b.calibration_ipeds_completions IS NULL
+            WHEN b.cohort_year >= 2023 AND b.calibration_ipeds_completions IS NULL
             THEN COALESCE(rsc.ipeds_calibration_weight, rgc.ipeds_calibration_weight, b.education_weight, 1.0)
             ELSE COALESCE(b.education_weight, 1.0)
         END AS education_weight,
         GREATEST(0.0, COALESCE(b.position_weight, 1.0))
           * CASE
-                WHEN b.cohort_year = 2025 AND b.calibration_ipeds_completions IS NULL
+                WHEN b.cohort_year >= 2023 AND b.calibration_ipeds_completions IS NULL
                 THEN COALESCE(rsc.ipeds_calibration_weight, rgc.ipeds_calibration_weight, b.education_weight, 1.0)
                 ELSE COALESCE(b.education_weight, 1.0)
             END AS analysis_weight,
         CASE
-            WHEN b.cohort_year = 2025 AND b.calibration_ipeds_completions IS NULL AND rsc.ipeds_calibration_weight IS NOT NULL
+            WHEN b.cohort_year >= 2023 AND b.calibration_ipeds_completions IS NULL AND rsc.ipeds_calibration_weight IS NOT NULL
                 THEN 'recent_school_year_cip4'
-            WHEN b.cohort_year = 2025 AND b.calibration_ipeds_completions IS NULL AND rgc.ipeds_calibration_weight IS NOT NULL
+            WHEN b.cohort_year >= 2023 AND b.calibration_ipeds_completions IS NULL AND rgc.ipeds_calibration_weight IS NOT NULL
                 THEN 'recent_global_year_cip4'
             ELSE b.ipeds_calibration_source
         END AS ipeds_calibration_source,
         CASE
-            WHEN b.cohort_year = 2025 AND b.calibration_ipeds_completions IS NULL
+            WHEN b.cohort_year >= 2023 AND b.calibration_ipeds_completions IS NULL
             THEN COALESCE(rsc.calibration_observed_completions, rgc.calibration_observed_completions, b.calibration_observed_completions)
             ELSE b.calibration_observed_completions
         END AS calibration_observed_completions,
         CASE
-            WHEN b.cohort_year = 2025 AND b.calibration_ipeds_completions IS NULL
+            WHEN b.cohort_year >= 2023 AND b.calibration_ipeds_completions IS NULL
             THEN COALESCE(rsc.calibration_ipeds_completions, rgc.calibration_ipeds_completions, b.calibration_ipeds_completions)
             ELSE b.calibration_ipeds_completions
         END AS calibration_ipeds_completions
@@ -631,6 +633,7 @@ WITH recent_school_cip4_calibration AS (
         WHERE cohort_year < 2025
           AND cip4 IS NOT NULL
           AND ipeds_calibration_weight IS NOT NULL
+          AND calibration_ipeds_completions IS NOT NULL
           AND COALESCE(ipeds_calibration_source, 'none') <> 'none'
         GROUP BY CAST(unitid AS VARCHAR), degree, cip4, cohort_year
     )
@@ -652,6 +655,7 @@ recent_global_cip4_calibration AS (
         WHERE cohort_year < 2025
           AND cip4 IS NOT NULL
           AND ipeds_calibration_weight IS NOT NULL
+          AND calibration_ipeds_completions IS NOT NULL
           AND COALESCE(ipeds_calibration_source, 'none') <> 'none'
         GROUP BY degree, cip4, cohort_year
     )
@@ -767,6 +771,7 @@ recent_school_cip4_calibration AS (
         WHERE cohort_year < 2025
           AND cip4 IS NOT NULL
           AND ipeds_calibration_weight IS NOT NULL
+          AND calibration_ipeds_completions IS NOT NULL
           AND COALESCE(ipeds_calibration_source, 'none') <> 'none'
         GROUP BY CAST(unitid AS VARCHAR), degree, cip4, cohort_year
     )
@@ -791,6 +796,7 @@ recent_global_cip4_calibration AS (
         WHERE cohort_year < 2025
           AND cip4 IS NOT NULL
           AND ipeds_calibration_weight IS NOT NULL
+          AND calibration_ipeds_completions IS NOT NULL
           AND COALESCE(ipeds_calibration_source, 'none') <> 'none'
         GROUP BY degree, cip4, cohort_year
     )
@@ -862,14 +868,14 @@ grad_years AS (
         y.years_since_grad,
         DATEADD('year', y.years_since_grad, g.grad_date) AS target_date,
         CASE
-            WHEN g.cohort_year = 2025 AND g.calibration_ipeds_completions IS NULL
+            WHEN g.cohort_year >= 2023 AND g.calibration_ipeds_completions IS NULL
             THEN COALESCE(rsc.ipeds_calibration_weight, rgc.ipeds_calibration_weight, g.ipeds_calibration_weight, 1.0)
             ELSE COALESCE(g.ipeds_calibration_weight, 1.0)
         END AS education_weight,
         CASE
-            WHEN g.cohort_year = 2025 AND g.calibration_ipeds_completions IS NULL AND rsc.ipeds_calibration_weight IS NOT NULL
+            WHEN g.cohort_year >= 2023 AND g.calibration_ipeds_completions IS NULL AND rsc.ipeds_calibration_weight IS NOT NULL
                 THEN 'recent_school_year_cip4'
-            WHEN g.cohort_year = 2025 AND g.calibration_ipeds_completions IS NULL AND rgc.ipeds_calibration_weight IS NOT NULL
+            WHEN g.cohort_year >= 2023 AND g.calibration_ipeds_completions IS NULL AND rgc.ipeds_calibration_weight IS NOT NULL
                 THEN 'recent_global_year_cip4'
             ELSE g.ipeds_calibration_source
         END AS ipeds_calibration_source
@@ -1086,7 +1092,7 @@ grads AS (
         g.cohort_band,
         g.grad_date,
         CASE
-            WHEN g.cohort_year = 2025 AND g.calibration_ipeds_completions IS NULL
+            WHEN g.cohort_year >= 2023 AND g.calibration_ipeds_completions IS NULL
             THEN COALESCE(rsc.ipeds_calibration_weight, rgc.ipeds_calibration_weight, g.ipeds_calibration_weight, 1.0)
             ELSE COALESCE(g.ipeds_calibration_weight, 1.0)
         END AS education_weight
