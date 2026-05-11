@@ -381,7 +381,7 @@ def _runtime_adjusted_select(columns: frozenset[str], alias: str = "b") -> str:
         """
     carried_weight = f"COALESCE(rsc.carried_ipeds_weight, rgc.carried_ipeds_weight, {alias}.ipeds_calibration_weight, 1.0)"
     recent_condition = f"""
-        {alias}.degree = 'Bachelors'
+        {alias}.degree IS NOT NULL
         AND {alias}.grad_year >= 2023
         AND {alias}.calibration_ipeds_completions IS NULL
     """
@@ -702,7 +702,7 @@ def _create_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> None
         CREATE OR REPLACE TEMP TABLE runtime_recent_calibration_source AS
         SELECT *
         FROM read_parquet(?)
-        WHERE degree = 'Bachelors'
+        WHERE degree IS NOT NULL
           AND grad_year < 2023
           AND cip4 IS NOT NULL
           AND ipeds_calibration_weight IS NOT NULL
