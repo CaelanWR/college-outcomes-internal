@@ -489,6 +489,199 @@
       text-transform: uppercase;
     }
 
+    .career-model-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      padding-top: 6px;
+    }
+
+    .career-model-card {
+      border: 1px solid rgba(36,59,83,0.12);
+      border-radius: 20px;
+      background: linear-gradient(145deg, rgba(255,255,255,0.96), rgba(244,248,252,0.92));
+      padding: 16px;
+      box-shadow: 0 14px 28px rgba(36,59,83,0.08);
+    }
+
+    .career-model-card h4 {
+      margin: 0 0 8px;
+      color: var(--ink);
+      font-size: 1.02rem;
+      line-height: 1.12;
+    }
+
+    .career-model-path {
+      display: grid;
+      gap: 8px;
+      margin: 10px 0 12px;
+    }
+
+    .career-model-step {
+      border-left: 4px solid rgba(34,94,168,0.26);
+      padding-left: 10px;
+      color: var(--ink);
+      line-height: 1.18;
+      font-weight: 750;
+    }
+
+    .career-model-step span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 2px;
+    }
+
+    .career-model-stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .career-model-stats div {
+      border-radius: 14px;
+      background: rgba(34,94,168,0.07);
+      padding: 8px;
+    }
+
+    .career-model-stats strong {
+      display: block;
+      font-size: 0.98rem;
+      color: var(--ink);
+    }
+
+    .career-model-stats span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.68rem;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .internship-panel {
+      display: grid;
+      grid-template-columns: 0.9fr repeat(3, minmax(0, 1fr));
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .internship-hero {
+      border-radius: 24px;
+      background: linear-gradient(150deg, #243b53, #2f80ed);
+      color: white;
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-height: 220px;
+      box-shadow: 0 18px 34px rgba(36,59,83,0.18);
+    }
+
+    .internship-hero strong {
+      display: block;
+      font-size: clamp(2.15rem, 4vw, 4.6rem);
+      line-height: 0.95;
+      letter-spacing: -0.05em;
+    }
+
+    .internship-hero span {
+      display: block;
+      margin-top: 8px;
+      color: rgba(255,255,255,0.78);
+      font-size: 0.82rem;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .internship-hero small {
+      display: block;
+      margin-top: 18px;
+      color: rgba(255,255,255,0.82);
+      font-size: 0.92rem;
+      line-height: 1.3;
+      font-weight: 700;
+    }
+
+    .internship-hero-metrics {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .internship-hero-metrics div {
+      border-radius: 14px;
+      background: rgba(255,255,255,0.14);
+      padding: 10px;
+    }
+
+    .internship-hero-metrics b {
+      display: block;
+      font-size: 1.05rem;
+      line-height: 1;
+    }
+
+    .internship-hero-metrics em {
+      display: block;
+      margin-top: 5px;
+      color: rgba(255,255,255,0.74);
+      font-size: 0.68rem;
+      font-style: normal;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .internship-list {
+      border: 1px solid rgba(36,59,83,0.10);
+      border-radius: 22px;
+      padding: 16px;
+      background: rgba(255,255,255,0.76);
+      min-width: 0;
+    }
+
+    .internship-list h4 {
+      margin: 0 0 12px;
+      font-size: 0.9rem;
+      color: var(--ink);
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    .internship-rank-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      padding: 9px 0;
+      border-bottom: 1px solid rgba(36,59,83,0.08);
+      align-items: center;
+    }
+
+    .internship-rank-row:last-child {
+      border-bottom: 0;
+    }
+
+    .internship-rank-label {
+      min-width: 0;
+      color: var(--ink);
+      font-weight: 850;
+      line-height: 1.15;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .internship-rank-meta {
+      color: var(--muted);
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
     .distribution-curve {
       min-height: 300px;
     }
@@ -1270,6 +1463,8 @@
       .content { padding: 14px 10px 34px; }
       .metric, .card { padding: 18px; }
       .salary-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .career-model-grid { grid-template-columns: 1fr; }
+      .internship-panel { grid-template-columns: 1fr; }
       select[multiple] { min-height: 92px; }
       .compare-picker-body { grid-template-columns: 1fr; }
       .advanced-actions { justify-content: flex-start; }
@@ -1496,6 +1691,7 @@
     <button class="tab active" data-tab="overview">Overview</button>
     <button class="tab" data-tab="earnings">Earnings</button>
     <button class="tab" data-tab="employers">Employers</button>
+    <button class="tab" data-tab="career">Career</button>
     <button class="tab" data-tab="geography">Geography</button>
     <button class="tab" data-tab="roles">Roles</button>
     <button class="tab" data-tab="demographics">Demographics</button>
@@ -3056,6 +3252,7 @@
       if (tab === 'overview') renderOverview();
       if (tab === 'earnings') renderEarnings();
       if (tab === 'employers') renderEmployers();
+      if (tab === 'career') renderCareer();
       if (tab === 'geography') renderGeography();
       if (tab === 'roles') renderRoles();
       if (tab === 'demographics') renderDemographics();
@@ -3096,19 +3293,23 @@
         return;
       }
       if (tab === 'employers') {
-        renderEmployers();
+        renderSchoolCompareEmployers();
+        return;
+      }
+      if (tab === 'career') {
+        renderCareer();
         return;
       }
       if (tab === 'geography') {
-        renderGeography();
+        renderSchoolCompareGeography();
         return;
       }
       if (tab === 'roles') {
-        renderRoles();
+        renderSchoolCompareRoles();
         return;
       }
       if (tab === 'demographics') {
-        renderDemographics();
+        renderSchoolCompareDemographics();
         return;
       }
 
@@ -3119,12 +3320,10 @@
             metric('Alumni', num(o.alumni), 4),
             metric('Weighted Median Salary', money(o.median_salary), 4),
             card(`Salary Distributions by ${entity} (${salaryHorizon})`, 'compare-salary-distribution', 12, true, { topControl: true }),
-            card(`Median Salary by ${entity} (${salaryHorizon})`, 'compare-salary', 6, true, { topControl: state.selectionMode === 'major_compare' }),
-            card(`${entity} Salary Table`, 'compare-table', 12),
+            card(`Median Salary by ${entity} (${salaryHorizon})`, 'compare-salary', 12, true, { topControl: state.selectionMode === 'major_compare' }),
           ].join('');
           drawCompareSalaryDistribution('compare-salary-distribution');
           drawCompareSalary('compare-salary');
-          drawCompareTable('compare-table');
         } else {
           $('content').innerHTML = [
             metric(entities, num(rows.length), 4),
@@ -3132,11 +3331,9 @@
             metric('Weighted Median Salary', money(o.median_salary), 4),
             card(`Salary Trend by ${entity} (${salaryHorizon})`, 'compare-salary-trend', 6, true, { topControl: state.selectionMode === 'major_compare' }),
             card(`Salary Distributions by ${entity} (${salaryHorizon})`, 'compare-salary-distribution', 6, true, { topControl: true }),
-            card(`${entity} Salary Table`, 'compare-table', 12),
           ].join('');
           drawCompareSalaryTrend('compare-salary-trend');
           drawCompareSalaryDistribution('compare-salary-distribution');
-          drawCompareTable('compare-table');
         }
         return;
       }
@@ -3147,10 +3344,14 @@
           metric('Alumni', num(o.alumni), 4),
           metric('Weighted Median Salary', money(o.median_salary), 4),
           card(`Further Education Rate by ${entity}`, 'compare-postgrad', 7, true, { topControl: state.selectionMode === 'major_compare' }),
-          card(`${entity} Further Education Table`, 'compare-table', 5, true),
+          card('Later Degree Paths by School', 'school-postgrad-heatmap', 5, true, { topControl: true }),
         ].join('');
         drawCompareFurtherEd('compare-postgrad');
-        drawCompareTable('compare-table');
+        drawSchoolComparisonHeatmap('school-postgrad-heatmap', state.data.school_postgrad_comparison || [], {
+          yTitle: 'Path',
+          labelTransform: label => legendLabel(label, 26),
+          hoverLabel: 'Path share',
+        });
         return;
       }
 
@@ -3227,6 +3428,11 @@
         });
         drawMajorCompareEmployerReach('major-employer-reach');
         drawMajorConcentration('major-employer-concentration', concentration.employers || [], 'Employer');
+        return;
+      }
+
+      if (tab === 'career') {
+        renderCareer();
         return;
       }
 
@@ -3317,26 +3523,91 @@
           metric('Majors', num(rows.length), 4),
           metric('Alumni', num(o.alumni), 4),
           metric('Weighted Median Salary', money(o.median_salary), 4),
-          card('Major Share Over Time', 'compare-alumni-trend', 8, true, { topControl: true }),
-          card('Major Share', 'compare-alumni', 4, true, { topControl: true }),
+          card('Student Demand vs Career Pay', 'major-demand-pay', 7, true, { topControl: true }),
+          card('Major Share Over Time', 'compare-alumni-trend', 5, true, { topControl: true }),
           card('Major Comparison Table', 'compare-table', 12),
         ].join('');
+        drawMajorDemandPay('major-demand-pay');
         drawCompareAlumniTrend('compare-alumni-trend');
-        drawMajorCompareAlumni('compare-alumni');
         drawMajorCompareTable('compare-table');
       } else {
         $('content').innerHTML = [
           metric('Majors', num(rows.length), 4),
           metric('Alumni', num(o.alumni), 4),
           metric('Weighted Median Salary', money(o.median_salary), 4),
-          card('Salary vs Later Education', 'major-compare-scatter', 7, true),
-          card('Major Share', 'compare-alumni', 5, true, { topControl: true }),
+          card('Salary vs Later Education', 'major-compare-scatter', 6, true),
+          card('Student Demand vs Career Pay', 'major-demand-pay', 6, true, { topControl: true }),
           card('Major Comparison Table', 'compare-table', 12),
         ].join('');
         drawMajorCompareOutcomeScatter('major-compare-scatter');
-        drawMajorCompareAlumni('compare-alumni');
+        drawMajorDemandPay('major-demand-pay');
         drawMajorCompareTable('compare-table');
       }
+    }
+
+    function renderSchoolCompareEmployers() {
+      $('content').innerHTML = [
+        card('Top Employers by School', 'school-employer-heatmap', 8, true, { topControl: true }),
+        card('Employer Breadth by School', 'school-employer-reach', 4, true),
+      ].join('');
+      drawSchoolComparisonHeatmap('school-employer-heatmap', state.data.school_employer_comparison || [], {
+        yTitle: 'Employer',
+        labelTransform: label => legendLabel(label, 34),
+        hoverLabel: 'Employer share',
+      });
+      drawSchoolEmployerReach('school-employer-reach');
+    }
+
+    function renderSchoolCompareGeography() {
+      $('content').innerHTML = [
+        card('City Share by School', 'school-geo-share-heatmap', 6, true, { topControl: true }),
+        card('City Earnings by School', 'school-geo-salary-heatmap', 6, true, { topControl: true }),
+      ].join('');
+      drawSchoolComparisonHeatmap('school-geo-share-heatmap', state.data.school_geography_comparison || [], {
+        yTitle: 'City',
+        labelTransform: shortLocationLabel,
+        hoverLabel: 'City share',
+      });
+      drawSchoolComparisonHeatmap('school-geo-salary-heatmap', state.data.school_geography_comparison || [], {
+        yTitle: 'City',
+        valueKey: 'median_salary',
+        valueType: 'money',
+        colorbarTitle: '$',
+        labelTransform: shortLocationLabel,
+        hoverLabel: 'Median earnings',
+      });
+    }
+
+    function renderSchoolCompareRoles() {
+      const roleCompare = state.data.school_role_comparison || {};
+      $('content').innerHTML = [
+        card('Broad Role Mix by School', 'school-role-heatmap', 6, true, { topControl: true }),
+        card('Industry Mix by School', 'school-industry-heatmap', 6, true, { topControl: true }),
+      ].join('');
+      drawSchoolComparisonHeatmap('school-role-heatmap', roleCompare.roles || [], {
+        yTitle: 'Role',
+        labelTransform: label => legendLabel(label, 32),
+        hoverLabel: 'Role share',
+      });
+      drawSchoolComparisonHeatmap('school-industry-heatmap', roleCompare.industries || [], {
+        yTitle: 'Industry',
+        labelTransform: label => legendLabel(label, 32),
+        hoverLabel: 'Industry share',
+      });
+    }
+
+    function renderSchoolCompareDemographics() {
+      const demoCompare = state.data.school_demographic_comparison || {};
+      $('content').innerHTML = [
+        card('Gender Composition by School', 'school-gender-stack', 6, true),
+        card('Race/Ethnicity by School', 'school-race-heatmap', 6, true, { topControl: true }),
+      ].join('');
+      drawSchoolDemographicStacked('school-gender-stack', demoCompare.gender || []);
+      drawSchoolComparisonHeatmap('school-race-heatmap', demoCompare.race_ethnicity || [], {
+        yTitle: 'Race/ethnicity',
+        labelTransform: label => legendLabel(label, 30),
+        hoverLabel: 'Share',
+      });
     }
 
     function renderOverview() {
@@ -3420,6 +3691,288 @@
         drawEmployerRoles('emp-roles', true);
         drawEmployerBars('emp-top', true);
       }
+    }
+
+    function renderCareer() {
+      const career = state.data.career || {};
+      const mobility = career.mobility || {};
+      const internshipSummary = career.internships?.summary || {};
+      const metrics = [
+        metric('Internship rate', pct(internshipSummary.internship_rate_pct), 3),
+        metric('Avg employers by 5 yrs', mobility.avg_employers_5yr ?? '—', 3),
+        metric('First employer retention 5 yrs', pct(mobility.first_employer_retention_5yr_pct), 3),
+        metric('Career models', num((career.archetypes || []).length), 3),
+      ];
+      if (state.viewMode === 'overtime') {
+        const comparing = state.selectionMode === 'compare' || state.selectionMode === 'major_compare';
+        $('content').innerHTML = [
+          ...metrics,
+          card('Earnings Over the First 15 Years', 'career-earnings', 6, true),
+          card(comparing ? 'Average Seniority by Years Since Graduation' : 'Career Stage by Years Since Graduation', 'career-seniority', 6, true),
+        ].join('');
+        drawCareerEarnings('career-earnings');
+        if (comparing) drawCareerAverageSeniority('career-seniority');
+        else drawCareerSeniority('career-seniority');
+      } else {
+        $('content').innerHTML = [
+          ...metrics,
+          card('Employer Pay and Progression', 'career-employer-tenure', 6, true, { topControl: true }),
+          card('Career Path Examples', 'career-models', 6, false, { topControl: true, export: false }),
+          card('Internship Signals', 'career-internships', 12, false, { topControl: true, export: false }),
+        ].join('');
+        drawCareerEmployerTenure('career-employer-tenure');
+        drawCareerModels('career-models');
+        drawCareerInternships('career-internships');
+      }
+    }
+
+    function drawCareerEarnings(id) {
+      const rows = state.data.career?.earnings || [];
+      if (!rows.length) return noData(id);
+      const seriesNames = [...new Set(rows.map(row => row.series || 'Selected slice'))];
+      const traces = [];
+      if (seriesNames.length === 1) {
+        const slice = rows.filter(row => (row.series || 'Selected slice') === seriesNames[0]);
+        traces.push({
+          type: 'scatter',
+          mode: 'lines',
+          name: 'P75',
+          x: slice.map(row => row.years_since_grad),
+          y: slice.map(row => row.p75_salary),
+          line: { color: 'rgba(34, 94, 168, 0)', width: 0 },
+          hoverinfo: 'skip',
+          showlegend: false,
+        });
+        traces.push({
+          type: 'scatter',
+          mode: 'lines',
+          name: 'P25-P75 range',
+          x: slice.map(row => row.years_since_grad),
+          y: slice.map(row => row.p25_salary),
+          fill: 'tonexty',
+          fillcolor: 'rgba(34, 94, 168, 0.16)',
+          line: { color: 'rgba(34, 94, 168, 0)', width: 0 },
+          hoverinfo: 'skip',
+        });
+        traces.push({
+          type: 'scatter',
+          mode: 'lines+markers',
+          name: 'Median salary',
+          x: slice.map(row => row.years_since_grad),
+          y: slice.map(row => row.median_salary),
+          customdata: slice.map(row => [row.n_alumni, row.salary_obs, row.p25_salary, row.p75_salary]),
+          line: { color: COLORS[0], width: 4 },
+          marker: { size: 7, color: COLORS[0] },
+          hovertemplate: 'Year %{x}<br>Median %{y:$,.0f}<br>P25 %{customdata[2]:$,.0f}<br>P75 %{customdata[3]:$,.0f}<br>%{customdata[1]:,.0f} salary observations<extra></extra>',
+        });
+      } else {
+        seriesNames.forEach((series, i) => {
+          const slice = rows.filter(row => (row.series || 'Selected slice') === series);
+          traces.push({
+            type: 'scatter',
+            mode: 'lines+markers',
+            name: legendLabel(series, 32),
+            x: slice.map(row => row.years_since_grad),
+            y: slice.map(row => row.median_salary),
+            customdata: slice.map(row => [series, row.n_alumni, row.salary_obs]),
+            line: { color: COLORS[i % COLORS.length], width: 3 },
+            marker: { size: 6, color: COLORS[i % COLORS.length] },
+            hovertemplate: '%{customdata[0]}<br>Year %{x}<br>Median %{y:$,.0f}<br>%{customdata[2]:,.0f} salary observations<extra></extra>',
+          });
+        });
+      }
+      Plotly.newPlot(id, traces, {
+        ...layoutBase,
+        xaxis: { title: 'Years after graduation', dtick: 1, automargin: true, range: [-0.3, 15.3] },
+        yaxis: { title: 'Median salary', tickprefix: '$', tickformat: ',', automargin: true, rangemode: 'tozero' },
+        legend: { orientation: 'h', y: 1.12, itemwidth: 30 },
+      }, plotConfig);
+    }
+
+    function drawCareerSeniority(id) {
+      const rows = state.data.career?.seniority || [];
+      if (!rows.length) return noData(id);
+      const years = [...new Set(rows.map(row => row.years_since_grad))].sort((a, b) => a - b);
+      const bands = [...new Set(rows.map(row => row.seniority_band))];
+      const traces = bands.map((band, i) => {
+        const byYear = new Map(rows.filter(row => row.seniority_band === band).map(row => [row.years_since_grad, row]));
+        return {
+          type: 'bar',
+          name: band,
+          x: years,
+          y: years.map(year => Number(byYear.get(year)?.share_pct || 0)),
+          marker: { color: COLORS[i % COLORS.length] },
+          customdata: years.map(year => [band, byYear.get(year)?.n_alumni || 0, byYear.get(year)?.mean_salary || null]),
+          hovertemplate: '%{customdata[0]}<br>%{x} years after graduation<br>%{y:.1f}%<br>%{customdata[1]:,.0f} alumni<extra></extra>',
+        };
+      });
+      Plotly.newPlot(id, traces, {
+        ...layoutBase,
+        barmode: 'stack',
+        xaxis: { title: 'Years after graduation', dtick: 1, automargin: true },
+        yaxis: { title: 'Share of alumni by career stage', ticksuffix: '%', range: [0, 100], automargin: true },
+        legend: { orientation: 'h', y: 1.12, itemwidth: 30 },
+      }, plotConfig);
+    }
+
+    function drawCareerAverageSeniority(id) {
+      const rows = (state.data.career?.average_seniority || [])
+        .filter(row => Number.isFinite(Number(row.years_since_grad)) && Number.isFinite(Number(row.avg_seniority)));
+      if (!rows.length) return noData(id);
+      const seriesNames = [...new Set(rows.map(row => row.series || 'Selected slice'))];
+      const stageForScore = value => {
+        const score = Number(value);
+        if (!Number.isFinite(score)) return '';
+        if (score < 1.5) return 'Entry';
+        if (score < 2.5) return 'Mid';
+        return 'Senior';
+      };
+      const traces = seriesNames.map((series, i) => {
+        const slice = rows
+          .filter(row => (row.series || 'Selected slice') === series)
+          .sort((a, b) => Number(a.years_since_grad) - Number(b.years_since_grad));
+        const legendgroup = `${id}-seniority-${i}`;
+        return {
+          type: 'scatter',
+          mode: 'lines+markers',
+          name: legendLabel(series, 32),
+          legendgroup,
+          showlegend: false,
+          x: slice.map(row => row.years_since_grad),
+          y: slice.map(row => row.avg_seniority),
+          customdata: slice.map(row => [series, row.n_alumni, stageForScore(row.avg_seniority), row.raw_avg_seniority]),
+          line: { color: COLORS[i % COLORS.length], width: 3.5 },
+          marker: { color: COLORS[i % COLORS.length], size: 6 },
+          hovertemplate: '%{customdata[0]}<br>%{x} years after graduation<br>%{customdata[2]} average stage<br>%{customdata[1]:,.0f} alumni<extra></extra>',
+        };
+      });
+      const legendTraces = seriesNames.map((series, i) => legendDotTrace(series, COLORS[i % COLORS.length], `${id}-seniority-${i}`));
+      Plotly.newPlot(id, [...traces, ...legendTraces], {
+        ...layoutBase,
+        height: 420,
+        margin: { ...layoutBase.margin, l: 78, r: 32, t: 22, b: 70 },
+        xaxis: { title: 'Years after graduation', dtick: 1, automargin: true, range: [-0.3, 15.3] },
+        yaxis: {
+          title: 'Average career stage',
+          tickmode: 'array',
+          tickvals: [1, 2, 3],
+          ticktext: ['Entry', 'Mid', 'Senior'],
+          automargin: true,
+          range: [0.65, 3.35],
+        },
+        shapes: [
+          { type: 'rect', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: 0.65, y1: 1.5, fillcolor: 'rgba(93, 159, 213, 0.08)', line: { width: 0 }, layer: 'below' },
+          { type: 'rect', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: 1.5, y1: 2.5, fillcolor: 'rgba(72, 169, 112, 0.08)', line: { width: 0 }, layer: 'below' },
+          { type: 'rect', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: 2.5, y1: 3.35, fillcolor: 'rgba(237, 125, 49, 0.08)', line: { width: 0 }, layer: 'below' },
+          { type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: 1.5, y1: 1.5, line: { color: 'rgba(45, 66, 106, 0.18)', width: 1, dash: 'dot' }, layer: 'below' },
+          { type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: 2.5, y1: 2.5, line: { color: 'rgba(45, 66, 106, 0.18)', width: 1, dash: 'dot' }, layer: 'below' },
+        ],
+        legend: { orientation: 'h', y: 1.16, x: 0, itemwidth: 30 },
+      }, plotConfig).then(plot => bindLegendGroupToggles(plot));
+    }
+
+    function drawCareerEmployerTenure(id) {
+      const rows = (state.data.career?.employer_tenure || []).slice(0, topNFor(id));
+      if (!rows.length) return noData(id);
+      Plotly.newPlot(id, [{
+        type: 'scatter',
+        mode: 'markers+text',
+        x: rows.map(row => row.retained_5yr_pct),
+        y: rows.map(row => row.avg_salary_5yr),
+        text: rows.map(row => legendLabel(row.employer, 18)),
+        textposition: 'top center',
+        marker: {
+          size: rows.map(row => Math.max(14, Math.min(42, Math.sqrt(Number(row.n_starters || 0)) * 1.5))),
+          color: rows.map(row => row.avg_seniority_5yr),
+          colorscale: [[0, '#d9ecfb'], [0.55, '#48aff4'], [1, '#2d426a']],
+          line: { color: '#fff', width: 1 },
+          showscale: true,
+          colorbar: { title: 'Seniority', thickness: 10 },
+        },
+        customdata: rows.map(row => [row.employer, row.n_starters, row.senior_plus_5yr_pct]),
+        hovertemplate: '%{customdata[0]}<br>5-yr retention %{x:.1f}%<br>5-yr pay %{y:$,.0f}<br>%{customdata[1]:,.0f} starters<br>Senior+ %{customdata[2]:.1f}%<extra></extra>',
+      }], {
+        ...layoutBase,
+        xaxis: { title: 'Still at first employer after 5 years', ticksuffix: '%', automargin: true, rangemode: 'tozero' },
+        yaxis: { title: 'Mean pay at 5 years', tickprefix: '$', tickformat: ',', automargin: true, rangemode: 'tozero' },
+        margin: { ...layoutBase.margin, l: 78, r: 28, t: 20, b: 70 },
+        showlegend: false,
+      }, plotConfig);
+    }
+
+    function careerStep(employer, role, fallback = 'Not enough detail') {
+      const parts = [employer, role].filter(Boolean).map(value => String(value).trim()).filter(Boolean);
+      return parts.length ? parts.join(' · ') : fallback;
+    }
+
+    function careerSignalLabel(row) {
+      const raw = row.archetype_signal || row.series || 'Career path';
+      return String(raw)
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, chr => chr.toUpperCase());
+    }
+
+    function drawCareerModels(id) {
+      const rows = (state.data.career?.archetypes || []).slice(0, topNFor(id));
+      if (!rows.length) return noData(id);
+      $(id).innerHTML = `
+        <div class="career-model-grid">
+          ${rows.map(row => `
+            <div class="career-model-card">
+              <h4>${escapeHtml(careerSignalLabel(row))}</h4>
+              <div class="career-model-path">
+                <div class="career-model-step"><span>Launch</span>${escapeHtml(careerStep(row.first_employer, row.first_role))}</div>
+                <div class="career-model-step"><span>5 years</span>${escapeHtml(careerStep(row.employer_5yr, row.role_5yr))}</div>
+                <div class="career-model-step"><span>10 years</span>${escapeHtml(careerStep(row.employer_10yr, row.role_10yr))}</div>
+              </div>
+              <div class="career-model-stats">
+                <div><strong>${num(row.n_alumni)}</strong><span>Alumni</span></div>
+                <div><strong>${money(row.avg_salary_5yr)}</strong><span>5-yr pay</span></div>
+                <div><strong>${row.avg_seniority_10yr ?? '—'}</strong><span>10-yr seniority</span></div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    function drawCareerInternships(id) {
+      const internships = state.data.career?.internships || {};
+      const summary = internships.summary || {};
+      const limit = Math.min(6, Math.max(3, Number(topNFor(id)) || 5));
+      const employers = (internships.employers || []).slice(0, limit);
+      const roles = (internships.roles || []).slice(0, limit);
+      const industries = (internships.industries || []).slice(0, limit);
+      if (!summary.n_interns && !employers.length && !roles.length && !industries.length) return noData(id);
+      const listHtml = (title, rows) => `
+        <div class="internship-list">
+          <h4>${escapeHtml(title)}</h4>
+          ${(rows || []).map(row => `
+            <div class="internship-rank-row">
+              <div class="internship-rank-label" title="${escapeHtml(row.label)}">${escapeHtml(row.label)}</div>
+              <div class="internship-rank-meta">${num(row.n)} · ${pct(row.share_pct)}</div>
+            </div>
+          `).join('') || '<div class="empty">No data</div>'}
+        </div>
+      `;
+      $(id).innerHTML = `
+        <div class="internship-panel">
+          <div class="internship-hero">
+            <strong>${pct(summary.internship_rate_pct)}</strong>
+            <span>Observed internship rate</span>
+            <small>Internship signals are based on profile positions classified as internships before or near graduation.</small>
+            <div class="internship-hero-metrics">
+              <div><b>${num(summary.internship_positions)}</b><em>Positions</em></div>
+              <div><b>${num(summary.n_interns)}</b><em>Interns</em></div>
+              <div><b>${summary.avg_internships_per_intern ?? '—'}</b><em>Avg / intern</em></div>
+              <div><b>${num(summary.alumni)}</b><em>Alumni base</em></div>
+            </div>
+          </div>
+          ${listHtml('Top employers', employers)}
+          ${listHtml('Common roles', roles)}
+          ${listHtml('Internship industries', industries)}
+        </div>
+      `;
     }
 
     function renderGeography() {
@@ -4080,6 +4633,112 @@
       ]);
     }
 
+    function schoolName(row) {
+      return row?.school_name || row?.title || row?.code || 'School';
+    }
+
+    function schoolRowsForChart(id, sourceRows = null) {
+      const sourceCodes = sourceRows ? new Set(sourceRows.map(row => String(row.code))) : null;
+      return (state.data.school_comparison || [])
+        .map(row => ({ ...row, code: String(row.unitid), title: row.school_name }))
+        .filter(row => row.code && (!sourceCodes || sourceCodes.has(String(row.code))))
+        .sort((a, b) => Number(b.alumni || 0) - Number(a.alumni || 0))
+        .slice(0, topNFor(id));
+    }
+
+    function drawSchoolComparisonHeatmap(id, rows, options = {}) {
+      const valueKey = options.valueKey || 'share_pct';
+      const isMoney = options.valueType === 'money';
+      const cleanRows = (rows || []).filter(row => row.code && row.label && row[valueKey] !== null && row[valueKey] !== undefined);
+      if (!cleanRows.length) return noData(id);
+      const schools = schoolRowsForChart(id, cleanRows);
+      if (!schools.length) return noData(id);
+      const schoolCodes = schools.map(row => String(row.code));
+      const labelTotals = new Map();
+      cleanRows.forEach(row => {
+        if (!schoolCodes.includes(String(row.code))) return;
+        labelTotals.set(row.label, (labelTotals.get(row.label) || 0) + Number(row.n || 0));
+      });
+      const labels = [...labelTotals.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, topNFor(id))
+        .map(([label]) => label);
+      if (!labels.length) return noData(id);
+      const lookup = new Map(cleanRows.map(row => [`${row.code}||${row.label}`, row]));
+      const z = labels.map(label => schoolCodes.map(code => Number(lookup.get(`${code}||${label}`)?.[valueKey] || 0)));
+      const customdata = labels.map(label => schools.map(school => {
+        const row = lookup.get(`${school.code}||${label}`) || {};
+        return [row.label || label, schoolName(school), Number(row.n || 0), row.share_pct ?? null, row.median_salary ?? row.weighted_mean_salary ?? null];
+      }));
+      const hovertemplate = isMoney
+        ? `%{customdata[0]}<br>%{customdata[1]}<br>${options.hoverLabel || 'Median earnings'}: %{z:$,.0f}<br>Share: %{customdata[3]:.1f}%<br>People: %{customdata[2]:,.0f}<extra></extra>`
+        : `%{customdata[0]}<br>%{customdata[1]}<br>${options.hoverLabel || 'Share'}: %{z:.1f}%<br>People: %{customdata[2]:,.0f}<extra></extra>`;
+      Plotly.newPlot(id, [{
+        type: 'heatmap',
+        x: schools.map(row => legendLabel(shortSchool(schoolName(row)), 18)),
+        y: labels.map(label => options.labelTransform ? options.labelTransform(label) : legendLabel(label, 30)),
+        z,
+        customdata,
+        colorscale: isMoney
+          ? [[0, '#f3f7fb'], [0.35, '#b7e0d0'], [0.7, '#40a970'], [1, '#126c43']]
+          : [[0, '#f3f7fb'], [0.35, '#bcd7f0'], [0.7, '#5f9fd5'], [1, '#225ea8']],
+        colorbar: { title: options.colorbarTitle || (isMoney ? '$' : '%'), thickness: 12 },
+        hovertemplate,
+      }], {
+        ...layoutBase,
+        height: Math.max(390, Math.min(660, 210 + labels.length * 34)),
+        margin: { ...layoutBase.margin, l: 168, r: 42, t: 26, b: 88 },
+        xaxis: { title: 'School', automargin: true },
+        yaxis: { title: options.yTitle || '', automargin: true },
+      }, plotConfig);
+    }
+
+    function drawSchoolEmployerReach(id) {
+      const rows = (state.data.school_comparison || [])
+        .filter(row => row.unique_employers !== null && row.unique_employers !== undefined)
+        .sort((a, b) => Number(a.unique_employers || 0) - Number(b.unique_employers || 0));
+      if (!rows.length) return noData(id);
+      Plotly.newPlot(id, [{
+        type: 'bar',
+        orientation: 'h',
+        y: rows.map(row => wrapAxisLabel(shortSchool(row.school_name), 24)),
+        x: rows.map(row => row.unique_employers),
+        text: rows.map(row => num(row.unique_employers)),
+        textposition: 'outside',
+        cliponaxis: false,
+        customdata: rows.map(row => shortSchool(row.school_name)),
+        marker: { color: COLORS[4] },
+        hovertemplate: '%{customdata}<br>%{x:,.0f} employers<extra></extra>',
+      }], horizontalBarLayout(id, rows.map(row => ({ label: shortSchool(row.school_name) }))), plotConfig);
+    }
+
+    function drawSchoolDemographicStacked(id, rows) {
+      const cleanRows = (rows || []).filter(row => row.code && row.label && row.share_pct !== null && row.share_pct !== undefined);
+      if (!cleanRows.length) return noData(id);
+      const schools = schoolRowsForChart(id, cleanRows);
+      if (!schools.length) return noData(id);
+      const labels = [...new Set(cleanRows.map(row => row.label))].sort();
+      const lookup = new Map(cleanRows.map(row => [`${row.code}||${row.label}`, row]));
+      const traces = labels.map((label, idx) => ({
+        type: 'bar',
+        x: schools.map(row => legendLabel(shortSchool(schoolName(row)), 18)),
+        y: schools.map(row => Number(lookup.get(`${row.code}||${label}`)?.share_pct || 0)),
+        name: legendLabel(label, 20),
+        marker: { color: COLORS[idx % COLORS.length] },
+        customdata: schools.map(row => [label, schoolName(row), Number(lookup.get(`${row.code}||${label}`)?.n || 0)]),
+        hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>%{y:.1f}%<br>%{customdata[2]:,.0f} alumni<extra></extra>',
+      }));
+      Plotly.newPlot(id, traces, {
+        ...layoutBase,
+        height: 420,
+        barmode: 'stack',
+        margin: { ...layoutBase.margin, l: 68, r: 24, t: 20, b: 90 },
+        xaxis: { title: 'School', automargin: true },
+        yaxis: { title: 'Share of alumni', ticksuffix: '%', range: [0, 100], automargin: true },
+        legend: { orientation: 'h', y: 1.15 },
+      }, plotConfig);
+    }
+
     function majorName(row) {
       return row?.title || row?.code || 'Major';
     }
@@ -4179,6 +4838,104 @@
           title: 'Share of students',
         },
         legend: { orientation: 'h', y: 1.14, x: 0 },
+      }, plotConfig);
+    }
+
+    function majorCurrentDemandStats() {
+      const currentTotalsByCode = new Map();
+      const currentTotalsByYear = new Map();
+      (state.data.current_student_trend_by_major || []).forEach(row => {
+        const code = String(row.code || row.title || '');
+        if (!code) return;
+        currentTotalsByCode.set(code, (currentTotalsByCode.get(code) || 0) + Number(row.current_students || 0));
+        const year = String(row.grad_year || '');
+        if (year && row.total_current_students !== null && row.total_current_students !== undefined) {
+          currentTotalsByYear.set(year, Math.max(Number(row.total_current_students || 0), currentTotalsByYear.get(year) || 0));
+        }
+      });
+      const totalCurrentStudents = [...currentTotalsByYear.values()].reduce((total, value) => total + Number(value || 0), 0);
+      return { currentTotalsByCode, totalCurrentStudents };
+    }
+
+    function drawMajorDemandPay(id) {
+      const { currentTotalsByCode, totalCurrentStudents } = majorCurrentDemandStats();
+      const hasCurrentStudents = totalCurrentStudents > 0;
+      const rows = (state.data.major_comparison || [])
+        .map(row => {
+          const currentStudents = currentTotalsByCode.get(String(row.code)) || 0;
+          const currentSharePct = hasCurrentStudents ? 100 * currentStudents / totalCurrentStudents : null;
+          const xValue = currentSharePct !== null && Number.isFinite(currentSharePct)
+            ? currentSharePct
+            : Number(row.alumni_share_pct || 0);
+          return {
+            ...row,
+            current_students: currentStudents,
+            current_share_pct: currentSharePct,
+            demand_share_pct: xValue,
+            salary_value: Number(row.median_salary || row.weighted_mean_salary || 0),
+          };
+        })
+        .filter(row => Number.isFinite(row.demand_share_pct) && row.demand_share_pct > 0 && Number.isFinite(row.salary_value) && row.salary_value > 0)
+        .sort((a, b) => Number(b.demand_share_pct || 0) - Number(a.demand_share_pct || 0))
+        .slice(0, topNFor(id));
+      if (!rows.length) return noData(id);
+      const employerValues = rows.map(row => Number(row.unique_employers || 0)).filter(Number.isFinite);
+      const minEmployers = Math.min(...employerValues, 0);
+      const maxEmployers = Math.max(...employerValues, 1);
+      const markerSize = row => {
+        const value = Number(row.unique_employers || 0);
+        if (maxEmployers <= minEmployers) return 24;
+        return 14 + 30 * ((Math.sqrt(value) - Math.sqrt(minEmployers)) / Math.max(1, Math.sqrt(maxEmployers) - Math.sqrt(minEmployers)));
+      };
+      const textPositions = ['top center', 'bottom center', 'middle right', 'middle left'];
+      const xMax = Math.max(...rows.map(row => Number(row.demand_share_pct || 0)));
+      const yValues = rows.map(row => Number(row.salary_value || 0));
+      Plotly.newPlot(id, [{
+        type: 'scatter',
+        mode: 'markers+text',
+        x: rows.map(row => row.demand_share_pct),
+        y: yValues,
+        text: rows.map(row => legendLabel(majorName(row), 18)),
+        textposition: rows.map((_, idx) => textPositions[idx % textPositions.length]),
+        textfont: { size: 12, color: '#20364f' },
+        marker: {
+          size: rows.map(markerSize),
+          color: rows.map(row => Number(row.later_degree_pct || 0)),
+          colorscale: [[0, '#b9d7f0'], [0.5, '#42a66e'], [1, '#f0762b']],
+          cmin: 0,
+          cmax: Math.max(50, Math.max(...rows.map(row => Number(row.later_degree_pct || 0))) || 0),
+          colorbar: { title: 'Later ed', thickness: 10, ticksuffix: '%' },
+          line: { color: '#fff', width: 1.4 },
+          opacity: 0.9,
+        },
+        customdata: rows.map(row => [
+          majorName(row),
+          row.current_share_pct,
+          row.current_students,
+          row.alumni_share_pct,
+          row.alumni,
+          row.unique_employers,
+          row.later_degree_pct,
+        ]),
+        hovertemplate: `%{customdata[0]}<br>${hasCurrentStudents ? 'Current student share' : 'Alumni share'}: %{x:.1f}%<br>Median pay: %{y:$,.0f}<br>Later education: %{customdata[6]:.1f}%<br>Employers: %{customdata[5]:,.0f}<extra></extra>`,
+      }], {
+        ...layoutBase,
+        height: 430,
+        margin: { ...layoutBase.margin, l: 78, r: 58, t: 22, b: 74 },
+        xaxis: {
+          title: hasCurrentStudents ? 'Current student share' : 'Alumni share',
+          ticksuffix: '%',
+          automargin: true,
+          range: [0, Math.max(5, xMax * 1.22)],
+        },
+        yaxis: {
+          title: `Median salary (${activeHorizonLabel()})`,
+          tickprefix: '$',
+          tickformat: '~s',
+          automargin: true,
+          rangemode: 'tozero',
+        },
+        showlegend: false,
       }, plotConfig);
     }
 
@@ -5309,7 +6066,7 @@
     }
 
     function applyDefaultViewForTab(tab) {
-      const overTimeTabs = new Set(['overview', 'earnings', 'geography', 'demographics']);
+      const overTimeTabs = new Set(['overview', 'earnings', 'career', 'geography', 'demographics']);
       const nextMode = overTimeTabs.has(tab) ? 'overtime' : 'snapshot';
       if (state.viewMode !== nextMode) {
         state.viewMode = nextMode;

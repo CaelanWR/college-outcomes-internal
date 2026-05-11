@@ -15,5 +15,13 @@ if [[ ! -d "$source_dir/platform_parquet/base_fact" ]]; then
 fi
 
 mkdir -p "$(dirname "$archive_path")"
-tar -czf "$archive_path" -C "$source_dir" platform_parquet
+
+# COPYFILE_DISABLE avoids macOS AppleDouble files like ._part-00001.parquet.
+# Those files are not real Parquet and will crash DuckDB after upload.
+COPYFILE_DISABLE=1 tar \
+  --exclude='._*' \
+  --exclude='.DS_Store' \
+  -czf "$archive_path" \
+  -C "$source_dir" \
+  platform_parquet
 echo "Wrote $archive_path"
