@@ -30,6 +30,8 @@ SALARY_MIN_WEIGHT = float(os.environ.get("SALARY_MIN_WEIGHT", "0"))
 EMPLOYER_ROW_MIN_WEIGHT = float(os.environ.get("EMPLOYER_ROW_MIN_WEIGHT", str(MIN_CELL_WEIGHT)))
 GEOGRAPHY_ROW_MIN_WEIGHT = float(os.environ.get("GEOGRAPHY_ROW_MIN_WEIGHT", str(MIN_CELL_WEIGHT)))
 SALARY_DISTRIBUTION_BUCKETS = int(os.environ.get("SALARY_DISTRIBUTION_BUCKETS", "32"))
+INTERNSHIP_RATE_START_YEAR = int(os.environ.get("OUTCOMES_INTERNSHIP_RATE_START_YEAR", "2020"))
+INTERNSHIP_RATE_END_YEAR = int(os.environ.get("OUTCOMES_INTERNSHIP_RATE_END_YEAR", "2025"))
 DUCKDB_THREADS = int(os.environ.get("OUTCOMES_DUCKDB_THREADS", "1"))
 DUCKDB_MEMORY_LIMIT = os.environ.get("OUTCOMES_DUCKDB_MEMORY_LIMIT", "1200MB")
 DUCKDB_TEMP_DIR = Path(os.environ.get("OUTCOMES_DUCKDB_TEMP_DIR", "/tmp/duckdb")).expanduser()
@@ -636,6 +638,35 @@ def _work_where(
             clauses.append("no_further_education_flag = ?")
             params.append(1 if filters.postgrad.no_further_education else 0)
     return (" WHERE " + " AND ".join(clauses)) if clauses else "", params
+
+
+def _append_where_clause(where_sql: str, params: list[Any], clause: str, values: list[Any]) -> tuple[str, list[Any]]:
+    prefix = " AND " if where_sql else " WHERE "
+    return f"{where_sql}{prefix}{clause}", [*params, *values]
+
+
+def _internship_rate_where(filters: QueryRequest, dataset: str) -> tuple[str, list[Any], str]:
+    """Internship capture is much stronger for recent cohorts.
+
+    If the user explicitly selects graduation years, honor that selection.
+    Otherwise, make internship-rate metrics recent-only while leaving other
+    career facts on their normal cohort basis.
+    """
+    where_sql, params = _work_where(filters, postgrad_dataset=dataset)
+    if filters.grad_years:
+        years = sorted(int(year) for year in filters.grad_years)
+        if not years:
+            return where_sql, params, "selected years"
+        if len(years) == 1:
+            return where_sql, params, str(years[0])
+        return where_sql, params, f"{years[0]}-{years[-1]}"
+    where_sql, params = _append_where_clause(
+        where_sql,
+        params,
+        "grad_year BETWEEN ? AND ?",
+        [INTERNSHIP_RATE_START_YEAR, INTERNSHIP_RATE_END_YEAR],
+    )
+    return where_sql, params, f"{INTERNSHIP_RATE_START_YEAR}-{INTERNSHIP_RATE_END_YEAR}"
 
 
 def _work_series_expr(filters: QueryRequest) -> str:
@@ -3786,7 +3817,7 @@ def _career_internships(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -
             "geography": [],
             "conversions": _career_internship_conversions(con, filters),
         }
-    where_sql, params = _work_where(filters, postgrad_dataset="internship_summary")
+    where_sql, params, rate_window_label = _internship_rate_where(filters, "internship_summary")
     summary = _single_record(
         con,
         f"""
@@ -3802,6 +3833,8 @@ def _career_internships(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -
         """,
         [_dataset_glob("work_facts/internship_summary"), *params],
     )
+    summary = dict(summary or {})
+    summary["rate_window"] = rate_window_label
 
     rates: list[dict[str, Any]] = []
     employer_comparison: list[dict[str, Any]] = []
@@ -3828,6 +3861,7 @@ def _career_internships(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -
         )
         if _work_dataset_exists("internship_employers"):
             limit = _safe_limit(filters.top_n)
+            employer_where_sql, employer_params, _ = _internship_rate_where(filters, "internship_employers")
             employer_comparison = _records_from_query(
                 con,
                 f"""
@@ -3839,7 +3873,7 @@ def _career_internships(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -
                     raw_n,
                     mean_salary
                   FROM read_parquet(?)
-                  {where_sql}
+                  {employer_where_sql}
                 ),
                 grouped AS (
                   SELECT
@@ -3885,13 +3919,14 @@ def _career_internships(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -
                   AND n > ?
                 ORDER BY series, employer_rank, label
                 """,
-                [_dataset_glob("work_facts/internship_employers"), *params, MIN_CELL_WEIGHT],
+                [_dataset_glob("work_facts/internship_employers"), *employer_params, MIN_CELL_WEIGHT],
             )
 
     def top_rows(dataset: str, column: str) -> list[dict[str, Any]]:
         if not _work_dataset_exists(dataset):
             return []
         limit = _safe_limit(filters.top_n)
+        dataset_where_sql, dataset_params, _ = _internship_rate_where(filters, dataset)
         return _records_from_query(
             con,
             f"""
@@ -3902,7 +3937,7 @@ def _career_internships(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -
                 raw_n,
                 mean_salary
               FROM read_parquet(?)
-              {where_sql}
+              {dataset_where_sql}
             ),
             totals AS (
               SELECT SUM(n_internship_positions) AS total_n FROM eligible
@@ -3920,7 +3955,7 @@ def _career_internships(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -
             ORDER BY SUM(n_internship_positions) DESC
             LIMIT {limit}
             """,
-            [_dataset_glob(f"work_facts/{dataset}"), *params, MIN_CELL_WEIGHT],
+            [_dataset_glob(f"work_facts/{dataset}"), *dataset_params, MIN_CELL_WEIGHT],
         )
 
     return {

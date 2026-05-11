@@ -2508,6 +2508,9 @@
 
     function chartInfoText(id, title) {
       if (chartUsesSalaryDollars(id, title)) return SALARY_DOLLAR_NOTE;
+      if (`${id || ''} ${title || ''}`.toLowerCase().includes('internship')) {
+        return 'Internship rates default to recent graduates unless graduation years are selected.';
+      }
       return '';
     }
 
@@ -3779,9 +3782,10 @@
       const career = state.data.career || {};
       const mobility = career.mobility || {};
       const internshipSummary = career.internships?.summary || {};
+      const internshipWindow = internshipSummary.rate_window ? ` (${internshipSummary.rate_window})` : '';
       const comparing = state.selectionMode === 'compare' || state.selectionMode === 'major_compare';
       const metrics = [
-        metric('Internship rate', pct(internshipSummary.internship_rate_pct), 3),
+        metric(`Recent internship rate${internshipWindow}`, pct(internshipSummary.internship_rate_pct), 3),
         metric('Avg employers by 5 yrs', mobility.avg_employers_5yr ?? '—', 3),
         metric('First employer retention 5 yrs', pct(mobility.first_employer_retention_5yr_pct), 3),
         metric('Career models', num((career.archetypes || []).length), 3),
@@ -3795,8 +3799,8 @@
             card('Employer Share by Years After Graduation', 'career-employer-share', 12, true, { topControl: true }),
           ]),
           ...(comparing ? [
-            card('Internship Rate Comparison', 'career-internship-rates', 5, true, { topControl: true }),
-            card('Top Internship Companies by Comparison', 'career-internship-employers', 7, true, { topControl: true }),
+            card('Recent Internship Rate Comparison', 'career-internship-rates', 5, true, { topControl: true }),
+            card('Recent Top Internship Companies by Comparison', 'career-internship-employers', 7, true, { topControl: true }),
           ] : []),
         ].join('');
         drawCareerEarnings('career-earnings');
@@ -3811,8 +3815,8 @@
         $('content').innerHTML = [
           ...metrics,
           ...(comparing ? [
-            card('Internship Rate Comparison', 'career-internship-rates', 5, true, { topControl: true }),
-            card('Top Internship Companies by Comparison', 'career-internship-employers', 7, true, { topControl: true }),
+            card('Recent Internship Rate Comparison', 'career-internship-rates', 5, true, { topControl: true }),
+            card('Recent Top Internship Companies by Comparison', 'career-internship-employers', 7, true, { topControl: true }),
           ] : []),
           card('Employer Pay and Progression', 'career-employer-tenure', 6, true, { topControl: true }),
           card('Career Path Examples', 'career-models', 6, false, { topControl: true, export: false }),
@@ -4182,8 +4186,8 @@
         <div class="internship-panel ${conversions.length ? 'with-conversions' : ''}">
           <div class="internship-hero">
             <strong>${pct(summary.internship_rate_pct)}</strong>
-            <span>Observed internship rate</span>
-            <small>Internship signals are based on profile positions classified as internships before or near graduation.</small>
+            <span>Recent internship rate${summary.rate_window ? ` (${escapeHtml(summary.rate_window)})` : ''}</span>
+            <small>Profile positions classified as internships before or near graduation.</small>
             <div class="internship-hero-metrics">
               <div><b>${num(summary.internship_positions)}</b><em>Positions</em></div>
               <div><b>${num(summary.n_interns)}</b><em>Interns</em></div>
