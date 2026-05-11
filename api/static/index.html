@@ -809,6 +809,16 @@
       margin: 0;
     }
 
+    .hero-note {
+      position: relative;
+      z-index: 1;
+      margin-top: 8px;
+      color: rgba(255,255,255,0.76);
+      font-size: 0.9rem;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+
     .hero::after {
       content: '';
       position: absolute;
@@ -1528,6 +1538,7 @@
 <body>
   <div class="hero">
     <h1>College Outcomes Explorer</h1>
+    <div class="hero-note">Salary figures are shown in 2026 dollars.</div>
     <div class="api-status"><span id="status-dot" class="dot"></span><span id="status-text">Not connected</span></div>
   </div>
 
