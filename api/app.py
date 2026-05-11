@@ -4640,6 +4640,15 @@ def frontend_index() -> FileResponse:
     return FileResponse(index_path)
 
 
+@app.get("/favicon.svg", include_in_schema=False)
+@app.get("/favicon.ico", include_in_schema=False)
+def frontend_favicon() -> FileResponse:
+    favicon_path = STATIC_ROOT / "favicon.svg"
+    if not favicon_path.exists():
+        raise HTTPException(status_code=404, detail="Dashboard favicon not installed")
+    return FileResponse(favicon_path, media_type="image/svg+xml")
+
+
 @app.get("/config.js", include_in_schema=False)
 def frontend_config() -> Response:
     # Same-origin hosting avoids CORS and keeps data access behind the API password.
