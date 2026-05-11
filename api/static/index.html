@@ -569,6 +569,10 @@
       align-items: stretch;
     }
 
+    .internship-panel.with-conversions {
+      grid-template-columns: 0.85fr repeat(4, minmax(0, 1fr));
+    }
+
     .internship-hero {
       border-radius: 24px;
       background: linear-gradient(150deg, #243b53, #2f80ed);
@@ -680,6 +684,11 @@
       color: var(--muted);
       font-weight: 900;
       white-space: nowrap;
+    }
+
+    .internship-rank-meta strong {
+      color: var(--ink);
+      font-weight: 950;
     }
 
     .distribution-curve {
@@ -1464,7 +1473,8 @@
       .metric, .card { padding: 18px; }
       .salary-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .career-model-grid { grid-template-columns: 1fr; }
-      .internship-panel { grid-template-columns: 1fr; }
+      .internship-panel,
+      .internship-panel.with-conversions { grid-template-columns: 1fr; }
       select[multiple] { min-height: 92px; }
       .compare-picker-body { grid-template-columns: 1fr; }
       .advanced-actions { justify-content: flex-start; }
@@ -3697,6 +3707,7 @@
       const career = state.data.career || {};
       const mobility = career.mobility || {};
       const internshipSummary = career.internships?.summary || {};
+      const comparing = state.selectionMode === 'compare' || state.selectionMode === 'major_compare';
       const metrics = [
         metric('Internship rate', pct(internshipSummary.internship_rate_pct), 3),
         metric('Avg employers by 5 yrs', mobility.avg_employers_5yr ?? '—', 3),
@@ -3704,25 +3715,40 @@
         metric('Career models', num((career.archetypes || []).length), 3),
       ];
       if (state.viewMode === 'overtime') {
-        const comparing = state.selectionMode === 'compare' || state.selectionMode === 'major_compare';
         $('content').innerHTML = [
           ...metrics,
           card('Earnings Over the First 15 Years', 'career-earnings', 6, true),
           card(comparing ? 'Average Seniority by Years Since Graduation' : 'Career Stage by Years Since Graduation', 'career-seniority', 6, true),
+          ...(comparing ? [
+            card('Internship Rate Comparison', 'career-internship-rates', 5, true, { topControl: true }),
+            card('Top Internship Companies by Comparison', 'career-internship-employers', 7, true, { topControl: true }),
+          ] : []),
         ].join('');
         drawCareerEarnings('career-earnings');
         if (comparing) drawCareerAverageSeniority('career-seniority');
         else drawCareerSeniority('career-seniority');
+        if (comparing) {
+          drawCareerInternshipRates('career-internship-rates');
+          drawCareerInternshipEmployers('career-internship-employers');
+        }
       } else {
         $('content').innerHTML = [
           ...metrics,
+          ...(comparing ? [
+            card('Internship Rate Comparison', 'career-internship-rates', 5, true, { topControl: true }),
+            card('Top Internship Companies by Comparison', 'career-internship-employers', 7, true, { topControl: true }),
+          ] : []),
           card('Employer Pay and Progression', 'career-employer-tenure', 6, true, { topControl: true }),
           card('Career Path Examples', 'career-models', 6, false, { topControl: true, export: false }),
-          card('Internship Signals', 'career-internships', 12, false, { topControl: true, export: false }),
+          ...(comparing ? [] : [card('Internships That Became Jobs', 'career-internships', 12, false, { topControl: true, export: false })]),
         ].join('');
+        if (comparing) {
+          drawCareerInternshipRates('career-internship-rates');
+          drawCareerInternshipEmployers('career-internship-employers');
+        }
         drawCareerEmployerTenure('career-employer-tenure');
         drawCareerModels('career-models');
-        drawCareerInternships('career-internships');
+        if (!comparing) drawCareerInternships('career-internships');
       }
     }
 
@@ -3936,6 +3962,79 @@
       `;
     }
 
+    function drawCareerInternshipRates(id) {
+      const rows = (state.data.career?.internships?.rates || [])
+        .filter(row => row.series && row.internship_rate_pct !== null && row.internship_rate_pct !== undefined)
+        .slice(0, topNFor(id));
+      if (!rows.length) return noData(id);
+      const labels = rows.map(row => legendLabel(row.series, 34));
+      Plotly.newPlot(id, [{
+        type: 'bar',
+        orientation: 'h',
+        y: labels.map(label => wrapAxisLabel(label, 24, 2)),
+        x: rows.map(row => Number(row.internship_rate_pct || 0)),
+        text: rows.map(row => pct(row.internship_rate_pct)),
+        textposition: 'outside',
+        cliponaxis: false,
+        marker: { color: rows.map((_, i) => COLORS[i % COLORS.length]) },
+        customdata: rows.map(row => [row.series, row.n_interns, row.n_alumni, row.internship_positions, row.avg_internships_per_intern]),
+        hovertemplate: '%{customdata[0]}<br>%{x:.1f}% internship rate<br>%{customdata[1]:,.0f} interns<br>%{customdata[2]:,.0f} alumni<extra></extra>',
+      }], {
+        ...horizontalBarLayout(id, rows.map(row => ({ label: row.series })), '%', { rightMargin: 92, leftMargin: 190 }),
+        xaxis: { ticksuffix: '%', rangemode: 'tozero', automargin: true, title: 'Share with internship signal' },
+        showlegend: false,
+      }, plotConfig);
+    }
+
+    function drawCareerInternshipEmployers(id) {
+      const rows = (state.data.career?.internships?.employer_comparison || [])
+        .filter(row => row.series && row.label && Number.isFinite(Number(row.share_pct)));
+      if (!rows.length) return noData(id);
+      const limit = Math.max(3, Number(topNFor(id)) || 8);
+      const seriesNames = (state.data.career?.internships?.rates || [])
+        .map(row => row.series)
+        .filter(Boolean);
+      for (const row of rows) {
+        if (!seriesNames.includes(row.series)) seriesNames.push(row.series);
+      }
+      const totals = new Map();
+      rows.forEach(row => totals.set(row.label, (totals.get(row.label) || 0) + Number(row.n || 0)));
+      const employers = [...totals.entries()]
+        .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
+        .slice(0, limit)
+        .map(([label]) => label);
+      const lookup = new Map(rows.map(row => [`${row.series}||${row.label}`, row]));
+      const z = employers.map(label => seriesNames.map(series => {
+        const row = lookup.get(`${series}||${label}`);
+        return row ? Number(row.share_pct || 0) : null;
+      }));
+      const text = z.map(row => row.map(value => Number.isFinite(value) ? `${value.toFixed(1)}%` : ''));
+      const customdata = employers.map(label => seriesNames.map(series => {
+        const row = lookup.get(`${series}||${label}`) || {};
+        return [series, label, row.n || 0, row.mean_salary || null];
+      }));
+      Plotly.newPlot(id, [{
+        type: 'heatmap',
+        x: seriesNames.map(series => legendLabel(series, 26)),
+        y: employers.map(label => wrapAxisLabel(label, 26, 2)),
+        z,
+        text,
+        texttemplate: '%{text}',
+        textfont: { color: '#17314f', size: 12 },
+        colorscale: [[0, '#eef5fb'], [0.5, '#8cc4ef'], [1, '#2d5ea8']],
+        hoverongaps: false,
+        customdata,
+        hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>%{z:.1f}% of internship positions<br>%{customdata[2]:,.0f} positions<extra></extra>',
+      }], {
+        ...layoutBase,
+        height: Math.max(340, 150 + employers.length * 34),
+        margin: { ...layoutBase.margin, l: 220, r: 32, t: 16, b: 90 },
+        xaxis: { automargin: true, side: 'bottom' },
+        yaxis: { automargin: true, autorange: 'reversed' },
+        showlegend: false,
+      }, plotConfig);
+    }
+
     function drawCareerInternships(id) {
       const internships = state.data.career?.internships || {};
       const summary = internships.summary || {};
@@ -3943,20 +4042,22 @@
       const employers = (internships.employers || []).slice(0, limit);
       const roles = (internships.roles || []).slice(0, limit);
       const industries = (internships.industries || []).slice(0, limit);
-      if (!summary.n_interns && !employers.length && !roles.length && !industries.length) return noData(id);
-      const listHtml = (title, rows) => `
+      const conversions = (internships.conversions || []).slice(0, limit);
+      if (!summary.n_interns && !employers.length && !roles.length && !industries.length && !conversions.length) return noData(id);
+      const listHtml = (title, rows, formatter = row => `${num(row.n)} · ${pct(row.share_pct)}`) => `
         <div class="internship-list">
           <h4>${escapeHtml(title)}</h4>
           ${(rows || []).map(row => `
             <div class="internship-rank-row">
-              <div class="internship-rank-label" title="${escapeHtml(row.label)}">${escapeHtml(row.label)}</div>
-              <div class="internship-rank-meta">${num(row.n)} · ${pct(row.share_pct)}</div>
+              <div class="internship-rank-label" title="${escapeHtml(row.label || row.employer)}">${escapeHtml(row.label || row.employer)}</div>
+              <div class="internship-rank-meta">${formatter(row)}</div>
             </div>
           `).join('') || '<div class="empty">No data</div>'}
         </div>
       `;
+      const conversionFormatter = row => `<strong>${num(row.converted_to_job)}</strong> jobs · ${pct(row.conversion_rate_pct)}`;
       $(id).innerHTML = `
-        <div class="internship-panel">
+        <div class="internship-panel ${conversions.length ? 'with-conversions' : ''}">
           <div class="internship-hero">
             <strong>${pct(summary.internship_rate_pct)}</strong>
             <span>Observed internship rate</span>
@@ -3965,9 +4066,10 @@
               <div><b>${num(summary.internship_positions)}</b><em>Positions</em></div>
               <div><b>${num(summary.n_interns)}</b><em>Interns</em></div>
               <div><b>${summary.avg_internships_per_intern ?? '—'}</b><em>Avg / intern</em></div>
-              <div><b>${num(summary.alumni)}</b><em>Alumni base</em></div>
+              <div><b>${num(summary.n_alumni)}</b><em>Alumni base</em></div>
             </div>
           </div>
+          ${conversions.length ? listHtml('Became postgrad jobs', conversions, conversionFormatter) : ''}
           ${listHtml('Top employers', employers)}
           ${listHtml('Common roles', roles)}
           ${listHtml('Internship industries', industries)}

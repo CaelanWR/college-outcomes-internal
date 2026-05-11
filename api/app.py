@@ -454,6 +454,7 @@ def _work_where(
     *,
     years_since_grad: int | None = None,
     include_grad_years: bool = True,
+    postgrad_dataset: str | None = None,
 ) -> tuple[str, list[Any]]:
     """Filters for pre-aggregated work facts.
 
@@ -473,6 +474,13 @@ def _work_where(
     if years_since_grad is not None:
         clauses.append("years_since_grad = ?")
         params.append(years_since_grad)
+    if postgrad_dataset and _work_dataset_supports_postgrad(postgrad_dataset):
+        if filters.postgrad.later_degree_type:
+            clauses.append("later_degree_type = ?")
+            params.append(filters.postgrad.later_degree_type)
+        elif filters.postgrad.no_further_education is not None:
+            clauses.append("no_further_education_flag = ?")
+            params.append(1 if filters.postgrad.no_further_education else 0)
     return (" WHERE " + " AND ".join(clauses)) if clauses else "", params
 
 
@@ -484,10 +492,28 @@ def _work_series_expr(filters: QueryRequest) -> str:
     return "COALESCE(major_title, school_name)"
 
 
-def _career_requires_person_level(filters: QueryRequest) -> bool:
+def _work_postgrad_filter_active(filters: QueryRequest) -> bool:
     return bool(
         filters.postgrad.later_degree_type
         or filters.postgrad.no_further_education is not None
+    )
+
+
+def _work_dataset_supports_postgrad(dataset: str) -> bool:
+    if not _work_dataset_exists(dataset):
+        return False
+    columns = _dataset_columns(f"work_facts/{dataset}")
+    return "later_degree_type" in columns and "no_further_education_flag" in columns
+
+
+def _work_postgrad_unsupported(filters: QueryRequest, dataset: str) -> bool:
+    return _work_postgrad_filter_active(filters) and not _work_dataset_supports_postgrad(dataset)
+
+
+def _career_requires_person_level(filters: QueryRequest) -> bool:
+    postgrad_requires_fallback = _work_postgrad_filter_active(filters) and not _work_dataset_supports_postgrad("annual_salary")
+    return bool(
+        postgrad_requires_fallback
         or filters.demographics.gender
         or filters.demographics.race_ethnicity
     )
@@ -3309,8 +3335,10 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
 def _career_archetypes(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
     if not _work_dataset_exists("career_archetypes"):
         return []
+    if _work_postgrad_unsupported(filters, "career_archetypes"):
+        return []
     limit = _safe_limit(filters.top_n)
-    where_sql, params = _work_where(filters, include_grad_years=False)
+    where_sql, params = _work_where(filters, include_grad_years=False, postgrad_dataset="career_archetypes")
     series_expr = _work_series_expr(filters)
     return _records_from_query(
         con,
@@ -3354,7 +3382,7 @@ def _career_earnings(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> l
         return _career_earnings_from_base(con, filters)
     if not _work_dataset_exists("annual_salary"):
         return []
-    where_sql, params = _work_where(filters)
+    where_sql, params = _work_where(filters, postgrad_dataset="annual_salary")
     if filters.compare_mode and filters.compare_dimension in {"major", "school"}:
         series_expr = _work_series_expr(filters)
     else:
@@ -3455,8 +3483,28 @@ def _career_earnings_from_base(con: duckdb.DuckDBPyConnection, filters: QueryReq
 
 def _career_internships(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
     if not _work_dataset_exists("internship_summary"):
-        return {"summary": {}, "employers": [], "roles": [], "industries": [], "geography": []}
-    where_sql, params = _work_where(filters)
+        return {
+            "summary": {},
+            "rates": [],
+            "employer_comparison": [],
+            "employers": [],
+            "roles": [],
+            "industries": [],
+            "geography": [],
+            "conversions": [],
+        }
+    if _work_postgrad_unsupported(filters, "internship_summary"):
+        return {
+            "summary": {},
+            "rates": [],
+            "employer_comparison": [],
+            "employers": [],
+            "roles": [],
+            "industries": [],
+            "geography": [],
+            "conversions": _career_internship_conversions(con, filters),
+        }
+    where_sql, params = _work_where(filters, postgrad_dataset="internship_summary")
     summary = _single_record(
         con,
         f"""
@@ -3472,6 +3520,91 @@ def _career_internships(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -
         """,
         [_dataset_glob("work_facts/internship_summary"), *params],
     )
+
+    rates: list[dict[str, Any]] = []
+    employer_comparison: list[dict[str, Any]] = []
+    if filters.compare_mode and filters.compare_dimension in {"major", "school"}:
+        series_expr = _work_series_expr(filters)
+        rates = _records_from_query(
+            con,
+            f"""
+            SELECT
+              {series_expr} AS series,
+              ROUND(SUM(n_alumni)) AS n_alumni,
+              ROUND(SUM(n_interns)) AS n_interns,
+              ROUND(SUM(raw_interns)) AS raw_interns,
+              ROUND(SUM(internship_positions)) AS internship_positions,
+              ROUND(100.0 * SUM(n_interns) / NULLIF(SUM(n_alumni), 0), 1) AS internship_rate_pct,
+              ROUND(SUM(internship_positions) / NULLIF(SUM(n_interns), 0), 2) AS avg_internships_per_intern
+            FROM read_parquet(?)
+            {where_sql}
+            GROUP BY series
+            HAVING SUM(n_alumni) > ?
+            ORDER BY internship_rate_pct DESC NULLS LAST, n_interns DESC
+            """,
+            [_dataset_glob("work_facts/internship_summary"), *params, MIN_CELL_WEIGHT],
+        )
+        if _work_dataset_exists("internship_employers"):
+            limit = _safe_limit(filters.top_n)
+            employer_comparison = _records_from_query(
+                con,
+                f"""
+                WITH eligible AS (
+                  SELECT
+                    {series_expr} AS series,
+                    employer AS label,
+                    n_internship_positions,
+                    raw_n,
+                    mean_salary
+                  FROM read_parquet(?)
+                  {where_sql}
+                ),
+                grouped AS (
+                  SELECT
+                    series,
+                    label,
+                    SUM(n_internship_positions) AS n,
+                    SUM(raw_n) AS raw_n,
+                    SUM(COALESCE(mean_salary, 0) * n_internship_positions)
+                      / NULLIF(SUM(CASE WHEN mean_salary IS NOT NULL THEN n_internship_positions ELSE 0 END), 0) AS mean_salary
+                  FROM eligible
+                  WHERE series IS NOT NULL
+                    AND label IS NOT NULL
+                    AND TRIM(label) <> ''
+                  GROUP BY series, label
+                ),
+                totals AS (
+                  SELECT series, SUM(n) AS series_total
+                  FROM grouped
+                  GROUP BY series
+                ),
+                ranked AS (
+                  SELECT
+                    g.*,
+                    ROUND(100.0 * g.n / NULLIF(t.series_total, 0), 1) AS share_pct,
+                    ROW_NUMBER() OVER (
+                      PARTITION BY g.series
+                      ORDER BY g.n DESC, g.label
+                    ) AS employer_rank
+                  FROM grouped g
+                  JOIN totals t
+                    ON g.series = t.series
+                )
+                SELECT
+                  series,
+                  label,
+                  ROUND(n) AS n,
+                  ROUND(raw_n) AS raw_n,
+                  share_pct,
+                  ROUND(mean_salary) AS mean_salary,
+                  employer_rank
+                FROM ranked
+                WHERE employer_rank <= {limit}
+                  AND n > ?
+                ORDER BY series, employer_rank, label
+                """,
+                [_dataset_glob("work_facts/internship_employers"), *params, MIN_CELL_WEIGHT],
+            )
 
     def top_rows(dataset: str, column: str) -> list[dict[str, Any]]:
         if not _work_dataset_exists(dataset):
@@ -3510,17 +3643,245 @@ def _career_internships(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -
 
     return {
         "summary": summary,
+        "rates": rates,
+        "employer_comparison": employer_comparison,
         "employers": top_rows("internship_employers", "employer"),
         "roles": top_rows("internship_roles", "role"),
         "industries": top_rows("internship_industries", "industry"),
         "geography": top_rows("internship_geography", "location"),
+        "conversions": _career_internship_conversions(con, filters),
     }
+
+
+def _career_internship_conversions(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    """Internship employers that also appear as later career employers.
+
+    This is inferred at person x normalized-employer level. It is intentionally
+    only shown for a single selected slice; compare mode gets the cleaner rate
+    comparison instead.
+    """
+    if filters.compare_mode:
+        return []
+    source = _base_source_for_filters(filters)
+    if not source:
+        return []
+    where_sql, params = _where(filters, include_horizon=False, include_postgrad=True)
+    same_school_filter = _same_school_employer_filter(filters)
+    limit = _safe_limit(filters.top_n)
+    return _records_from_query(
+        con,
+        f"""
+        WITH filtered AS (
+          SELECT
+            person_key,
+            unitid,
+            employer,
+            COALESCE(NULLIF(TRIM(employer_norm), ''), LOWER(TRIM(employer))) AS employer_key,
+            internship_flag,
+            career_employer_flag,
+            same_school_employer_flag,
+            horizon_years,
+            final_weight,
+            salary
+          FROM read_parquet(?)
+          {where_sql}
+        ),
+        intern_person_employer AS (
+          SELECT
+            person_key,
+            employer_key,
+            ANY_VALUE(employer) AS employer,
+            MAX(final_weight) AS intern_weight
+          FROM filtered
+          WHERE internship_flag = 1
+            AND employer_key IS NOT NULL
+            AND employer_key <> ''
+            AND LOWER(COALESCE(employer, '')) <> 'unknown'
+            {same_school_filter}
+          GROUP BY person_key, employer_key
+        ),
+        career_person_employer AS (
+          SELECT
+            person_key,
+            employer_key,
+            MIN(horizon_years) AS first_career_year,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS mean_salary
+          FROM filtered
+          WHERE COALESCE(internship_flag, 0) = 0
+            AND career_employer_flag = 1
+            AND horizon_years >= 1
+            AND employer_key IS NOT NULL
+            AND employer_key <> ''
+            AND LOWER(COALESCE(employer, '')) <> 'unknown'
+            {same_school_filter}
+          GROUP BY person_key, employer_key
+        )
+        SELECT
+          i.employer,
+          ROUND(SUM(i.intern_weight)) AS n_interns,
+          ROUND(SUM(CASE WHEN c.person_key IS NOT NULL THEN i.intern_weight ELSE 0 END)) AS converted_to_job,
+          ROUND(
+            100.0 * SUM(CASE WHEN c.person_key IS NOT NULL THEN i.intern_weight ELSE 0 END)
+            / NULLIF(SUM(i.intern_weight), 0),
+            1
+          ) AS conversion_rate_pct,
+          ROUND(
+            SUM(CASE WHEN c.person_key IS NOT NULL THEN i.intern_weight * c.first_career_year ELSE 0 END)
+            / NULLIF(SUM(CASE WHEN c.person_key IS NOT NULL THEN i.intern_weight ELSE 0 END), 0),
+            1
+          ) AS avg_first_career_year,
+          ROUND(
+            SUM(CASE WHEN c.mean_salary IS NOT NULL THEN i.intern_weight * c.mean_salary ELSE 0 END)
+            / NULLIF(SUM(CASE WHEN c.mean_salary IS NOT NULL THEN i.intern_weight ELSE 0 END), 0)
+          ) AS mean_salary
+        FROM intern_person_employer i
+        LEFT JOIN career_person_employer c
+          ON i.person_key = c.person_key
+         AND i.employer_key = c.employer_key
+        GROUP BY i.employer
+        HAVING SUM(i.intern_weight) > ?
+           AND SUM(CASE WHEN c.person_key IS NOT NULL THEN i.intern_weight ELSE 0 END) > 0
+        ORDER BY converted_to_job DESC NULLS LAST, conversion_rate_pct DESC NULLS LAST, n_interns DESC
+        LIMIT {limit}
+        """,
+        [source, *params, MIN_CELL_WEIGHT],
+    )
+
+
+def _base_career_years_expr(base_columns: set[str]) -> str:
+    if "horizon_years" in base_columns:
+        return "COALESCE(horizon_years, CASE WHEN horizon = 'early_2025' THEN 0 ELSE NULL END)"
+    return "CASE WHEN horizon = 'early_2025' THEN 0 WHEN horizon = '1yr' THEN 1 WHEN horizon = '5yr' THEN 5 WHEN horizon = '10yr' THEN 10 ELSE NULL END"
+
+
+def _base_career_stage_expr(base_columns: set[str]) -> str:
+    if "seniority_band" in base_columns:
+        return """
+            CASE
+              WHEN seniority_band IN ('Entry I', 'Entry II', 'Mid I') THEN 'Entry level'
+              WHEN seniority_band IN ('Mid II', 'Senior I') THEN 'Mid level'
+              WHEN seniority_band IN ('Senior II', 'Manager I', 'Manager II', 'Manager III', 'Director', 'Director+', 'Executive') THEN 'Senior level'
+              ELSE 'Other'
+            END
+        """
+    return """
+            CASE
+              WHEN seniority IS NULL THEN 'Other'
+              WHEN seniority < 3 THEN 'Entry level'
+              WHEN seniority < 5 THEN 'Mid level'
+              ELSE 'Senior level'
+            END
+        """
+
+
+def _career_seniority_from_base(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    base_columns = _dataset_columns("base_fact")
+    years_expr = _base_career_years_expr(base_columns)
+    stage_expr = _base_career_stage_expr(base_columns)
+    source = _base_source_for_filters(filters)
+    where_sql, params = _where(filters, include_horizon=False, include_postgrad=True)
+    return _records_from_query(
+        con,
+        f"""
+        WITH eligible AS (
+          SELECT
+            {years_expr} AS years_since_grad,
+            {stage_expr} AS career_stage,
+            final_weight,
+            salary
+          FROM read_parquet(?)
+          {where_sql}
+        ),
+        grouped AS (
+          SELECT
+            years_since_grad,
+            career_stage,
+            SUM(final_weight) AS n_alumni,
+            SUM(CASE WHEN salary IS NOT NULL THEN salary * final_weight ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS mean_salary
+          FROM eligible
+          WHERE years_since_grad BETWEEN 0 AND 15
+            AND career_stage <> 'Other'
+          GROUP BY years_since_grad, career_stage
+        )
+        SELECT
+          years_since_grad,
+          career_stage AS seniority_band,
+          ROUND(n_alumni) AS n_alumni,
+          ROUND(100.0 * n_alumni / NULLIF(SUM(n_alumni) OVER (PARTITION BY years_since_grad), 0), 1) AS share_pct,
+          ROUND(mean_salary) AS mean_salary
+        FROM grouped
+        WHERE n_alumni > ?
+        ORDER BY years_since_grad,
+          CASE career_stage WHEN 'Entry level' THEN 1 WHEN 'Mid level' THEN 2 WHEN 'Senior level' THEN 3 ELSE 4 END
+        """,
+        [source, *params, MIN_CELL_WEIGHT],
+    )
+
+
+def _career_average_seniority_from_base(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    base_columns = _dataset_columns("base_fact")
+    years_expr = _base_career_years_expr(base_columns)
+    stage_expr = _base_career_stage_expr(base_columns)
+    series_expr = "'Selected slice'"
+    if filters.compare_mode and filters.compare_dimension == "major":
+        cip_col = _cip_col(filters)
+        series_expr = f"COALESCE(major_title, {cip_col})"
+    elif filters.compare_mode and filters.compare_dimension == "school":
+        series_expr = "school_name"
+    source = _base_source_for_filters(filters)
+    where_sql, params = _where(filters, include_horizon=False, include_postgrad=True)
+    return _records_from_query(
+        con,
+        f"""
+        WITH eligible AS (
+          SELECT
+            {years_expr} AS years_since_grad,
+            {series_expr} AS series,
+            {stage_expr} AS career_stage,
+            final_weight,
+            salary
+          FROM read_parquet(?)
+          {where_sql}
+        ),
+        scored AS (
+          SELECT
+            years_since_grad,
+            series,
+            CASE
+              WHEN career_stage = 'Entry level' THEN 1
+              WHEN career_stage = 'Mid level' THEN 2
+              WHEN career_stage = 'Senior level' THEN 3
+              ELSE NULL
+            END AS stage_score,
+            final_weight,
+            salary
+          FROM eligible
+          WHERE years_since_grad BETWEEN 0 AND 15
+        )
+        SELECT
+          years_since_grad,
+          series,
+          ROUND(SUM(final_weight)) AS n_alumni,
+          ROUND(SUM(stage_score * final_weight) / NULLIF(SUM(CASE WHEN stage_score IS NOT NULL THEN final_weight ELSE 0 END), 0), 2) AS avg_seniority,
+          ROUND(SUM(stage_score * final_weight) / NULLIF(SUM(CASE WHEN stage_score IS NOT NULL THEN final_weight ELSE 0 END), 0), 2) AS raw_avg_seniority,
+          ROUND(SUM(CASE WHEN salary IS NOT NULL THEN salary * final_weight ELSE 0 END) / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0)) AS mean_salary
+        FROM scored
+        GROUP BY years_since_grad, series
+        HAVING SUM(final_weight) > ?
+        ORDER BY series, years_since_grad
+        """,
+        [source, *params, MIN_CELL_WEIGHT],
+    )
 
 
 def _career_seniority(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
     if not _work_dataset_exists("annual_seniority"):
         return []
-    where_sql, params = _work_where(filters, include_grad_years=False)
+    if _work_postgrad_unsupported(filters, "annual_seniority"):
+        return _career_seniority_from_base(con, filters)
+    where_sql, params = _work_where(filters, include_grad_years=False, postgrad_dataset="annual_seniority")
     return _records_from_query(
         con,
         f"""
@@ -3562,7 +3923,9 @@ def _career_seniority(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> 
 def _career_average_seniority(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
     if not _work_dataset_exists("annual_seniority"):
         return []
-    where_sql, params = _work_where(filters, include_grad_years=False)
+    if _work_postgrad_unsupported(filters, "annual_seniority"):
+        return _career_average_seniority_from_base(con, filters)
+    where_sql, params = _work_where(filters, include_grad_years=False, postgrad_dataset="annual_seniority")
     series_expr = _work_series_expr(filters) if filters.compare_mode and filters.compare_dimension in {"major", "school"} else "'Selected slice'"
     return _records_from_query(
         con,
@@ -3608,8 +3971,10 @@ def _career_average_seniority(con: duckdb.DuckDBPyConnection, filters: QueryRequ
 def _career_employer_tenure(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
     if not _work_dataset_exists("employer_tenure"):
         return []
+    if _work_postgrad_unsupported(filters, "employer_tenure"):
+        return []
     limit = _safe_limit(filters.top_n)
-    where_sql, params = _work_where(filters, include_grad_years=False)
+    where_sql, params = _work_where(filters, include_grad_years=False, postgrad_dataset="employer_tenure")
     return _records_from_query(
         con,
         f"""
@@ -3638,7 +4003,9 @@ def _career_employer_tenure(con: duckdb.DuckDBPyConnection, filters: QueryReques
 def _career_mobility(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
     if not _work_dataset_exists("mobility"):
         return {}
-    where_sql, params = _work_where(filters)
+    if _work_postgrad_unsupported(filters, "mobility"):
+        return {}
+    where_sql, params = _work_where(filters, postgrad_dataset="mobility")
     return _single_record(
         con,
         f"""
