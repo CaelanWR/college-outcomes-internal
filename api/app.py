@@ -5,7 +5,10 @@ import hashlib
 import json
 import math
 import os
+import time
 import threading
+from collections import OrderedDict
+from copy import deepcopy
 from decimal import Decimal
 from contextlib import contextmanager
 from functools import lru_cache
@@ -35,6 +38,10 @@ SCHOOL_CACHE_DIR = Path(os.environ.get("OUTCOMES_SCHOOL_CACHE_DIR", DEFAULT_SCHO
 MAX_COMPARE_SCHOOLS = int(os.environ.get("OUTCOMES_MAX_COMPARE_SCHOOLS", "3"))
 QUERY_SEMAPHORE = threading.BoundedSemaphore(int(os.environ.get("OUTCOMES_QUERY_CONCURRENCY", "1")))
 SCHOOL_CACHE_LOCK = threading.Lock()
+RESPONSE_CACHE_LOCK = threading.Lock()
+RESPONSE_CACHE: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
+RESPONSE_CACHE_TTL_SECONDS = int(os.environ.get("OUTCOMES_RESPONSE_CACHE_TTL_SECONDS", "600"))
+RESPONSE_CACHE_MAX_ENTRIES = int(os.environ.get("OUTCOMES_RESPONSE_CACHE_MAX_ENTRIES", "96"))
 APP_PASSWORD = os.environ.get("OUTCOMES_APP_PASSWORD")
 ALLOWED_ORIGINS = [
     origin.strip()
@@ -367,6 +374,64 @@ def _records_from_query(con: duckdb.DuckDBPyConnection, sql: str, params: list[A
 def _single_record(con: duckdb.DuckDBPyConnection, sql: str, params: list[Any] | None = None) -> dict[str, Any]:
     rows = _records_from_query(con, sql, params)
     return rows[0] if rows else {}
+
+
+def _cache_payload(filters: QueryRequest, *, options: bool = False) -> dict[str, Any]:
+    payload = filters.model_dump()
+    if options:
+        # Options only depend on the slice definition used to populate selects.
+        # Excluding active tab/view/drilldown fields keeps option refreshes fast
+        # when users move around the app or change chart-specific controls.
+        keep = {
+            "schools",
+            "degree",
+            "cip_level",
+            "majors",
+            "grad_years",
+            "demographics",
+            "compare_mode",
+            "compare_dimension",
+        }
+        payload = {key: value for key, value in payload.items() if key in keep}
+    return payload
+
+
+def _response_cache_key(namespace: str, filters: QueryRequest, *, options: bool = False) -> str:
+    manifest_path = _platform_root() / "platform_manifest.json"
+    payload = {
+        "namespace": namespace,
+        "version": _manifest().get("version"),
+        "manifest_mtime": int(manifest_path.stat().st_mtime) if manifest_path.exists() else 0,
+        "root": str(_platform_root()),
+        "filters": _cache_payload(filters, options=options),
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+
+
+def _response_cache_get(key: str) -> dict[str, Any] | None:
+    if RESPONSE_CACHE_TTL_SECONDS <= 0 or RESPONSE_CACHE_MAX_ENTRIES <= 0:
+        return None
+    now = time.monotonic()
+    with RESPONSE_CACHE_LOCK:
+        cached = RESPONSE_CACHE.get(key)
+        if not cached:
+            return None
+        created_at, value = cached
+        if now - created_at > RESPONSE_CACHE_TTL_SECONDS:
+            RESPONSE_CACHE.pop(key, None)
+            return None
+        RESPONSE_CACHE.move_to_end(key)
+        return deepcopy(value)
+
+
+def _response_cache_set(key: str, value: dict[str, Any]) -> None:
+    if RESPONSE_CACHE_TTL_SECONDS <= 0 or RESPONSE_CACHE_MAX_ENTRIES <= 0:
+        return
+    with RESPONSE_CACHE_LOCK:
+        RESPONSE_CACHE[key] = (time.monotonic(), deepcopy(value))
+        RESPONSE_CACHE.move_to_end(key)
+        while len(RESPONSE_CACHE) > RESPONSE_CACHE_MAX_ENTRIES:
+            RESPONSE_CACHE.popitem(last=False)
 
 
 def _cip_col(filters: QueryRequest) -> str:
@@ -738,6 +803,10 @@ def health() -> dict[str, Any]:
 
 @app.post("/api/options")
 def options(filters: QueryRequest, _: None = Depends(require_internal_password)) -> dict[str, Any]:
+    cache_key = _response_cache_key("options", filters, options=True)
+    cached = _response_cache_get(cache_key)
+    if cached is not None:
+        return cached
     with _query_slot():
         cip_col = _cip_col(filters)
         limit = 500
@@ -866,7 +935,7 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
                     """,
                 )
             ]
-            return {
+            result = {
                 **static,
                 "major_options": majors,
                 "demographics": demographics,
@@ -877,6 +946,8 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
                     "salary_min_weight": SALARY_MIN_WEIGHT,
                 },
             }
+            _response_cache_set(cache_key, result)
+            return result
         finally:
             con.close()
 
@@ -4036,8 +4107,7 @@ def _career(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, 
     }
 
 
-@app.post("/api/dashboard")
-def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password)) -> dict[str, Any]:
+def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
     with _query_slot():
         con = _connect()
         try:
@@ -4200,6 +4270,17 @@ def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password
             return result
         finally:
             con.close()
+
+
+@app.post("/api/dashboard")
+def dashboard(filters: QueryRequest, _: None = Depends(require_internal_password)) -> dict[str, Any]:
+    cache_key = _response_cache_key("dashboard", filters)
+    cached = _response_cache_get(cache_key)
+    if cached is not None:
+        return cached
+    result = _dashboard_uncached(filters)
+    _response_cache_set(cache_key, result)
+    return result
 
 
 @app.post("/api/warm-cache")

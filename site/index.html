@@ -1981,8 +1981,14 @@
       storage.setItem('outcomes.compareMajors', JSON.stringify(advanced.compareMajors || []));
     }
 
+    function advancedChangeNeedsOptionsReload(previous, next) {
+      if (!previous) return false;
+      return previous.cipLevel !== next.cipLevel;
+    }
+
     function applyAdvancedOptions() {
       normalizeAdvancedControls();
+      const previousAdvanced = state.appliedAdvanced ? { ...state.appliedAdvanced } : null;
       const advanced = readAdvancedControls();
       if (advanced.selectionMode === 'compare') {
         advanced.compareSchools = trimCompareSchools(advanced.compareSchools);
@@ -2009,11 +2015,15 @@
         return;
       }
       setAdvancedOpen(false);
-      refresh({ reloadOptions: true, resetDrill: true });
+      refresh({
+        reloadOptions: advancedChangeNeedsOptionsReload(previousAdvanced, advanced),
+        resetDrill: true,
+      });
     }
 
     function resetAdvancedOptions() {
       clearTimeout(compareWarmupTimer);
+      const previousAdvanced = state.appliedAdvanced ? { ...state.appliedAdvanced } : null;
       state.lastCompareWarmupKey = '';
       Array.from($('compare-school-select').options).forEach(opt => { opt.selected = false; });
       Array.from($('compare-major-select').options).forEach(opt => { opt.selected = false; });
@@ -2040,7 +2050,10 @@
       state.appliedAdvanced = readAdvancedControls();
       persistAdvancedControls(state.appliedAdvanced);
       setAdvancedOpen(false);
-      refresh({ reloadOptions: true, resetDrill: true });
+      refresh({
+        reloadOptions: advancedChangeNeedsOptionsReload(previousAdvanced, state.appliedAdvanced),
+        resetDrill: true,
+      });
     }
 
     function getSelectedSchools(advanced = activeAdvancedControls()) {
