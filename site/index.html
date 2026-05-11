@@ -809,16 +809,6 @@
       margin: 0;
     }
 
-    .hero-note {
-      position: relative;
-      z-index: 1;
-      margin-top: 8px;
-      color: rgba(255,255,255,0.76);
-      font-size: 0.9rem;
-      font-weight: 800;
-      letter-spacing: 0.02em;
-    }
-
     .hero::after {
       content: '';
       position: absolute;
@@ -1048,6 +1038,29 @@
       justify-content: flex-end;
       gap: 8px;
       flex: 0 0 auto;
+    }
+
+    .chart-info {
+      width: 28px;
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      background: rgba(255,255,255,0.9);
+      color: var(--muted);
+      cursor: help;
+      font-size: 0.82rem;
+      font-weight: 900;
+      line-height: 1;
+      box-shadow: 0 8px 18px rgba(20,44,65,0.05);
+    }
+
+    .chart-info:hover {
+      color: #225ea8;
+      border-color: rgba(34,94,168,0.24);
+      background: rgba(34,94,168,0.08);
     }
 
     .chart-top-control {
@@ -1538,7 +1551,6 @@
 <body>
   <div class="hero">
     <h1>College Outcomes Explorer</h1>
-    <div class="hero-note">Salary figures are shown in 2026 dollars.</div>
     <div class="api-status"><span id="status-dot" class="dot"></span><span id="status-text">Not connected</span></div>
   </div>
 
@@ -2487,6 +2499,24 @@
       return cardEl?.querySelector('h3')?.textContent || chartId;
     }
 
+    const SALARY_DOLLAR_NOTE = 'Salary figures are shown in 2026 dollars.';
+
+    function chartUsesSalaryDollars(chartId, title = '') {
+      const text = `${chartId || ''} ${title || ''}`.toLowerCase();
+      return /\b(salary|salaries|earnings|pay)\b/.test(text);
+    }
+
+    function chartInfoText(id, title) {
+      if (chartUsesSalaryDollars(id, title)) return SALARY_DOLLAR_NOTE;
+      return '';
+    }
+
+    function chartInfoControl(id, title) {
+      const info = chartInfoText(id, title);
+      if (!info) return '';
+      return `<button type="button" class="chart-info" title="${escapeHtml(info)}" aria-label="${escapeHtml(info)}">i</button>`;
+    }
+
     function selectedOptionLabel(id, fallback = '') {
       const select = $(id);
       return select?.selectedOptions?.[0]?.textContent?.trim() || fallback;
@@ -2530,10 +2560,12 @@
     function exportHeaderLines(chartId) {
       const degree = selectedOptionLabel('degree-select', 'Selected degree');
       const parts = [degree, exportMajorLabel(), exportYearLabel()].filter(Boolean);
+      const title = chartExportTitle(chartId);
       return {
-        title: chartExportTitle(chartId),
+        title,
         school: exportSchoolLabel(),
         detail: parts.join(' | '),
+        footnote: chartUsesSalaryDollars(chartId, title) ? SALARY_DOLLAR_NOTE : '',
       };
     }
 
@@ -2718,6 +2750,10 @@
       return header.detail ? 88 : 68;
     }
 
+    function exportFooterHeight(header) {
+      return header?.footnote ? 28 : 0;
+    }
+
     function sourceSvgViewBox(sourceSvg, fallbackWidth, fallbackHeight) {
       const viewBox = sourceSvg.getAttribute('viewBox');
       if (viewBox) return viewBox;
@@ -2739,7 +2775,8 @@
       const sourceSvgs = Array.from(plot.querySelectorAll('.svg-container svg.main-svg, svg.main-svg'));
       if (!sourceSvgs.length) throw new Error('No SVG chart layer found');
       const headerHeight = exportHeaderHeight(header);
-      const exportHeight = height + headerHeight;
+      const footerHeight = exportFooterHeight(header);
+      const exportHeight = height + headerHeight + footerHeight;
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
       svg.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
@@ -2787,6 +2824,18 @@
         layer.removeAttribute('style');
         svg.appendChild(layer);
       });
+      if (header?.footnote) {
+        const y = headerHeight + height + 19;
+        const rule = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        rule.setAttribute('x1', '28');
+        rule.setAttribute('x2', String(width - 28));
+        rule.setAttribute('y1', String(headerHeight + height + 1));
+        rule.setAttribute('y2', String(headerHeight + height + 1));
+        rule.setAttribute('stroke', '#edf2f7');
+        rule.setAttribute('stroke-width', '1');
+        svg.appendChild(rule);
+        appendExportText(svg, trimExportText(header.footnote, 150), 28, y, { size: 11, weight: 700, fill: '#6b7c93' });
+      }
       const serialized = new XMLSerializer().serializeToString(svg);
       return new Blob([`<?xml version="1.0" encoding="UTF-8"?>\n${serialized}`], {
         type: 'image/svg+xml;charset=utf-8',
@@ -2942,7 +2991,7 @@
       const filename = chartExportFilename(chartId);
       const { width, height } = exportChartDimensions(plot);
       const header = exportHeaderLines(chartId);
-      const exportHeight = height + exportHeaderHeight(header);
+      const exportHeight = height + exportHeaderHeight(header) + exportFooterHeight(header);
       let blob = null;
       try {
         const svgBlob = await exportPlotCloneSvgBlob(plot, width, height, header);
@@ -3094,6 +3143,7 @@
 
     function card(title, id, span = 6, tall = false, options = {}) {
       const controls = [
+        chartInfoControl(id, title),
         options.topControl ? topNControl(`${id}-top-n`) : '',
         options.controls || '',
         options.export === false ? '' : chartDownloadControl(id),
