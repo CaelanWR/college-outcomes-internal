@@ -4282,6 +4282,92 @@ def _career_employer_tenure(con: duckdb.DuckDBPyConnection, filters: QueryReques
     )
 
 
+def _career_employer_share(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    if not _work_dataset_exists("annual_employers"):
+        return []
+    if _work_postgrad_unsupported(filters, "annual_employers"):
+        return []
+    limit = _safe_limit(filters.top_n)
+    where_sql, params = _work_where(filters, include_grad_years=False, postgrad_dataset="annual_employers")
+    same_school_filter = _same_school_employer_filter(filters)
+    return _records_from_query(
+        con,
+        f"""
+        WITH eligible AS (
+          SELECT
+            unitid,
+            degree,
+            cip4,
+            years_since_grad,
+            employer,
+            n_alumni,
+            raw_n,
+            mean_salary,
+            salary_obs,
+            share_pct,
+            CASE
+              WHEN share_pct > 0 THEN n_alumni * 100.0 / share_pct
+              ELSE NULL
+            END AS inferred_denominator
+          FROM read_parquet(?)
+          {where_sql}
+            {"AND" if where_sql else "WHERE"} years_since_grad BETWEEN 0 AND 15
+            AND employer IS NOT NULL
+            AND employer <> ''
+            AND COALESCE(career_employer_flag, 1) = 1
+            {same_school_filter}
+        ),
+        top_employers AS (
+          SELECT employer, SUM(n_alumni) AS total_n
+          FROM eligible
+          GROUP BY employer
+          HAVING SUM(n_alumni) > ?
+          ORDER BY total_n DESC
+          LIMIT {limit}
+        ),
+        group_denominators AS (
+          SELECT
+            unitid,
+            degree,
+            cip4,
+            years_since_grad,
+            MAX(inferred_denominator) AS denominator
+          FROM eligible
+          WHERE inferred_denominator IS NOT NULL
+          GROUP BY unitid, degree, cip4, years_since_grad
+        ),
+        denominators AS (
+          SELECT years_since_grad, SUM(denominator) AS denominator
+          FROM group_denominators
+          GROUP BY years_since_grad
+        ),
+        by_employer AS (
+          SELECT
+            e.years_since_grad,
+            e.employer,
+            SUM(e.n_alumni) AS n_alumni,
+            SUM(e.raw_n) AS raw_n,
+            SUM(COALESCE(e.mean_salary, 0) * e.salary_obs)
+              / NULLIF(SUM(CASE WHEN e.mean_salary IS NOT NULL THEN e.salary_obs ELSE 0 END), 0) AS mean_salary
+          FROM eligible e
+          JOIN top_employers t USING (employer)
+          GROUP BY e.years_since_grad, e.employer
+        )
+        SELECT
+          b.years_since_grad,
+          b.employer,
+          ROUND(b.n_alumni) AS n_alumni,
+          ROUND(b.raw_n) AS raw_n,
+          ROUND(100.0 * b.n_alumni / NULLIF(d.denominator, 0), 2) AS share_pct,
+          ROUND(b.mean_salary) AS mean_salary
+        FROM by_employer b
+        LEFT JOIN denominators d USING (years_since_grad)
+        ORDER BY b.employer, b.years_since_grad
+        """,
+        [_dataset_glob("work_facts/annual_employers"), *params, MIN_CELL_WEIGHT],
+    )
+
+
 def _career_mobility(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
     if not _work_dataset_exists("mobility"):
         return {}
@@ -4307,6 +4393,7 @@ def _career_mobility(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> d
 
 
 def _career(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
+    include_employer_share = not filters.compare_mode and filters.view_mode in {"overtime", "all"}
     return {
         "earnings": _career_earnings(con, filters),
         "archetypes": _career_archetypes(con, filters),
@@ -4314,6 +4401,7 @@ def _career(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, 
         "seniority": _career_seniority(con, filters),
         "average_seniority": _career_average_seniority(con, filters),
         "employer_tenure": _career_employer_tenure(con, filters),
+        "employer_share": _career_employer_share(con, filters) if include_employer_share else [],
         "mobility": _career_mobility(con, filters),
     }
 

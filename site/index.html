@@ -3728,6 +3728,9 @@
           ...metrics,
           card('Earnings Over the First 15 Years', 'career-earnings', 6, true),
           card(comparing ? 'Average Seniority by Years Since Graduation' : 'Career Stage by Years Since Graduation', 'career-seniority', 6, true),
+          ...(comparing ? [] : [
+            card('Employer Share by Years After Graduation', 'career-employer-share', 12, true, { topControl: true }),
+          ]),
           ...(comparing ? [
             card('Internship Rate Comparison', 'career-internship-rates', 5, true, { topControl: true }),
             card('Top Internship Companies by Comparison', 'career-internship-employers', 7, true, { topControl: true }),
@@ -3736,6 +3739,7 @@
         drawCareerEarnings('career-earnings');
         if (comparing) drawCareerAverageSeniority('career-seniority');
         else drawCareerSeniority('career-seniority');
+        if (!comparing) drawCareerEmployerShare('career-employer-share');
         if (comparing) {
           drawCareerInternshipRates('career-internship-rates');
           drawCareerInternshipEmployers('career-internship-employers');
@@ -3933,6 +3937,49 @@
         margin: { ...layoutBase.margin, l: 78, r: 28, t: 20, b: 70 },
         showlegend: false,
       }, plotConfig);
+    }
+
+    function drawCareerEmployerShare(id) {
+      const rows = (state.data.career?.employer_share || [])
+        .filter(row => row.employer && Number.isFinite(Number(row.years_since_grad)) && row.share_pct !== null && row.share_pct !== undefined);
+      if (!rows.length) return noData(id);
+      const totals = new Map();
+      rows.forEach(row => {
+        const employer = row.employer;
+        totals.set(employer, (totals.get(employer) || 0) + Number(row.n_alumni || 0));
+      });
+      const employers = [...totals.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, topNFor(id))
+        .map(([employer]) => employer);
+      const traces = employers.map((employer, i) => {
+        const slice = rows
+          .filter(row => row.employer === employer)
+          .sort((a, b) => Number(a.years_since_grad) - Number(b.years_since_grad));
+        const legendgroup = `${id}-employer-${i}`;
+        return {
+          type: 'scatter',
+          mode: 'lines+markers',
+          name: legendLabel(employer, 32),
+          legendgroup,
+          showlegend: false,
+          x: slice.map(row => Number(row.years_since_grad)),
+          y: slice.map(row => Number(row.share_pct || 0)),
+          customdata: slice.map(row => [employer, row.n_alumni, row.mean_salary]),
+          line: { color: COLORS[i % COLORS.length], width: 3.2 },
+          marker: { color: COLORS[i % COLORS.length], size: 6 },
+          hovertemplate: '%{customdata[0]}<br>%{x} years after graduation<br>%{y:.2f}% of alumni<br>%{customdata[1]:,.0f} alumni<extra></extra>',
+        };
+      });
+      const legendTraces = employers.map((employer, i) => legendDotTrace(employer, COLORS[i % COLORS.length], `${id}-employer-${i}`));
+      Plotly.newPlot(id, [...traces, ...legendTraces], {
+        ...layoutBase,
+        height: 460,
+        margin: { ...layoutBase.margin, l: 82, r: 42, t: 26, b: 70 },
+        xaxis: { title: 'Years after graduation', dtick: 1, automargin: true, range: [-0.3, 15.3] },
+        yaxis: { title: 'Share of alumni', ticksuffix: '%', automargin: true, rangemode: 'tozero' },
+        legend: { orientation: 'h', y: 1.18, x: 0, itemwidth: 30 },
+      }, plotConfig).then(plot => bindLegendGroupToggles(plot));
     }
 
     function careerStep(employer, role, fallback = 'Not enough detail') {
