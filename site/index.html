@@ -2121,8 +2121,8 @@
         include_school_employers: advanced.schoolEmployer === 'true',
         compare_mode: advanced.selectionMode === 'compare' || advanced.selectionMode === 'major_compare',
         compare_dimension: advanced.selectionMode === 'major_compare' ? 'major' : 'school',
-        active_tab: advanced.selectionMode === 'compare' || advanced.selectionMode === 'major_compare' ? state.tab : 'all',
-        view_mode: advanced.selectionMode === 'compare' || advanced.selectionMode === 'major_compare' ? state.viewMode : 'all',
+        active_tab: 'all',
+        view_mode: 'all',
         selected_employer: state.selectedEmployer,
         selected_employer_role: state.selectedEmployerRole,
         selected_postgrad_degree: state.selectedPostgradDegree,
@@ -3546,25 +3546,21 @@
           metric('Majors', num(rows.length), 4),
           metric('Alumni', num(o.alumni), 4),
           metric('Weighted Median Salary', money(o.median_salary), 4),
-          card('Student Demand vs Career Pay', 'major-demand-pay', 7, true, { topControl: true }),
-          card('Major Share Over Time', 'compare-alumni-trend', 5, true, { topControl: true }),
-          card('Major Comparison Table', 'compare-table', 12),
+          card('Major Share Over Time', 'compare-alumni-trend', 12, true, { topControl: true }),
+          card(`Salary Trend by Major (${salaryHorizon})`, 'compare-salary-trend', 12, true, { topControl: true }),
         ].join('');
-        drawMajorDemandPay('major-demand-pay');
         drawCompareAlumniTrend('compare-alumni-trend');
-        drawMajorCompareTable('compare-table');
+        drawCompareSalaryTrend('compare-salary-trend');
       } else {
         $('content').innerHTML = [
           metric('Majors', num(rows.length), 4),
           metric('Alumni', num(o.alumni), 4),
           metric('Weighted Median Salary', money(o.median_salary), 4),
-          card('Salary vs Later Education', 'major-compare-scatter', 6, true),
-          card('Student Demand vs Career Pay', 'major-demand-pay', 6, true, { topControl: true }),
-          card('Major Comparison Table', 'compare-table', 12),
+          card('Major Share of Class', 'compare-alumni', 6, true, { topControl: true }),
+          card(`Median Salary by Major (${salaryHorizon})`, 'compare-salary', 6, true, { topControl: true }),
         ].join('');
-        drawMajorCompareOutcomeScatter('major-compare-scatter');
-        drawMajorDemandPay('major-demand-pay');
-        drawMajorCompareTable('compare-table');
+        drawMajorCompareAlumni('compare-alumni');
+        drawMajorCompareSalary('compare-salary');
       }
     }
 
@@ -6056,7 +6052,8 @@
         applyDefaultViewForTab(state.tab);
         syncViewToggle();
         if (state.selectionMode === 'compare' || state.selectionMode === 'major_compare') {
-          refresh({ resetDrill: true });
+          render();
+          queuePlotResize();
           return;
         }
         render();
@@ -6069,7 +6066,8 @@
         storage.setItem('outcomes.viewMode', state.viewMode);
         syncViewToggle();
         if (state.selectionMode === 'compare' || state.selectionMode === 'major_compare') {
-          refresh({ resetDrill: true });
+          render();
+          queuePlotResize();
           return;
         }
         render();

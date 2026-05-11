@@ -4339,7 +4339,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                 },
             }
 
-            if tab in {"all", "full"}:
+            if tab in {"all", "full"} and not filters.compare_mode:
                 result.update(
                     {
                         "overview": _overview(con),
@@ -4372,6 +4372,21 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                 result["overview"] = _overview(con)
                 if filters.compare_dimension == "major":
                     result["major_comparison"] = _major_comparison(con, filters)
+                    if tab in {"all", "full"}:
+                        result["current_student_trend_by_major"] = _current_student_trend_by_major(con, filters)
+                        result["alumni_trend_by_major"] = _alumni_trend_by_major(con, filters)
+                        result["salary_trend_by_major"] = _salary_trend_by_major(con, filters)
+                        result["salary_distribution"] = _salary_distribution(con)
+                        result["salary_distributions_by_entity"] = _salary_distribution_by_entity(con, filters)
+                        result["major_employer_comparison"] = _major_employer_comparison(con, filters)
+                        result["major_geography_comparison"] = _major_geography_comparison(con, filters)
+                        result["major_role_comparison"] = _major_role_comparison(con, filters)
+                        result["major_demographic_comparison"] = _major_demographic_comparison(con, filters)
+                        result["major_postgrad_comparison"] = _major_postgrad_comparison(con, filters)
+                        result["major_concentration"] = _major_concentration(con, filters)
+                        result["career"] = _career(con, filters)
+                        result["coverage"] = _coverage(con, filters)
+                        return result
                     if tab == "overview":
                         result["current_student_trend_by_major"] = _current_student_trend_by_major(con, filters)
                     if view_mode == "overtime" and tab == "overview":
@@ -4393,6 +4408,19 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                         result["major_postgrad_comparison"] = _major_postgrad_comparison(con, filters)
                 else:
                     result["school_comparison"] = _school_comparison(con)
+                    if tab in {"all", "full"}:
+                        result["alumni_trend_by_school"] = _alumni_trend_by_school(con, filters)
+                        result["salary_trend_by_school"] = _salary_trend_by_school(con, filters)
+                        result["salary_distribution"] = _salary_distribution(con)
+                        result["salary_distributions_by_entity"] = _salary_distribution_by_entity(con, filters)
+                        result["school_employer_comparison"] = _school_employer_comparison(con, filters)
+                        result["school_geography_comparison"] = _school_geography_comparison(con, filters)
+                        result["school_role_comparison"] = _school_role_comparison(con, filters)
+                        result["school_demographic_comparison"] = _school_demographic_comparison(con, filters)
+                        result["school_postgrad_comparison"] = _school_postgrad_comparison(con, filters)
+                        result["career"] = _career(con, filters)
+                        result["coverage"] = _coverage(con, filters)
+                        return result
                     if view_mode == "overtime" and tab == "overview":
                         result["alumni_trend_by_school"] = _alumni_trend_by_school(con, filters)
                     if view_mode == "overtime" and tab == "earnings":
