@@ -513,6 +513,14 @@
       line-height: 1.12;
     }
 
+    .career-model-subtitle {
+      margin-top: -2px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 850;
+      line-height: 1.2;
+    }
+
     .career-model-path {
       display: grid;
       gap: 8px;
@@ -3901,7 +3909,7 @@
         metric(`Recent internship rate${internshipWindow}`, pct(internshipSummary.internship_rate_pct), 3),
         metric('Avg employers by 5 yrs', mobility.avg_employers_5yr ?? '—', 3),
         metric('First employer retention 5 yrs', pct(mobility.first_employer_retention_5yr_pct), 3),
-        metric('Career models', num((career.archetypes || []).length), 3),
+        metric('Superstar paths', num((career.superstars || []).length), 3),
       ];
       if (state.viewMode === 'overtime') {
         $('content').innerHTML = [
@@ -3932,7 +3940,7 @@
             card('Recent Top Internship Companies by Comparison', 'career-internship-employers', 7, true, { topControl: true }),
           ] : []),
           card('Employer Pay and Progression', 'career-employer-tenure', 6, true, { topControl: true }),
-          card('Career Path Examples', 'career-models', 6, false, { topControl: true, export: false }),
+          card('Superstar Alumni Paths', 'career-superstars', 6, false, { topControl: true, export: false }),
           ...(comparing ? [] : [card('Internships That Became Jobs', 'career-internships', 12, false, { topControl: true, export: false })]),
         ].join('');
         if (comparing) {
@@ -3940,7 +3948,7 @@
           drawCareerInternshipEmployers('career-internship-employers');
         }
         drawCareerEmployerTenure('career-employer-tenure');
-        drawCareerModels('career-models');
+        drawCareerSuperstars('career-superstars');
         if (!comparing) drawCareerInternships('career-internships');
       }
     }
@@ -4194,6 +4202,53 @@
                 <div><strong>${num(row.n_alumni)}</strong><span>Alumni</span></div>
                 <div><strong>${money(row.avg_salary_5yr)}</strong><span>5-yr pay</span></div>
                 <div><strong>${row.avg_seniority_10yr ?? '—'}</strong><span>10-yr seniority</span></div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    function careerStageFromScore(value) {
+      const score = Number(value);
+      if (!Number.isFinite(score)) return '—';
+      if (score < 2) return 'Entry';
+      if (score < 4) return 'Associate';
+      if (score < 6) return 'Mid';
+      return 'Senior';
+    }
+
+    function superstarReason(row) {
+      const salary = Number(row.salary_10yr || row.salary_5yr || row.salary_1yr || 0);
+      const seniority = Number(row.seniority_10yr || row.seniority_5yr || row.seniority_1yr || 0);
+      const growth = row.salary_1yr && (row.salary_10yr || row.salary_5yr)
+        ? Number(row.salary_10yr || row.salary_5yr) / Math.max(1, Number(row.salary_1yr))
+        : 0;
+      if (salary >= 300000 && seniority >= 6) return 'High pay + senior role';
+      if (growth >= 1.8) return 'Fast earnings growth';
+      if (seniority >= 6) return 'Senior leadership path';
+      if (salary >= 220000) return 'High-earning path';
+      return 'Superstar outcome';
+    }
+
+    function drawCareerSuperstars(id) {
+      const rows = (state.data.career?.superstars || []).slice(0, topNFor(id));
+      if (!rows.length) return drawCareerModels(id);
+      $(id).innerHTML = `
+        <div class="career-model-grid">
+          ${rows.map((row, idx) => `
+            <div class="career-model-card">
+              <h4>Anonymous superstar ${idx + 1}</h4>
+              <div class="career-model-subtitle">${escapeHtml([row.major_title, row.grad_year ? `Class of ${row.grad_year}` : ''].filter(Boolean).join(' · '))}</div>
+              <div class="career-model-path">
+                <div class="career-model-step"><span>1 year</span>${escapeHtml(careerStep(row.employer_1yr, row.role_1yr))}</div>
+                <div class="career-model-step"><span>5 years</span>${escapeHtml(careerStep(row.employer_5yr, row.role_5yr))}</div>
+                <div class="career-model-step"><span>10 years</span>${escapeHtml(careerStep(row.employer_10yr, row.role_10yr))}</div>
+              </div>
+              <div class="career-model-stats">
+                <div><strong>${money(row.salary_10yr || row.salary_5yr || row.salary_1yr)}</strong><span>Peak pay</span></div>
+                <div><strong>${careerStageFromScore(row.seniority_10yr || row.seniority_5yr || row.seniority_1yr)}</strong><span>Stage</span></div>
+                <div><strong>${escapeHtml(superstarReason(row))}</strong><span>Signal</span></div>
               </div>
             </div>
           `).join('')}

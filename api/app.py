@@ -4579,11 +4579,136 @@ def _career_mobility(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> d
     )
 
 
+def _career_superstars(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    if filters.compare_mode:
+        return []
+    source = _base_source_for_filters(filters)
+    if not source:
+        return []
+    limit = _safe_limit(filters.top_n)
+    where_sql, params = _where(filters, include_horizon=False, include_postgrad=True)
+    same_school_filter = _same_school_employer_filter(filters)
+    return _records_from_query(
+        con,
+        f"""
+        WITH filtered AS (
+          SELECT
+            person_key,
+            school_name,
+            degree,
+            major_title,
+            grad_year,
+            horizon_years,
+            employer,
+            role_k50_v3,
+            role_k150_v3,
+            industry_k50,
+            salary,
+            seniority,
+            final_weight
+          FROM read_parquet(?)
+          {where_sql}
+            {"AND" if where_sql else "WHERE"} person_key IS NOT NULL
+            AND horizon_years IN (1, 5, 10)
+            AND COALESCE(internship_flag, 0) = 0
+            AND COALESCE(career_employer_flag, 1) = 1
+            AND COALESCE(unknown_employer_flag, 0) = 0
+            AND employer IS NOT NULL
+            AND TRIM(employer) <> ''
+            AND LOWER(COALESCE(employer, '')) <> 'unknown'
+            {same_school_filter}
+        ),
+        ranked AS (
+          SELECT
+            *,
+            ROW_NUMBER() OVER (
+              PARTITION BY person_key, horizon_years
+              ORDER BY salary DESC NULLS LAST, seniority DESC NULLS LAST, final_weight DESC NULLS LAST
+            ) AS row_rank
+          FROM filtered
+        ),
+        best_year AS (
+          SELECT * FROM ranked WHERE row_rank = 1
+        ),
+        paths AS (
+          SELECT
+            person_key,
+            ANY_VALUE(school_name) AS school_name,
+            ANY_VALUE(degree) AS degree,
+            ANY_VALUE(major_title) AS major_title,
+            MIN(grad_year) AS grad_year,
+            MAX(CASE WHEN horizon_years = 1 THEN employer END) AS employer_1yr,
+            MAX(CASE WHEN horizon_years = 1 THEN COALESCE(role_k150_v3, role_k50_v3) END) AS role_1yr,
+            MAX(CASE WHEN horizon_years = 1 THEN industry_k50 END) AS industry_1yr,
+            MAX(CASE WHEN horizon_years = 1 THEN salary END) AS salary_1yr,
+            MAX(CASE WHEN horizon_years = 1 THEN seniority END) AS seniority_1yr,
+            MAX(CASE WHEN horizon_years = 5 THEN employer END) AS employer_5yr,
+            MAX(CASE WHEN horizon_years = 5 THEN COALESCE(role_k150_v3, role_k50_v3) END) AS role_5yr,
+            MAX(CASE WHEN horizon_years = 5 THEN industry_k50 END) AS industry_5yr,
+            MAX(CASE WHEN horizon_years = 5 THEN salary END) AS salary_5yr,
+            MAX(CASE WHEN horizon_years = 5 THEN seniority END) AS seniority_5yr,
+            MAX(CASE WHEN horizon_years = 10 THEN employer END) AS employer_10yr,
+            MAX(CASE WHEN horizon_years = 10 THEN COALESCE(role_k150_v3, role_k50_v3) END) AS role_10yr,
+            MAX(CASE WHEN horizon_years = 10 THEN industry_k50 END) AS industry_10yr,
+            MAX(CASE WHEN horizon_years = 10 THEN salary END) AS salary_10yr,
+            MAX(CASE WHEN horizon_years = 10 THEN seniority END) AS seniority_10yr,
+            MAX(final_weight) AS profile_weight
+          FROM best_year
+          GROUP BY person_key
+        ),
+        scored AS (
+          SELECT
+            *,
+            COALESCE(salary_10yr, salary_5yr, salary_1yr, 0) / 10000.0
+              + COALESCE(seniority_10yr, seniority_5yr, seniority_1yr, 0) * 9.0
+              + CASE WHEN salary_10yr >= 300000 OR salary_5yr >= 220000 THEN 18 ELSE 0 END
+              + CASE WHEN COALESCE(seniority_10yr, seniority_5yr, 0) >= 6 THEN 18 ELSE 0 END
+              + CASE WHEN salary_1yr IS NOT NULL AND COALESCE(salary_10yr, salary_5yr) IS NOT NULL
+                       AND COALESCE(salary_10yr, salary_5yr) >= salary_1yr * 1.8
+                     THEN 12 ELSE 0 END
+              AS standout_score
+          FROM paths
+          WHERE COALESCE(employer_10yr, employer_5yr, employer_1yr) IS NOT NULL
+            AND (
+              COALESCE(salary_10yr, salary_5yr, salary_1yr, 0) >= 140000
+              OR COALESCE(seniority_10yr, seniority_5yr, seniority_1yr, 0) >= 5
+            )
+        )
+        SELECT
+          school_name,
+          degree,
+          major_title,
+          grad_year,
+          employer_1yr,
+          role_1yr,
+          industry_1yr,
+          ROUND(salary_1yr) AS salary_1yr,
+          ROUND(seniority_1yr, 1) AS seniority_1yr,
+          employer_5yr,
+          role_5yr,
+          industry_5yr,
+          ROUND(salary_5yr) AS salary_5yr,
+          ROUND(seniority_5yr, 1) AS seniority_5yr,
+          employer_10yr,
+          role_10yr,
+          industry_10yr,
+          ROUND(salary_10yr) AS salary_10yr,
+          ROUND(seniority_10yr, 1) AS seniority_10yr,
+          ROUND(standout_score, 1) AS standout_score
+        FROM scored
+        ORDER BY standout_score DESC NULLS LAST, COALESCE(salary_10yr, salary_5yr, salary_1yr) DESC NULLS LAST
+        LIMIT {limit}
+        """,
+        [source, *params],
+    )
+
+
 def _career(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
     include_employer_share = not filters.compare_mode and filters.view_mode in {"overtime", "all"}
     return {
         "earnings": _career_earnings(con, filters),
         "archetypes": _career_archetypes(con, filters),
+        "superstars": _career_superstars(con, filters),
         "internships": _career_internships(con, filters),
         "seniority": _career_seniority(con, filters),
         "average_seniority": _career_average_seniority(con, filters),
