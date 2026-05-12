@@ -4280,7 +4280,7 @@
         $('content').innerHTML = [
           ...metrics,
           card('Earnings Over the First 15 Years', 'career-earnings', 6, true),
-          card(comparing ? 'Average Seniority by Years Since Graduation' : 'Career Stage by Years Since Graduation', 'career-seniority', 6, true),
+          card(comparing ? 'Average Career Stage by Years Since Graduation' : 'Career Stage by Years Since Graduation', 'career-seniority', 6, true),
           ...(comparing ? [] : [
             card('Employer Share by Years After Graduation', 'career-employer-share', 12, true, { topControl: true }),
           ]),
@@ -4387,16 +4387,28 @@
       const rows = state.data.career?.seniority || [];
       if (!rows.length) return noData(id);
       const years = [...new Set(rows.map(row => row.years_since_grad))].sort((a, b) => a - b);
-      const bands = [...new Set(rows.map(row => row.seniority_band))];
+      const stageOrder = label => ({
+        'Entry level': 1,
+        'Associate level': 2,
+        'Mid level': 3,
+        'Senior level': 4,
+      }[label] || 9);
+      const careerStageLabel = label => ({
+        'Entry level': 'Entry',
+        'Associate level': 'Associate',
+        'Mid level': 'Management',
+        'Senior level': 'Senior Leadership',
+      }[label] || label || 'Other');
+      const bands = [...new Set(rows.map(row => row.seniority_band))].sort((a, b) => stageOrder(a) - stageOrder(b));
       const traces = bands.map((band, i) => {
         const byYear = new Map(rows.filter(row => row.seniority_band === band).map(row => [row.years_since_grad, row]));
         return {
           type: 'bar',
-          name: band,
+          name: careerStageLabel(band),
           x: years,
           y: years.map(year => Number(byYear.get(year)?.share_pct || 0)),
           marker: { color: COLORS[i % COLORS.length] },
-          customdata: years.map(year => [band, byYear.get(year)?.n_alumni || 0, byYear.get(year)?.mean_salary || null]),
+          customdata: years.map(year => [careerStageLabel(band), byYear.get(year)?.n_alumni || 0, byYear.get(year)?.mean_salary || null]),
           hovertemplate: '%{customdata[0]}<br>%{x} years after graduation<br>%{y:.1f}%<br>%{customdata[1]:,.0f} alumni<extra></extra>',
         };
       });
@@ -4419,8 +4431,8 @@
         if (!Number.isFinite(score)) return '';
         if (score < 1.5) return 'Entry';
         if (score < 2.5) return 'Associate';
-        if (score < 3.5) return 'Mid';
-        return 'Senior';
+        if (score < 3.5) return 'Management';
+        return 'Senior Leadership';
       };
       const traces = seriesNames.map((series, i) => {
         const slice = rows
@@ -4451,7 +4463,7 @@
           title: 'Average career stage',
           tickmode: 'array',
           tickvals: [1, 2, 3, 4],
-          ticktext: ['Entry', 'Associate', 'Mid', 'Senior'],
+          ticktext: ['Entry', 'Associate', 'Management', 'Senior Leadership'],
           automargin: true,
           range: [0.65, 4.35],
         },
@@ -4484,10 +4496,10 @@
           colorscale: [[0, THEME.bg], [0.55, COLORS[0]], [1, THEME.navy]],
           line: { color: '#fff', width: 1 },
           showscale: true,
-          colorbar: { title: 'Seniority', thickness: 10 },
+          colorbar: { title: 'Career stage', thickness: 10 },
         },
         customdata: rows.map(row => [row.employer, row.n_starters, row.senior_plus_5yr_pct]),
-        hovertemplate: '%{customdata[0]}<br>5-yr retention %{x:.1f}%<br>5-yr pay %{y:$,.0f}<br>%{customdata[1]:,.0f} starters<br>Senior+ %{customdata[2]:.1f}%<extra></extra>',
+        hovertemplate: '%{customdata[0]}<br>5-yr retention %{x:.1f}%<br>5-yr pay %{y:$,.0f}<br>%{customdata[1]:,.0f} starters<br>Leadership share %{customdata[2]:.1f}%<extra></extra>',
       }], {
         ...layoutBase,
         xaxis: { title: 'Still at first employer after 5 years', ticksuffix: '%', automargin: true, rangemode: 'tozero' },
@@ -4568,7 +4580,7 @@
               <div class="career-model-stats">
                 <div><strong>${num(row.n_alumni)}</strong><span>Alumni</span></div>
                 <div><strong>${money(row.avg_salary_5yr)}</strong><span>5-yr pay</span></div>
-                <div><strong>${row.avg_seniority_10yr ?? '—'}</strong><span>10-yr seniority</span></div>
+                <div><strong>${row.avg_seniority_10yr ?? '—'}</strong><span>10-yr stage</span></div>
               </div>
             </div>
           `).join('')}
@@ -4581,8 +4593,8 @@
       if (!Number.isFinite(score)) return '—';
       if (score < 2) return 'Entry';
       if (score < 4) return 'Associate';
-      if (score < 6) return 'Mid';
-      return 'Senior';
+      if (score < 6) return 'Management';
+      return 'Senior Leadership';
     }
 
     function superstarReason(row) {
@@ -4591,7 +4603,7 @@
       const growth = row.salary_1yr && (row.salary_10yr || row.salary_5yr)
         ? Number(row.salary_10yr || row.salary_5yr) / Math.max(1, Number(row.salary_1yr))
         : 0;
-      if (salary >= 300000 && seniority >= 6) return 'High pay + senior role';
+      if (salary >= 300000 && seniority >= 6) return 'High pay + leadership role';
       if (growth >= 1.8) return 'Fast earnings growth';
       if (seniority >= 6) return 'Senior leadership path';
       if (salary >= 220000) return 'High-earning path';
