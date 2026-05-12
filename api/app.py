@@ -4987,6 +4987,14 @@ def frontend_favicon() -> FileResponse:
     return FileResponse(favicon_path, media_type="image/svg+xml")
 
 
+@app.get("/revelio-logo.svg", include_in_schema=False)
+def frontend_revelio_logo() -> FileResponse:
+    logo_path = STATIC_ROOT / "revelio-logo.svg"
+    if not logo_path.exists():
+        raise HTTPException(status_code=404, detail="Revelio logo not installed")
+    return FileResponse(logo_path, media_type="image/svg+xml")
+
+
 @app.get("/config.js", include_in_schema=False)
 def frontend_config() -> Response:
     # Same-origin hosting avoids CORS and keeps data access behind the API password.
