@@ -3444,6 +3444,7 @@
 
     function treemapPayDomain(nodes) {
       const salaryValues = (nodes || [])
+        .filter(row => !row.isOther)
         .map(row => row.median_salary)
         .filter(value => value !== null && value !== undefined && Number.isFinite(Number(value)))
         .map(Number);
@@ -3477,13 +3478,28 @@
         }
       });
       const limit = topNFor(chartId);
-      return [...groups.values()]
+      const ranked = [...groups.values()]
         .map(row => ({
           ...row,
           median_salary: row.salaryWeight > 0 ? row.salarySum / row.salaryWeight : null,
         }))
-        .sort((a, b) => b.value - a.value)
-        .slice(0, limit);
+        .sort((a, b) => b.value - a.value);
+      const visible = ranked.slice(0, limit);
+      const hidden = ranked.slice(limit);
+      const hiddenValue = hidden.reduce((sum, row) => sum + Number(row.value || 0), 0);
+      if (hidden.length && hiddenValue > 0) {
+        visible.push({
+          label: 'Other',
+          value: hiddenValue,
+          salaryWeight: 0,
+          salarySum: 0,
+          median_salary: null,
+          drillable: false,
+          isOther: true,
+          hiddenCount: hidden.length,
+        });
+      }
+      return visible;
     }
 
     function ensureVisibleHierarchyPath(rows, levels, path, chartId = null) {
@@ -6163,13 +6179,15 @@
         values: nodes.map(row => row.value),
         textinfo: 'label',
         marker: {
-          colors: nodes.map(row => payColor(Number(row.median_salary), domain)),
+          colors: nodes.map(row => row.isOther ? '#B9C4D3' : payColor(Number(row.median_salary), domain)),
           line: { width: 1.25, color: '#ffffff' },
         },
         customdata: nodes.map(row => [
           rootTotal ? (row.value / rootTotal) * 100 : null,
           parentTotal ? (row.value / parentTotal) * 100 : null,
-          row.median_salary === null || row.median_salary === undefined ? 'Mean pay unavailable' : `Mean pay: ${money(row.median_salary)}`,
+          row.isOther
+            ? `${num(row.hiddenCount)} smaller categories`
+            : (row.median_salary === null || row.median_salary === undefined ? 'Mean pay unavailable' : `Mean pay: ${money(row.median_salary)}`),
           row.drillable ? 'Click to drill' : '',
         ]),
         hovertemplate: '<b>%{label}</b><br>%{value:,.0f} alumni<br>%{customdata[0]:.1f}% of total<br>%{customdata[2]}<extra></extra>',
