@@ -3927,7 +3927,7 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
         return degree_type
 
     def show_program_detail(degree_type: str | None) -> bool:
-        return degree_type in {"Masters", "PhD", "Doctorate", "Research Doctorate", "Other Doctorate"}
+        return degree_type in {"Masters", "PhD", "Research Doctorate"}
 
     flows = _records_from_query(
         con,
@@ -3969,14 +3969,22 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
         schools = _records_from_query(
             con,
             f"""
+            WITH degree_slice AS (
+              SELECT later_school, profile_weight
+              FROM cohort_slice
+              WHERE later_degree_type IN ({placeholders})
+                {school_filter_sql}
+            ),
+            denom AS (
+              SELECT SUM(profile_weight) AS total_n FROM degree_slice
+            )
             SELECT
               later_school AS label,
-              ROUND(SUM(profile_weight), 2) AS n
-            FROM cohort_slice
-            WHERE later_degree_type IN ({placeholders})
-              AND later_school IS NOT NULL
+              ROUND(SUM(profile_weight)) AS n,
+              ROUND(100.0 * SUM(profile_weight) / NULLIF((SELECT total_n FROM denom), 0), 1) AS share_pct
+            FROM degree_slice
+            WHERE later_school IS NOT NULL
               AND later_school <> ''
-              {school_filter_sql}
             GROUP BY later_school
             HAVING SUM(profile_weight) > ?
             ORDER BY SUM(profile_weight) DESC
@@ -3984,29 +3992,38 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
             """,
             [*selected_values, *school_filter_params, MIN_CELL_WEIGHT],
         )
-        program_filter_sql = ""
-        program_filter_params: list[Any] = []
-        if filters.selected_postgrad_school:
-            program_filter_sql = "AND later_school = ?"
-            program_filter_params.append(filters.selected_postgrad_school)
-        programs = _records_from_query(
-            con,
-            f"""
-            SELECT
-              later_program AS label,
-              ROUND(SUM(profile_weight), 2) AS n
-            FROM cohort_slice
-            WHERE later_degree_type IN ({placeholders})
-              AND later_program IS NOT NULL
-              AND later_program <> ''
-              {program_filter_sql}
-            GROUP BY later_program
-            HAVING SUM(profile_weight) > ?
-            ORDER BY SUM(profile_weight) DESC
-            LIMIT {limit}
-            """,
-            [*selected_values, *program_filter_params, MIN_CELL_WEIGHT],
-        )
+        if show_program_detail(selected):
+            program_filter_sql = ""
+            program_filter_params: list[Any] = []
+            if filters.selected_postgrad_school:
+                program_filter_sql = "AND later_school = ?"
+                program_filter_params.append(filters.selected_postgrad_school)
+            programs = _records_from_query(
+                con,
+                f"""
+                WITH degree_slice AS (
+                  SELECT later_program, profile_weight
+                  FROM cohort_slice
+                  WHERE later_degree_type IN ({placeholders})
+                    {program_filter_sql}
+                ),
+                denom AS (
+                  SELECT SUM(profile_weight) AS total_n FROM degree_slice
+                )
+                SELECT
+                  later_program AS label,
+                  ROUND(SUM(profile_weight)) AS n,
+                  ROUND(100.0 * SUM(profile_weight) / NULLIF((SELECT total_n FROM denom), 0), 1) AS share_pct
+                FROM degree_slice
+                WHERE later_program IS NOT NULL
+                  AND later_program <> ''
+                GROUP BY later_program
+                HAVING SUM(profile_weight) > ?
+                ORDER BY SUM(profile_weight) DESC
+                LIMIT {limit}
+                """,
+                [*selected_values, *program_filter_params, MIN_CELL_WEIGHT],
+            )
     return {
         "flows": flows,
         "selected_degree": selected,

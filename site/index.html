@@ -1073,6 +1073,10 @@
       gap: 18px;
     }
 
+    .detail-grid.single {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
     .detail-panel {
       border: 1px solid var(--line);
       border-radius: 20px;
@@ -2905,20 +2909,24 @@
           </div>
         `;
       }
-      const maxValue = Math.max(1, ...cleanRows.map(row => Number(row.n || 0)));
+      const useShare = cleanRows.some(row => row.share_pct !== null && row.share_pct !== undefined);
+      const barValue = row => useShare ? Number(row.share_pct || 0) : Number(row.n || 0);
+      const maxValue = Math.max(1, ...cleanRows.map(row => barValue(row)));
       const rowHtml = cleanRows.map(row => {
-        const value = Number(row.n || 0);
+        const value = barValue(row);
         const width = Math.max(3, 100 * value / maxValue);
         const label = String(row.label || '');
         const active = activeLabel && label === activeLabel;
         const attr = clickAttr ? ` ${clickAttr}="${escapeHtml(label)}"` : '';
+        const valueLabel = useShare ? pct(row.share_pct) : people(row.n);
+        const titleText = useShare ? `${valueLabel} (${people(row.n)} alumni)` : `${people(row.n)} alumni`;
         return `
-          <button class="detail-row ${active ? 'active' : ''}" type="button"${attr}>
+          <button class="detail-row ${active ? 'active' : ''}" type="button"${attr} title="${escapeHtml(titleText)}">
             <span class="detail-row-label">
               <span title="${escapeHtml(label)}">${escapeHtml(label)}</span>
               <span class="detail-bar-track"><span class="detail-bar-fill" style="width:${width}%; background:${color};"></span></span>
             </span>
-            <span class="detail-row-value">${num(value)}</span>
+            <span class="detail-row-value">${valueLabel}</span>
           </button>
         `;
       }).join('');
@@ -2933,6 +2941,7 @@
     function renderPostgradDrilldownBody(detail, context) {
       const schools = detail?.schools || [];
       const programs = detail?.programs || [];
+      const showPrograms = Boolean(detail?.show_program_detail && programs.length);
       const schoolTitle = context.selectedProgram
         ? `Top schools for ${context.selectedProgram}`
         : `Top schools for ${context.degree}`;
@@ -2940,11 +2949,11 @@
         ? `Top programs at ${context.selectedSchool}`
         : `Top programs for ${context.degree}`;
       return `
-        <div class="detail-grid">
+        <div class="detail-grid ${showPrograms ? '' : 'single'}">
           ${drilldownBars(schoolTitle, schools, COLORS[0], 'data-drill-school', context.selectedSchool)}
-          ${drilldownBars(programTitle, programs, COLORS[1], 'data-drill-program', context.selectedProgram)}
+          ${showPrograms ? drilldownBars(programTitle, programs, COLORS[1], 'data-drill-program', context.selectedProgram) : ''}
         </div>
-        <div class="detail-hint">Click a school to narrow the program list, or click a program to see the schools behind it.</div>
+        <div class="detail-hint">${showPrograms ? 'Click a school to narrow the program list, or click a program to see the schools behind it.' : 'Shares are within the selected later-degree path.'}</div>
       `;
     }
 
@@ -5056,10 +5065,17 @@
         }
         $('content').innerHTML = cards.join('');
         drawPostgradFlows('postgrad-flow');
-        drawSimpleBars('postgrad-schools', state.data.postgrad?.schools || [], 'n', COLORS[0], {
+        const schoolRows = state.data.postgrad?.schools || [];
+        const schoolMetric = schoolRows.some(row => row.share_pct !== null && row.share_pct !== undefined) ? 'share_pct' : 'n';
+        const schoolHover = schoolMetric === 'share_pct'
+          ? '%{customdata[0]}<br>%{customdata[1]:.1f}%<br>%{customdata[2]:,.0f} alumni<extra></extra>'
+          : undefined;
+        drawSimpleBars('postgrad-schools', schoolRows, schoolMetric, COLORS[0], {
           compressed: true,
           noWrap: true,
           labelTransform: shortPostgradSchool,
+          valueFormatter: value => schoolMetric === 'share_pct' ? pct(value) : people(value),
+          hovertemplate: schoolHover,
           layoutOptions: { height: showPrograms ? 280 : undefined, leftMargin: showPrograms ? 240 : undefined, rightMargin: 92, yAutoMargin: false },
           activeLabel: selectedSchool,
           onClick: label => {
@@ -5068,18 +5084,27 @@
             refresh();
           },
         });
-        if (showPrograms) drawSimpleBars('postgrad-programs', state.data.postgrad?.programs || [], 'n', COLORS[1], {
-          compressed: true,
-          noWrap: true,
-          labelTransform: shortPostgradProgram,
-          layoutOptions: { height: 280, leftMargin: 240, rightMargin: 92, yAutoMargin: false },
-          activeLabel: selectedProgram,
-          onClick: label => {
-            state.selectedPostgradProgram = state.selectedPostgradProgram === label ? null : label;
-            state.selectedPostgradSchool = null;
-            refresh();
-          },
-        });
+        if (showPrograms) {
+          const programRows = state.data.postgrad?.programs || [];
+          const programMetric = programRows.some(row => row.share_pct !== null && row.share_pct !== undefined) ? 'share_pct' : 'n';
+          const programHover = programMetric === 'share_pct'
+            ? '%{customdata[0]}<br>%{customdata[1]:.1f}%<br>%{customdata[2]:,.0f} alumni<extra></extra>'
+            : undefined;
+          drawSimpleBars('postgrad-programs', programRows, programMetric, COLORS[1], {
+            compressed: true,
+            noWrap: true,
+            labelTransform: shortPostgradProgram,
+            valueFormatter: value => programMetric === 'share_pct' ? pct(value) : people(value),
+            hovertemplate: programHover,
+            layoutOptions: { height: 280, leftMargin: 240, rightMargin: 92, yAutoMargin: false },
+            activeLabel: selectedProgram,
+            onClick: label => {
+              state.selectedPostgradProgram = state.selectedPostgradProgram === label ? null : label;
+              state.selectedPostgradSchool = null;
+              refresh();
+            },
+          });
+        }
       } else {
         $('content').innerHTML = [
           card('Further Education Paths Over Time', 'postgrad-trend', 8, true, { topControl: true }),
@@ -6924,16 +6949,16 @@
         orientation: 'h',
         y: displayLabels.map(label => options.noWrap ? escapeHtml(label) : wrapAxisLabel(label, options.maxLabelChars)),
         x: xValues,
-        text: rawValues.map(value => num(value)),
+        text: cleanRows.map((row, index) => options.valueFormatter ? options.valueFormatter(rawValues[index], row) : num(rawValues[index])),
         textposition: 'outside',
         cliponaxis: false,
-        customdata: cleanRows.map((r, index) => [r.label, rawValues[index]]),
+        customdata: cleanRows.map((r, index) => [r.label, rawValues[index], wholePeople(r.n)]),
         marker: {
           color: options.activeLabel
             ? cleanRows.map(row => row.label === options.activeLabel ? '#f97316' : color)
             : color,
         },
-        hovertemplate: '%{customdata[0]}<br>%{customdata[1]:,.0f}<extra></extra>',
+        hovertemplate: options.hovertemplate || '%{customdata[0]}<br>%{customdata[1]:,.0f}<extra></extra>',
       }], { ...layout, xaxis }, plotConfig).then(plot => {
         if (!options.onClick) return;
         plot.on('plotly_click', event => {
