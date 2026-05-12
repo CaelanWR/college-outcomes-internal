@@ -723,24 +723,27 @@ def _append_where_clause(where_sql: str, params: list[Any], clause: str, values:
 def _internship_rate_where(filters: QueryRequest, dataset: str) -> tuple[str, list[Any], str]:
     """Internship capture is much stronger for recent cohorts.
 
-    If the user explicitly selects graduation years, honor that selection.
-    Otherwise, make internship-rate metrics recent-only while leaving other
-    career facts on their normal cohort basis.
+    Always limit internship-rate metrics to 2020+ cohorts. If the user selects
+    a year range, intersect that selection with the recent internship window
+    rather than falling back to older cohorts with weaker internship capture.
     """
     where_sql, params = _work_where(filters, postgrad_dataset=dataset)
-    if filters.grad_years:
-        years = sorted(int(year) for year in filters.grad_years)
-        if not years:
-            return where_sql, params, "selected years"
-        if len(years) == 1:
-            return where_sql, params, str(years[0])
-        return where_sql, params, f"{years[0]}-{years[-1]}"
     where_sql, params = _append_where_clause(
         where_sql,
         params,
         "grad_year BETWEEN ? AND ?",
         [INTERNSHIP_RATE_START_YEAR, INTERNSHIP_RATE_END_YEAR],
     )
+    if filters.grad_years:
+        years = sorted(
+            int(year)
+            for year in filters.grad_years
+            if INTERNSHIP_RATE_START_YEAR <= int(year) <= INTERNSHIP_RATE_END_YEAR
+        )
+        if len(years) == 1:
+            return where_sql, params, str(years[0])
+        if len(years) > 1:
+            return where_sql, params, f"{years[0]}-{years[-1]}"
     return where_sql, params, f"{INTERNSHIP_RATE_START_YEAR}-{INTERNSHIP_RATE_END_YEAR}"
 
 
