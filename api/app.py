@@ -4805,6 +4805,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                         result["current_student_trend_by_major"] = _current_student_trend_by_major(con, filters)
                     if view_mode == "overtime" and tab == "overview":
                         result["alumni_trend_by_major"] = _alumni_trend_by_major(con, filters)
+                        result["salary_trend_by_major"] = _salary_trend_by_major(con, filters)
                     if view_mode == "overtime" and tab == "earnings":
                         result["salary_trend_by_major"] = _salary_trend_by_major(con, filters)
                     if tab == "employers":
