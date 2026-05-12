@@ -6,32 +6,37 @@
   <title>College Outcomes Explorer</title>
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
   <link rel="shortcut icon" href="./favicon.svg" />
-  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800;900&family=Lora:ital,wght@0,400;0,600;1,400&family=Source+Sans+3:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="preconnect" href="https://cdn.plot.ly" />
   <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
   <style>
     :root {
-      --ink: #243b53;
-      --muted: #6b7c93;
-      --line: #dde6ef;
+      --ink: #2D426A;
+      --muted: #607090;
+      --label: #8fa0bc;
+      --line: #E2E8F2;
       --panel: #ffffff;
-      --panel-soft: #f7fafc;
-      --bg: #f3f7fb;
-      --blue: #2f80ed;
-      --blue-2: #2e74d7;
-      --green: #2bb673;
-      --gold: #f4b740;
-      --rose: #e55b7a;
-      --violet: #8b6fd6;
+      --panel-soft: #F6F8FB;
+      --bg: #F6F8FB;
+      --navy: #2D426A;
+      --navy-dark: #1e2f4f;
+      --navy-mid: #3d5585;
+      --blue: #48AFF4;
+      --blue-2: #6797E0;
+      --green: #48EB8F;
+      --green-dim: #2cc470;
+      --gold: #F9B26C;
+      --rose: #E76A87;
+      --violet: #B582D9;
       --tm-ink: #2D426A;
       --tm-muted: #899499;
       --tm-line: #E6EBF2;
-      --tm-low: #D9ECFB;
+      --tm-low: #F6F8FB;
       --tm-mid: #48AFF4;
       --tm-high: #2D426A;
       --tm-gray: #B9C4D3;
       --tm-shadow: 0 8px 24px rgba(45, 66, 106, 0.08);
-      --shadow: 0 10px 30px rgba(36, 59, 83, 0.08);
+      --shadow: 0 10px 30px rgba(45, 66, 106, 0.08);
       --radius: 22px;
     }
 
@@ -45,23 +50,23 @@
     body {
       margin: 0;
       color: var(--ink);
-      font-family: 'Source Sans 3', ui-sans-serif, system-ui, sans-serif;
-      background: radial-gradient(circle at top left, rgba(46,116,215,0.08), transparent 28%),
-        radial-gradient(circle at top right, rgba(33,166,117,0.08), transparent 24%),
-        linear-gradient(180deg, #f4f8fb 0%, #edf3f8 100%);
+      font-family: 'DM Sans', 'Source Sans 3', ui-sans-serif, system-ui, sans-serif;
+      background: radial-gradient(circle at top right, rgba(72,235,143,0.12), transparent 26%),
+        radial-gradient(circle at top left, rgba(45,66,106,0.07), transparent 28%),
+        linear-gradient(180deg, #F6F8FB 0%, #EEF4F9 100%);
       min-height: 100vh;
       overflow-x: hidden;
     }
 
     header {
       padding: 0 22px 16px;
-      border-bottom: 1px solid rgba(22,50,74,0.08);
+      border-bottom: 1px solid rgba(45,66,106,0.10);
       background: rgba(255,255,255,0.86);
       backdrop-filter: blur(18px);
       position: sticky;
       top: 0;
       z-index: 20;
-      box-shadow: 0 12px 32px rgba(20,44,65,0.08);
+      box-shadow: 0 12px 32px rgba(45,66,106,0.08);
     }
 
     .topline {
@@ -73,9 +78,10 @@
       padding: 22px 22px 20px;
       color: white;
       background:
-        radial-gradient(circle at 82% 18%, rgba(122, 195, 230, 0.28), transparent 26%),
-        linear-gradient(135deg, #112f47 0%, #245a7c 56%, #346f9a 100%);
-      box-shadow: inset 0 -1px 0 rgba(255,255,255,0.16);
+        radial-gradient(circle at 84% 16%, rgba(72,235,143,0.18), transparent 28%),
+        linear-gradient(135deg, var(--navy-dark) 0%, var(--navy) 62%, var(--navy-mid) 100%);
+      border-bottom: 3px solid var(--green);
+      box-shadow: inset 0 -1px 0 rgba(255,255,255,0.12);
     }
 
     h1 {
@@ -83,7 +89,8 @@
       font-size: clamp(24px, 2.2vw, 36px);
       letter-spacing: -0.02em;
       line-height: 1;
-      font-weight: 900;
+      font-family: 'Lora', serif;
+      font-weight: 600;
     }
 
     .status {
@@ -106,7 +113,7 @@
       box-shadow: 0 0 0 5px rgba(184, 198, 214, 0.18);
     }
 
-    .dot.ok { background: var(--green); box-shadow: 0 0 0 5px rgba(34, 160, 107, 0.16); }
+    .dot.ok { background: var(--green); box-shadow: 0 0 0 5px rgba(72, 235, 143, 0.18); }
     .dot.bad { background: var(--rose); box-shadow: 0 0 0 5px rgba(223, 77, 95, 0.16); }
 
     .connection, .filters {
@@ -162,9 +169,9 @@
     }
 
     .segmented .btn.active {
-      background: linear-gradient(135deg, #16324a 0%, #2e74d7 100%);
+      background: linear-gradient(135deg, var(--navy-dark) 0%, var(--navy) 100%);
       color: #fff;
-      box-shadow: 0 8px 18px rgba(22,50,74,0.16);
+      box-shadow: 0 8px 18px rgba(45,66,106,0.16), inset 0 -3px 0 rgba(72,235,143,0.42);
     }
 
     .refresh-state {
@@ -175,7 +182,7 @@
       display: none;
       padding: 10px 14px;
       border-radius: 999px;
-      background: #16324a;
+      background: var(--navy);
       color: #fff;
       font-weight: 900;
       box-shadow: 0 12px 28px rgba(20,44,65,0.18);
@@ -230,8 +237,8 @@
     }
 
     input:focus, select:focus {
-      border-color: rgba(39,76,119,0.28);
-      box-shadow: 0 8px 18px rgba(20,44,65,0.08), inset 0 1px 0 rgba(255,255,255,0.92);
+      border-color: rgba(72,235,143,0.52);
+      box-shadow: 0 8px 18px rgba(45,66,106,0.08), inset 0 1px 0 rgba(255,255,255,0.92);
     }
 
     .btn {
@@ -248,8 +255,8 @@
     }
 
     .btn:hover, select:hover, input:hover {
-      border-color: rgba(39,76,119,0.24);
-      box-shadow: 0 8px 18px rgba(20,44,65,0.08), inset 0 1px 0 rgba(255,255,255,0.92);
+      border-color: rgba(72,235,143,0.46);
+      box-shadow: 0 8px 18px rgba(45,66,106,0.08), inset 0 1px 0 rgba(255,255,255,0.92);
     }
 
     .btn.secondary {
@@ -260,10 +267,10 @@
     }
 
     .btn.active, #connect-btn {
-      background: linear-gradient(135deg, #16324a 0%, #2e74d7 100%);
+      background: linear-gradient(135deg, var(--navy-dark) 0%, var(--navy) 100%);
       color: white;
       border-color: transparent;
-      box-shadow: 0 10px 20px rgba(22,50,74,0.16);
+      box-shadow: 0 10px 22px rgba(45,66,106,0.18), inset 0 -3px 0 rgba(72,235,143,0.42);
     }
 
     .tabs {
@@ -295,8 +302,8 @@
     .tab.active {
       color: white;
       border-color: transparent;
-      background: linear-gradient(135deg, #16324a 0%, #2e74d7 100%);
-      box-shadow: none;
+      background: linear-gradient(135deg, var(--navy-dark) 0%, var(--navy) 100%);
+      box-shadow: inset 0 -3px 0 rgba(72,235,143,0.42);
     }
 
     .grid {
@@ -306,10 +313,10 @@
     }
 
     .card, .metric {
-      background: linear-gradient(180deg, rgba(255,255,255,0.99), rgba(248,251,253,0.96));
-      border: 1px solid rgba(22,50,74,0.08);
+      background: linear-gradient(180deg, rgba(255,255,255,0.99), rgba(246,248,251,0.97));
+      border: 1px solid var(--line);
       border-radius: var(--radius);
-      box-shadow: 0 16px 34px rgba(20,44,65,0.07);
+      box-shadow: 0 16px 34px rgba(45,66,106,0.07);
     }
 
     .metric {
@@ -326,10 +333,12 @@
       letter-spacing: -0.03em;
       line-height: 1;
       font-weight: 900;
+      font-family: 'Lora', serif;
+      color: var(--navy);
     }
 
     .metric span {
-      color: #6a7b91;
+      color: var(--label);
       font-size: 0.75rem;
       font-weight: 800;
       text-transform: uppercase;
@@ -499,11 +508,11 @@
     }
 
     .career-model-card {
-      border: 1px solid rgba(36,59,83,0.12);
+      border: 1px solid var(--line);
       border-radius: 20px;
-      background: linear-gradient(145deg, rgba(255,255,255,0.96), rgba(244,248,252,0.92));
+      background: linear-gradient(145deg, rgba(255,255,255,0.98), rgba(246,248,251,0.94));
       padding: 16px;
-      box-shadow: 0 14px 28px rgba(36,59,83,0.08);
+      box-shadow: 0 14px 28px rgba(45,66,106,0.08);
     }
 
     .career-model-card h4 {
@@ -528,7 +537,7 @@
     }
 
     .career-model-step {
-      border-left: 4px solid rgba(34,94,168,0.26);
+      border-left: 4px solid rgba(72,235,143,0.78);
       padding-left: 10px;
       color: var(--ink);
       line-height: 1.18;
@@ -553,7 +562,7 @@
 
     .career-model-stats div {
       border-radius: 14px;
-      background: rgba(34,94,168,0.07);
+      background: rgba(72,235,143,0.09);
       padding: 8px;
     }
 
@@ -585,14 +594,16 @@
 
     .internship-hero {
       border-radius: 24px;
-      background: linear-gradient(150deg, #243b53, #2f80ed);
+      background:
+        radial-gradient(circle at 82% 18%, rgba(72,235,143,0.18), transparent 30%),
+        linear-gradient(150deg, var(--navy-dark), var(--navy));
       color: white;
       padding: 22px;
       display: flex;
       flex-direction: column;
       justify-content: center;
       min-height: 220px;
-      box-shadow: 0 18px 34px rgba(36,59,83,0.18);
+      box-shadow: 0 18px 34px rgba(45,66,106,0.18);
     }
 
     .internship-hero strong {
@@ -652,7 +663,7 @@
     }
 
     .internship-list {
-      border: 1px solid rgba(36,59,83,0.10);
+      border: 1px solid var(--line);
       border-radius: 22px;
       padding: 16px;
       background: rgba(255,255,255,0.76);
@@ -672,7 +683,7 @@
       grid-template-columns: minmax(0, 1fr) auto;
       gap: 10px;
       padding: 9px 0;
-      border-bottom: 1px solid rgba(36,59,83,0.08);
+      border-bottom: 1px solid var(--line);
       align-items: center;
     }
 
@@ -803,10 +814,12 @@
     .hero {
       position: relative;
       overflow: hidden;
-      background: linear-gradient(135deg, #12344a 0%, #1e5677 58%, #3a7ca5 100%);
+      background:
+        radial-gradient(circle at 82% 16%, rgba(72,235,143,0.18), transparent 30%),
+        linear-gradient(135deg, var(--navy-dark) 0%, var(--navy) 62%, var(--navy-mid) 100%);
       color: white;
       padding: 44px 28px 30px;
-      border-bottom: 1px solid rgba(255,255,255,0.14);
+      border-bottom: 3px solid var(--green);
     }
 
     .hero h1 {
@@ -815,14 +828,28 @@
       font-size: clamp(2rem, 4vw, 3rem);
       letter-spacing: -0.03em;
       margin: 0;
+      font-family: 'Lora', serif;
+      font-weight: 600;
+    }
+
+    .hero h1::after {
+      content: 'Revelio Labs Internal';
+      display: block;
+      margin-top: 10px;
+      color: var(--green);
+      font-family: 'DM Sans', 'Source Sans 3', sans-serif;
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
     }
 
     .hero::after {
       content: '';
       position: absolute;
       inset: 0;
-      background: radial-gradient(circle at top right, rgba(255,255,255,0.22), transparent 32%),
-        radial-gradient(circle at bottom left, rgba(255,255,255,0.12), transparent 26%);
+      background: radial-gradient(circle at top right, rgba(72,235,143,0.15), transparent 32%),
+        radial-gradient(circle at bottom left, rgba(255,255,255,0.10), transparent 26%);
       pointer-events: none;
     }
 
@@ -833,11 +860,11 @@
       padding: 16px 22px;
       background: rgba(255,255,255,0.86);
       backdrop-filter: blur(18px);
-      border-bottom: 1px solid rgba(22,50,74,0.08);
+      border-bottom: 1px solid rgba(45,66,106,0.10);
       position: sticky;
       top: 0;
       z-index: 10;
-      box-shadow: 0 12px 32px rgba(20,44,65,0.08);
+      box-shadow: 0 12px 32px rgba(45,66,106,0.08);
       align-items: flex-start;
     }
 
@@ -982,7 +1009,7 @@
       margin-top: 14px;
       padding: 12px 14px;
       border-radius: 14px;
-      background: rgba(34,94,168,0.08);
+      background: rgba(72,235,143,0.09);
       color: #24445f;
       font-weight: 800;
     }
@@ -1003,10 +1030,10 @@
     }
 
     .card {
-      background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(247,250,252,0.94));
-      border: 1px solid rgba(22,50,74,0.08);
+      background: linear-gradient(180deg, rgba(255,255,255,0.99), rgba(246,248,251,0.96));
+      border: 1px solid var(--line);
       border-radius: 22px;
-      box-shadow: 0 12px 28px rgba(20,44,65,0.06);
+      box-shadow: 0 12px 28px rgba(45,66,106,0.06);
       padding: clamp(18px, 1.6vw, 24px);
       margin-bottom: 0;
       min-height: 0;
@@ -1015,8 +1042,8 @@
 
     .card:hover,
     .metric:hover {
-      border-color: rgba(34, 94, 168, 0.16);
-      box-shadow: 0 18px 38px rgba(20,44,65,0.08);
+      border-color: rgba(72,235,143,0.48);
+      box-shadow: 0 18px 38px rgba(45,66,106,0.08);
     }
 
     .card h3 {
@@ -1062,13 +1089,13 @@
       font-size: 0.82rem;
       font-weight: 900;
       line-height: 1;
-      box-shadow: 0 8px 18px rgba(20,44,65,0.05);
+      box-shadow: 0 8px 18px rgba(45,66,106,0.05);
     }
 
     .chart-info:hover {
-      color: #225ea8;
-      border-color: rgba(34,94,168,0.24);
-      background: rgba(34,94,168,0.08);
+      color: var(--navy);
+      border-color: rgba(72,235,143,0.46);
+      background: rgba(72,235,143,0.09);
     }
 
     .chart-top-control {
@@ -1099,7 +1126,7 @@
       background: rgba(255,255,255,0.84);
       color: var(--muted);
       padding: 4px 11px;
-      box-shadow: 0 8px 18px rgba(20,44,65,0.05);
+      box-shadow: 0 8px 18px rgba(45,66,106,0.05);
       cursor: pointer;
       font-size: 0.78rem;
       font-weight: 900;
@@ -1109,9 +1136,9 @@
     }
 
     .chart-download:hover {
-      color: #225ea8;
-      border-color: rgba(34,94,168,0.24);
-      background: rgba(34,94,168,0.08);
+      color: var(--navy);
+      border-color: rgba(72,235,143,0.46);
+      background: rgba(72,235,143,0.09);
     }
 
     .chart-download:disabled {
@@ -1132,10 +1159,10 @@
       display: grid;
       min-width: 142px;
       padding: 6px;
-      border: 1px solid rgba(34,94,168,0.16);
+      border: 1px solid var(--line);
       border-radius: 14px;
       background: rgba(255,255,255,0.98);
-      box-shadow: 0 18px 42px rgba(20,44,65,0.16);
+      box-shadow: 0 18px 42px rgba(45,66,106,0.16);
     }
 
     .save-options[hidden] {
@@ -1147,7 +1174,7 @@
       border: 0;
       border-radius: 10px;
       background: transparent;
-      color: #243b53;
+      color: var(--ink);
       cursor: pointer;
       padding: 8px 10px;
       text-align: left;
@@ -1157,8 +1184,8 @@
     }
 
     .save-options button:hover {
-      background: rgba(34,94,168,0.09);
-      color: #174a7c;
+      background: rgba(72,235,143,0.09);
+      color: var(--navy);
     }
 
     .export-actions {
@@ -1178,10 +1205,10 @@
       max-height: min(440px, calc(100vh - 44px));
       overflow: auto;
       padding: 16px;
-      border: 1px solid rgba(34,94,168,0.18);
+      border: 1px solid var(--line);
       border-radius: 22px;
       background: rgba(255,255,255,0.96);
-      box-shadow: 0 24px 60px rgba(20,44,65,0.22);
+      box-shadow: 0 24px 60px rgba(45,66,106,0.22);
       backdrop-filter: blur(18px);
     }
 
@@ -1230,7 +1257,7 @@
       align-items: center;
       gap: 8px;
       padding: 9px 10px;
-      border: 1px solid rgba(34,94,168,0.12);
+      border: 1px solid var(--line);
       border-radius: 14px;
       background: rgba(245,248,252,0.82);
     }
@@ -1238,7 +1265,7 @@
     .export-link-row span {
       min-width: 0;
       overflow: hidden;
-      color: #243b53;
+      color: var(--ink);
       font-size: 0.88rem;
       font-weight: 800;
       text-overflow: ellipsis;
@@ -1246,7 +1273,7 @@
     }
 
     .export-link-row a {
-      color: #225ea8;
+      color: var(--navy);
       font-size: 0.82rem;
       font-weight: 900;
       text-decoration: none;
@@ -1287,7 +1314,7 @@
     .compare-picker-clear {
       border: 0;
       background: transparent;
-      color: #225ea8;
+      color: var(--navy);
       cursor: pointer;
       font-size: 0.78rem;
       font-weight: 900;
@@ -1304,7 +1331,7 @@
     .compare-options,
     .compare-selected {
       min-width: 0;
-      border: 1px solid rgba(22,50,74,0.08);
+      border: 1px solid var(--line);
       border-radius: 12px;
       background: rgba(255,255,255,0.62);
     }
@@ -1343,9 +1370,9 @@
       align-items: center;
       gap: 7px;
       max-width: 100%;
-      border: 1px solid rgba(34,94,168,0.18);
+      border: 1px solid rgba(72,235,143,0.52);
       border-radius: 999px;
-      background: rgba(34,94,168,0.10);
+      background: rgba(72,235,143,0.12);
       color: var(--ink);
       padding: 6px 9px 6px 11px;
       font-size: 0.82rem;
@@ -1405,7 +1432,7 @@
       cursor: pointer;
     }
 
-    .compare-option:hover { background: rgba(34,94,168,0.07); }
+    .compare-option:hover { background: rgba(72,235,143,0.09); }
     .compare-option:disabled {
       cursor: not-allowed;
       color: #8aa0b8;
@@ -1414,16 +1441,16 @@
     }
 
     .compare-option.is-selected {
-      background: rgba(34,94,168,0.12);
-      color: #16324a;
+      background: rgba(72,235,143,0.14);
+      color: var(--navy);
     }
 
     .metric {
-      background: linear-gradient(180deg, #ffffff, #f5f9fd);
-      border: 1px solid rgba(22,50,74,0.08);
+      background: linear-gradient(180deg, #ffffff, #F6F8FB);
+      border: 1px solid var(--line);
       border-radius: 20px;
       padding: 18px;
-      box-shadow: 0 12px 24px rgba(20,44,65,0.05);
+      box-shadow: 0 12px 24px rgba(45,66,106,0.05);
       min-height: 108px;
       display: grid;
       align-content: center;
@@ -1434,15 +1461,17 @@
       font-size: clamp(1.45rem, 2.6vw, 2rem);
       font-weight: 800;
       letter-spacing: -0.03em;
+      font-family: 'Lora', serif;
+      color: var(--navy);
     }
 
     .metric.current-students {
-      border-color: rgba(34, 160, 107, 0.22);
-      background: linear-gradient(180deg, rgba(239, 252, 246, 0.98), rgba(224, 246, 236, 0.9));
+      border-color: rgba(72,235,143,0.48);
+      background: linear-gradient(180deg, rgba(246,255,250,0.98), rgba(232,252,241,0.92));
     }
 
     .metric.current-students strong {
-      color: #178056;
+      color: var(--green-dim);
     }
 
     .metric span {
@@ -1749,7 +1778,23 @@
 
   <script src="./config.js"></script>
   <script>
-    const COLORS = ['#225ea8', '#22a06b', '#f97316', '#7c5fd6', '#df4d5f', '#0891b2', '#a16207', '#475569'];
+    const COLORS = [
+      '#48AFF4', '#5DDA93', '#B582D9', '#F9B26C',
+      '#6797E0', '#E76A87', '#1CCEC5', '#F4D35D',
+      '#F391D4', '#9CA4B4', '#9AD3F9', '#8BDFB0'
+    ];
+    const THEME = {
+      navy: '#2D426A',
+      navyDark: '#1e2f4f',
+      navyMid: '#3d5585',
+      green: '#48EB8F',
+      greenDim: '#2cc470',
+      muted: '#607090',
+      label: '#8fa0bc',
+      border: '#E2E8F2',
+      grid: '#EAECF0',
+      bg: '#F6F8FB'
+    };
     const storage = window.localStorage;
     const state = {
       apiUrl: '',
@@ -1808,11 +1853,34 @@
     let exportTrayNote = '';
 
     const layoutBase = {
-      font: { family: '"Source Sans 3", ui-sans-serif, system-ui, sans-serif', color: '#243b53', size: 13 },
+      font: { family: '"Source Sans 3", "DM Sans", ui-sans-serif, system-ui, sans-serif', color: THEME.navy, size: 13 },
       paper_bgcolor: 'rgba(0,0,0,0)',
       plot_bgcolor: 'rgba(0,0,0,0)',
       margin: { l: 72, r: 28, t: 20, b: 62 },
-      hoverlabel: { bgcolor: '#102a43', bordercolor: '#102a43', font: { family: '"Source Sans 3", ui-sans-serif, system-ui, sans-serif', color: '#fff', size: 13 } },
+      xaxis: {
+        gridcolor: THEME.grid,
+        linecolor: THEME.border,
+        zerolinecolor: THEME.grid,
+        tickfont: { color: THEME.navy, size: 12 },
+        titlefont: { color: THEME.muted, size: 13 },
+      },
+      yaxis: {
+        gridcolor: THEME.grid,
+        linecolor: THEME.border,
+        zeroline: false,
+        tickfont: { color: THEME.navy, size: 12 },
+        titlefont: { color: THEME.muted, size: 13 },
+      },
+      legend: {
+        font: { color: THEME.navy, size: 12 },
+        bgcolor: 'rgba(0,0,0,0)',
+      },
+      colorway: COLORS,
+      hoverlabel: {
+        bgcolor: '#FFFFFF',
+        bordercolor: THEME.navy,
+        font: { family: '"Source Sans 3", "DM Sans", ui-sans-serif, system-ui, sans-serif', color: THEME.navy, size: 13 }
+      },
     };
     const plotConfig = { responsive: true, displayModeBar: false };
 
@@ -2862,7 +2930,7 @@
       const node = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       node.setAttribute('x', String(x));
       node.setAttribute('y', String(y));
-      node.setAttribute('fill', options.fill || '#243b53');
+      node.setAttribute('fill', options.fill || THEME.navy);
       node.setAttribute('font-size', String(options.size || 15));
       node.setAttribute('font-weight', String(options.weight || 700));
       node.textContent = text;
@@ -2912,7 +2980,7 @@
       style.textContent = `
         text { font-family: "Source Sans 3", Arial, sans-serif; }
         .xtick text, .ytick text, .ztick text, .legendtext, .gtitle, .annotation-text,
-        .bartext, .textpoint, .pielabel, .cbtitle, .colorbar text { fill: #243b53; }
+        .bartext, .textpoint, .pielabel, .cbtitle, .colorbar text { fill: #2D426A; }
         .slicetext { fill: #fff; font-weight: 800; }
       `;
       const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -2925,14 +2993,14 @@
       svg.appendChild(bg);
       if (header) {
         appendExportText(svg, trimExportText(header.title, 88), 28, 31, { size: 23, weight: 900 });
-        appendExportText(svg, trimExportText(header.school, 120), 28, 57, { size: 15, weight: 800, fill: '#40556e' });
-        if (header.detail) appendExportText(svg, trimExportText(header.detail, 130), 28, 77, { size: 13, weight: 700, fill: '#6b7c93' });
+        appendExportText(svg, trimExportText(header.school, 120), 28, 57, { size: 15, weight: 800, fill: THEME.navyMid });
+        if (header.detail) appendExportText(svg, trimExportText(header.detail, 130), 28, 77, { size: 13, weight: 700, fill: THEME.muted });
         const rule = document.createElementNS('http://www.w3.org/2000/svg', 'line');
         rule.setAttribute('x1', '28');
         rule.setAttribute('x2', String(width - 28));
         rule.setAttribute('y1', String(headerHeight - 8));
         rule.setAttribute('y2', String(headerHeight - 8));
-        rule.setAttribute('stroke', '#dde6ef');
+        rule.setAttribute('stroke', THEME.border);
         rule.setAttribute('stroke-width', '1');
         svg.appendChild(rule);
       }
@@ -3966,7 +4034,7 @@
           name: 'P75',
           x: slice.map(row => row.years_since_grad),
           y: slice.map(row => row.p75_salary),
-          line: { color: 'rgba(34, 94, 168, 0)', width: 0 },
+          line: { color: 'rgba(45, 66, 106, 0)', width: 0 },
           hoverinfo: 'skip',
           showlegend: false,
         });
@@ -3977,8 +4045,8 @@
           x: slice.map(row => row.years_since_grad),
           y: slice.map(row => row.p25_salary),
           fill: 'tonexty',
-          fillcolor: 'rgba(34, 94, 168, 0.16)',
-          line: { color: 'rgba(34, 94, 168, 0)', width: 0 },
+          fillcolor: 'rgba(72, 175, 244, 0.18)',
+          line: { color: 'rgba(45, 66, 106, 0)', width: 0 },
           hoverinfo: 'skip',
         });
         traces.push({
@@ -4114,7 +4182,7 @@
         marker: {
           size: rows.map(row => Math.max(14, Math.min(42, Math.sqrt(Number(row.n_starters || 0)) * 1.5))),
           color: rows.map(row => row.avg_seniority_5yr),
-          colorscale: [[0, '#d9ecfb'], [0.55, '#48aff4'], [1, '#2d426a']],
+          colorscale: [[0, THEME.bg], [0.55, COLORS[0]], [1, THEME.navy]],
           line: { color: '#fff', width: 1 },
           showscale: true,
           colorbar: { title: 'Seniority', thickness: 10 },
@@ -4315,7 +4383,7 @@
         text,
         texttemplate: '%{text}',
         textfont: { color: '#17314f', size: 12 },
-        colorscale: [[0, '#eef5fb'], [0.5, '#8cc4ef'], [1, '#2d5ea8']],
+        colorscale: [[0, THEME.bg], [0.5, '#9AD3F9'], [1, THEME.navy]],
         hoverongaps: false,
         customdata,
         hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>%{z:.1f}% of internship positions<br>%{customdata[2]:,.0f} positions<extra></extra>',
@@ -4522,7 +4590,7 @@
         }
         $('content').innerHTML = cards.join('');
         drawPostgradFlows('postgrad-flow');
-        drawSimpleBars('postgrad-schools', state.data.postgrad?.schools || [], 'n', '#225ea8', {
+        drawSimpleBars('postgrad-schools', state.data.postgrad?.schools || [], 'n', COLORS[0], {
           compressed: true,
           noWrap: true,
           labelTransform: shortPostgradSchool,
@@ -4534,7 +4602,7 @@
             refresh();
           },
         });
-        if (showPrograms) drawSimpleBars('postgrad-programs', state.data.postgrad?.programs || [], 'n', '#22a06b', {
+        if (showPrograms) drawSimpleBars('postgrad-programs', state.data.postgrad?.programs || [], 'n', COLORS[1], {
           compressed: true,
           noWrap: true,
           labelTransform: shortPostgradProgram,
@@ -4563,7 +4631,7 @@
             refresh();
           },
         });
-        drawSimpleBars('postgrad-schools', state.data.postgrad?.schools || [], 'n', '#225ea8', {
+        drawSimpleBars('postgrad-schools', state.data.postgrad?.schools || [], 'n', COLORS[0], {
           compressed: true,
           noWrap: true,
           labelTransform: shortPostgradSchool,
@@ -4766,7 +4834,7 @@
         name: 'Alumni',
         x: rows.map(r => r.grad_year),
         y: rows.map(r => r.alumni),
-        marker: { color: 'rgba(34, 94, 168, 0.72)' },
+        marker: { color: 'rgba(72, 175, 244, 0.72)' },
         hovertemplate: 'Class of %{x}<br>%{y:,.0f} alumni<extra></extra>',
       });
       if (currentRows.length) traces.push({
@@ -4774,7 +4842,7 @@
         name: 'Current students',
         x: currentRows.map(r => r.grad_year),
         y: currentRows.map(r => r.current_students),
-        marker: { color: 'rgba(34, 160, 107, 0.72)' },
+        marker: { color: 'rgba(93, 218, 147, 0.72)' },
         hovertemplate: 'Class of %{x}<br>%{y:,.0f} current students<extra></extra>',
       });
       Plotly.newPlot(id, traces, {
@@ -5077,7 +5145,7 @@
         customdata,
         colorscale: isMoney
           ? [[0, '#f3f7fb'], [0.35, '#b7e0d0'], [0.7, '#40a970'], [1, '#126c43']]
-          : [[0, '#f3f7fb'], [0.35, '#bcd7f0'], [0.7, '#5f9fd5'], [1, '#225ea8']],
+          : [[0, THEME.bg], [0.35, '#9AD3F9'], [0.7, COLORS[0]], [1, THEME.navy]],
         colorbar: { title: options.colorbarTitle || (isMoney ? '$' : '%'), thickness: 12 },
         hovertemplate,
       }], {
@@ -5425,10 +5493,10 @@
         z,
         customdata,
         colorscale: [
-          [0, '#f3f7fb'],
-          [0.35, '#bcd7f0'],
-          [0.7, '#5f9fd5'],
-          [1, '#225ea8'],
+          [0, THEME.bg],
+          [0.35, '#9AD3F9'],
+          [0.7, COLORS[0]],
+          [1, THEME.navy],
         ],
         colorbar: { title: '%', thickness: 12 },
         hovertemplate: `%{customdata[0]}<br>%{customdata[1]}<br>${options.hoverLabel || 'Share'}: %{z:.1f}%<br>People: %{customdata[2]:,.0f}<extra></extra>`,
@@ -5489,7 +5557,7 @@
           name: `Top 3 ${entityPlural}`,
           y: cleanRows.map(row => wrapAxisLabel(majorName(row), 28)),
           x: cleanRows.map(row => row.top3_share_pct),
-          marker: { color: 'rgba(34, 94, 168, 0.22)' },
+          marker: { color: 'rgba(72, 175, 244, 0.24)' },
           customdata: cleanRows.map(row => [majorName(row), row.top_label, row.top3_share_pct, row.hhi, row.unique_labels]),
           hovertemplate: `%{customdata[0]}<br>Top 3 ${entityPlural}: %{x:.1f}%<br>Top ${entityLower}: %{customdata[1]}<br>Concentration score: %{customdata[3]:,.0f}<extra></extra>`,
         },
@@ -6216,8 +6284,18 @@
         ...layoutBase,
         height: options.height || dynamicHeight,
         margin: { l: leftMargin, r: rightMargin, t: 14, b: 52 },
-        xaxis: { tickprefix: prefix === '$' ? '$' : '', ticksuffix: prefix === '%' ? '%' : '', automargin: true, rangemode: 'tozero' },
-        yaxis: { automargin: options.yAutoMargin ?? true, tickfont: { size: narrow ? 12 : 13 } },
+        xaxis: {
+          ...layoutBase.xaxis,
+          tickprefix: prefix === '$' ? '$' : '',
+          ticksuffix: prefix === '%' ? '%' : '',
+          automargin: true,
+          rangemode: 'tozero',
+        },
+        yaxis: {
+          ...layoutBase.yaxis,
+          automargin: options.yAutoMargin ?? true,
+          tickfont: { ...layoutBase.yaxis.tickfont, size: narrow ? 12 : 13 },
+        },
       };
     }
 

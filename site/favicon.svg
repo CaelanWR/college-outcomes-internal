@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="College Outcomes">
   <defs>
     <linearGradient id="badge" x1="10" y1="8" x2="56" y2="58" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#48AFF4"/>
+      <stop offset="0" stop-color="#3D5585"/>
       <stop offset="0.58" stop-color="#2D426A"/>
       <stop offset="1" stop-color="#1D314F"/>
     </linearGradient>
@@ -12,8 +12,8 @@
   </defs>
   <rect width="64" height="64" rx="17" fill="url(#badge)"/>
   <path d="M10.5 27.2 32 16.4l21.5 10.8L32 38 10.5 27.2Z" fill="url(#cap)"/>
-  <path d="M20.4 33.2v9.3c0 4.1 23.2 4.1 23.2 0v-9.3L32 39l-11.6-5.8Z" fill="#F4B740"/>
-  <path d="M48.5 29.3v13.5" fill="none" stroke="#2BB673" stroke-width="3.4" stroke-linecap="round"/>
-  <circle cx="48.5" cy="46.6" r="4.2" fill="#2BB673"/>
+  <path d="M20.4 33.2v9.3c0 4.1 23.2 4.1 23.2 0v-9.3L32 39l-11.6-5.8Z" fill="#48EB8F"/>
+  <path d="M48.5 29.3v13.5" fill="none" stroke="#48EB8F" stroke-width="3.4" stroke-linecap="round"/>
+  <circle cx="48.5" cy="46.6" r="4.2" fill="#48EB8F"/>
   <path d="M32 17.5 53.5 28.3" fill="none" stroke="#FFFFFF" stroke-opacity="0.36" stroke-width="1.4" stroke-linecap="round"/>
 </svg>
