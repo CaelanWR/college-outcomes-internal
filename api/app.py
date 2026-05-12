@@ -1499,6 +1499,77 @@ def _alumni_trend_by_school(con: duckdb.DuckDBPyConnection, filters: QueryReques
 
 
 def _salary_trend_by_major(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    if (
+        filters.cip_level == "cip4"
+        and _work_dataset_exists("annual_salary")
+        and not filters.demographics.gender
+        and not filters.demographics.race_ethnicity
+        and not _work_postgrad_unsupported(filters, "annual_salary")
+    ):
+        rows = _salary_trend_by_major_from_work(con, filters)
+        if rows:
+            return rows
+    return _salary_trend_by_major_from_slice(con, filters)
+
+
+def _salary_trend_by_major_from_work(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    where_sql, params = _work_where(filters, postgrad_dataset="annual_salary")
+    horizon_years = _horizon_years(filters)
+    if horizon_years is not None:
+        if filters.horizon == "1yr":
+            where_sql, params = _append_where_clause(
+                where_sql,
+                params,
+                "(years_since_grad = ? OR (years_since_grad = ? AND grad_year = ?))",
+                [1, 0, 2025],
+            )
+        else:
+            where_sql, params = _append_where_clause(
+                where_sql,
+                params,
+                "years_since_grad = ?",
+                [horizon_years],
+            )
+    rows = _records_from_query(
+        con,
+        f"""
+        WITH by_year AS (
+          SELECT
+            cip4 AS code,
+            MAX(major_title) AS title,
+            grad_year,
+            MAX(CASE WHEN years_since_grad = 0 THEN 1 ELSE 0 END) AS partial_horizon,
+            SUM(n_alumni) AS alumni,
+            SUM(weighted_salary_n) AS salary_weight,
+            SUM(COALESCE(mean_salary, 0) * weighted_salary_n)
+              / NULLIF(SUM(CASE WHEN mean_salary IS NOT NULL THEN weighted_salary_n ELSE 0 END), 0) AS weighted_mean_salary,
+            SUM(COALESCE(median_salary, 0) * weighted_salary_n)
+              / NULLIF(SUM(CASE WHEN median_salary IS NOT NULL THEN weighted_salary_n ELSE 0 END), 0) AS median_salary
+          FROM read_parquet(?)
+          {where_sql}
+            {"AND" if where_sql else "WHERE"} grad_year IS NOT NULL
+            AND cip4 IS NOT NULL
+          GROUP BY cip4, grad_year
+        )
+        SELECT
+          code,
+          COALESCE(title, code) AS title,
+          grad_year,
+          CAST(partial_horizon AS INTEGER) AS partial_horizon,
+          ROUND(alumni, 2) AS alumni,
+          ROUND(salary_weight) AS salary_weight,
+          CASE WHEN salary_weight > ? THEN ROUND(weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
+          CASE WHEN salary_weight > ? THEN ROUND(median_salary) ELSE NULL END AS median_salary
+        FROM by_year
+        WHERE salary_weight > ?
+        ORDER BY title, grad_year
+        """,
+        [_work_source_for_filters("annual_salary", filters), *params, SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT],
+    )
+    return sorted(rows, key=lambda row: (row.get("title") or "", row.get("grad_year") or 0, row.get("partial_horizon") or 0))
+
+
+def _salary_trend_by_major_from_slice(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
     cip_col = _cip_col(filters)
     rows = _records_from_query(
         con,
