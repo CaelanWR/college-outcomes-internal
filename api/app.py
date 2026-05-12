@@ -4447,15 +4447,29 @@ def _career(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, 
     }
 
 
+def _dashboard_requires_slice(filters: QueryRequest, tab: str) -> bool:
+    if tab in {"all", "full"}:
+        return True
+    # Compare pages need overview/comparison rows in addition to the active tab.
+    if filters.compare_mode:
+        return True
+    # Career reads from precomputed work facts or directly from the school cache;
+    # building the generic slice first is redundant and costs noticeable latency.
+    if tab == "career":
+        return False
+    return True
+
+
 def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
     with _query_slot():
         con = _connect()
         try:
-            _create_slice(con, filters)
             tab = filters.active_tab or ("overview" if filters.compare_mode else "overview")
             if tab == "compare":
                 tab = "overview"
             view_mode = filters.view_mode or "snapshot"
+            if _dashboard_requires_slice(filters, tab):
+                _create_slice(con, filters)
             result: dict[str, Any] = {
                 "meta": {
                     "data_version": _manifest().get("version"),
@@ -4631,6 +4645,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                 return result
 
             if tab == "coverage":
+                result["overview"] = _overview(con)
                 result["coverage"] = _coverage(con, filters)
                 return result
 

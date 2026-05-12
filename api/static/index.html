@@ -1762,6 +1762,10 @@
       appliedAdvanced: null,
       loading: false,
       pendingRefresh: null,
+      dashboardCache: new Map(),
+      dashboardRequests: new Map(),
+      prefetchGeneration: 0,
+      prefetchTimer: null,
     };
 
     const $ = id => document.getElementById(id);
@@ -1786,6 +1790,9 @@
     };
     const pct = value => value === null || value === undefined ? 'No data' : `${Number(value).toFixed(1)}%`;
     const TOP_N_OPTIONS = [5, 8, 10, 12, 16, 20, 30, 50];
+    const REQUEST_TOP_N = Math.max(...TOP_N_OPTIONS);
+    const DASHBOARD_CACHE_LIMIT = 72;
+    const TAB_ORDER = ['overview', 'earnings', 'employers', 'career', 'geography', 'roles', 'demographics', 'postgrad', 'coverage'];
     const MAX_COMPARE_SCHOOLS = 3;
     let resizeTimer = null;
     let compareWarmupTimer = null;
@@ -2106,6 +2113,11 @@
       return false;
     }
 
+    function defaultViewForTab(tab) {
+      const overTimeTabs = new Set(['overview', 'earnings', 'career', 'geography', 'demographics']);
+      return overTimeTabs.has(tab) ? 'overtime' : 'snapshot';
+    }
+
     function yearRange(advanced = activeAdvancedControls()) {
       const all = state.options?.grad_years || [];
       const from = Number(advanced.fromYear || all[0]);
@@ -2153,9 +2165,93 @@
         selected_postgrad_degree: state.selectedPostgradDegree,
         selected_postgrad_school: state.selectedPostgradSchool,
         selected_postgrad_program: state.selectedPostgradProgram,
-        top_n: maxRequestedTopN(),
+        top_n: REQUEST_TOP_N,
         ...extra,
       };
+    }
+
+    function dashboardFiltersForCurrentView(extra = {}) {
+      return currentFilters({
+        active_tab: state.tab || 'overview',
+        view_mode: state.viewMode || defaultViewForTab(state.tab || 'overview'),
+        ...extra,
+      });
+    }
+
+    function dashboardCacheKey(filters) {
+      return JSON.stringify(filters);
+    }
+
+    function getCachedDashboard(filters) {
+      const key = dashboardCacheKey(filters);
+      const cached = state.dashboardCache.get(key);
+      if (!cached) return null;
+      state.dashboardCache.delete(key);
+      state.dashboardCache.set(key, cached);
+      return cached;
+    }
+
+    function setCachedDashboard(filters, data) {
+      const key = dashboardCacheKey(filters);
+      state.dashboardCache.set(key, data);
+      while (state.dashboardCache.size > DASHBOARD_CACHE_LIMIT) {
+        state.dashboardCache.delete(state.dashboardCache.keys().next().value);
+      }
+    }
+
+    async function fetchDashboard(filters) {
+      const key = dashboardCacheKey(filters);
+      const cached = getCachedDashboard(filters);
+      if (cached) return cached;
+      if (state.dashboardRequests.has(key)) return state.dashboardRequests.get(key);
+      const request = apiFetch('/api/dashboard', filters)
+        .then(data => {
+          setCachedDashboard(filters, data);
+          return data;
+        })
+        .finally(() => {
+          state.dashboardRequests.delete(key);
+        });
+      state.dashboardRequests.set(key, request);
+      return request;
+    }
+
+    function clearDashboardCache() {
+      state.dashboardCache.clear();
+      state.dashboardRequests.clear();
+      state.prefetchGeneration += 1;
+      clearTimeout(state.prefetchTimer);
+    }
+
+    function scheduleDashboardPrefetch(baseFilters) {
+      if (!state.apiUrl || compareNeedsSelections()) return;
+      clearTimeout(state.prefetchTimer);
+      const generation = state.prefetchGeneration;
+      state.prefetchTimer = window.setTimeout(() => {
+        prefetchDashboardViews(baseFilters, generation);
+      }, 650);
+    }
+
+    async function prefetchDashboardViews(baseFilters, generation) {
+      if (generation !== state.prefetchGeneration || state.loading) return;
+      const activeTab = state.tab || 'overview';
+      const activeView = state.viewMode || defaultViewForTab(activeTab);
+      const views = [];
+      TAB_ORDER.forEach(tab => {
+        if (tab !== activeTab) views.push({ tab, viewMode: defaultViewForTab(tab) });
+      });
+      const alternateView = activeView === 'overtime' ? 'snapshot' : 'overtime';
+      views.push({ tab: activeTab, viewMode: alternateView });
+      for (const view of views) {
+        if (generation !== state.prefetchGeneration || state.loading) return;
+        const filters = { ...baseFilters, active_tab: view.tab, view_mode: view.viewMode };
+        if (getCachedDashboard(filters) || state.dashboardRequests.has(dashboardCacheKey(filters))) continue;
+        try {
+          await fetchDashboard(filters);
+        } catch {
+          return;
+        }
+      }
     }
 
     function scheduleCompareSchoolWarmup(delay = 350) {
@@ -2419,12 +2515,26 @@
         setMessage('Enter the protected API URL and password, then connect.');
         return;
       }
+      state.prefetchGeneration += 1;
+      clearTimeout(state.prefetchTimer);
       if (state.loading) {
         state.pendingRefresh = {
           reloadOptions: Boolean(state.pendingRefresh?.reloadOptions || reloadOptions),
           resetDrill: Boolean(state.pendingRefresh?.resetDrill || resetDrill),
         };
         return;
+      }
+      if (!reloadOptions && !resetDrill && state.options && !compareNeedsSelections()) {
+        const cachedFilters = dashboardFiltersForCurrentView();
+        const cachedData = getCachedDashboard(cachedFilters);
+        if (cachedData) {
+          state.data = cachedData;
+          showContent();
+          render();
+          setStatus('ok', `${state.data.meta?.data_version || 'Connected'} | loaded from cache`);
+          scheduleDashboardPrefetch(cachedFilters);
+          return;
+        }
       }
       state.loading = true;
       document.body.classList.add('loading');
@@ -2453,10 +2563,13 @@
           setStatus('ok', `${state.options?.meta?.data_version || 'Connected'} | pick comparison items`);
           return;
         }
-        state.data = await apiFetch('/api/dashboard', currentFilters());
+        const filters = dashboardFiltersForCurrentView();
+        const cached = getCachedDashboard(filters);
+        state.data = cached || await fetchDashboard(filters);
         showContent();
         render();
         setStatus('ok', `${state.data.meta?.data_version || 'Connected'} | loaded ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}`);
+        scheduleDashboardPrefetch(filters);
       } catch (error) {
         setStatus('bad', 'Connection failed');
         setMessage(`<strong>Could not load data.</strong><br>${escapeHtml(error.message)}`, true);
@@ -6168,12 +6281,7 @@
         document.querySelectorAll('.tab').forEach(node => node.classList.toggle('active', node === tab));
         applyDefaultViewForTab(state.tab);
         syncViewToggle();
-        if (state.selectionMode === 'compare' || state.selectionMode === 'major_compare') {
-          render();
-          queuePlotResize();
-          return;
-        }
-        render();
+        refresh();
       });
 
       $('view-toggle').addEventListener('click', event => {
@@ -6182,12 +6290,7 @@
         state.viewMode = button.dataset.viewMode;
         storage.setItem('outcomes.viewMode', state.viewMode);
         syncViewToggle();
-        if (state.selectionMode === 'compare' || state.selectionMode === 'major_compare') {
-          render();
-          queuePlotResize();
-          return;
-        }
-        render();
+        refresh();
       });
 
       $('selection-toggle').addEventListener('click', event => {
@@ -6208,6 +6311,7 @@
 
       ['school-select', 'degree-select'].forEach(id => {
         $(id).addEventListener('change', () => {
+          if (id === 'school-select') clearDashboardCache();
           refresh({ reloadOptions: true, resetDrill: true });
         });
       });
@@ -6266,7 +6370,8 @@
         const chartId = select.dataset.chartId || chartIdFromTopControl(select.id);
         state.topNByChart = { ...(state.topNByChart || {}), [chartId]: value };
         storage.setItem('outcomes.topNByChart', JSON.stringify(state.topNByChart));
-        refresh();
+        render();
+        queuePlotResize();
       });
       $('content').addEventListener('click', event => {
         const saveMenuButton = event.target.closest('[data-save-chart-menu]');
@@ -6296,8 +6401,7 @@
     }
 
     function applyDefaultViewForTab(tab) {
-      const overTimeTabs = new Set(['overview', 'earnings', 'career', 'geography', 'demographics']);
-      const nextMode = overTimeTabs.has(tab) ? 'overtime' : 'snapshot';
+      const nextMode = defaultViewForTab(tab);
       if (state.viewMode !== nextMode) {
         state.viewMode = nextMode;
         storage.setItem('outcomes.viewMode', state.viewMode);
