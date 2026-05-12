@@ -4015,7 +4015,7 @@
         const concentration = state.data.major_concentration || {};
         $('content').innerHTML = [
           card('City Share by Major', 'major-geo-heatmap', 8, true, { topControl: true }),
-          card('Most Concentrated City by Major', 'major-geo-concentration', 4, true),
+          card('Distinctive City by Major', 'major-geo-concentration', 4, true),
           card('City Concentration by Major', 'major-city-concentration', 12, true),
         ].join('');
         drawMajorComparisonHeatmap('major-geo-heatmap', state.data.major_geography_comparison || [], {
@@ -4023,7 +4023,7 @@
           labelTransform: shortLocationLabel,
           hoverLabel: 'City share',
         });
-        drawMajorCompareTopShare('major-geo-concentration', state.data.major_geography_comparison || [], 'Top city share');
+        drawMajorCompareDistinctiveCity('major-geo-concentration', state.data.major_geography_comparison || []);
         drawMajorConcentration('major-city-concentration', concentration.geography || [], 'City');
         return;
       }
@@ -5910,6 +5910,65 @@
         marker: { color: COLORS[3] },
         hovertemplate: `%{customdata[0]}<br>%{customdata[1]}<br>%{x:.1f}%<br>%{customdata[2]:,.0f} people<extra></extra>`,
       }], horizontalBarLayout(id, topRows.map(row => ({ label: majorName(row) })), '%', { rightMargin: 150 }), plotConfig);
+    }
+
+    function drawMajorCompareDistinctiveCity(id, rows) {
+      const cleanRows = (rows || []).filter(row => row.code && row.label && row.share_pct !== null && row.share_pct !== undefined);
+      const majors = majorRowsForChart(id, cleanRows);
+      if (majors.length < 2) return noData(id);
+      const majorCodes = majors.map(row => String(row.code));
+      const lookup = new Map(cleanRows.map(row => [`${row.code}||${row.label}`, row]));
+      const labels = [...new Set(cleanRows
+        .filter(row => majorCodes.includes(String(row.code)))
+        .map(row => row.label)
+        .filter(Boolean))];
+      const distinctive = majors.map(major => {
+        const code = String(major.code);
+        const peers = majorCodes.filter(peerCode => peerCode !== code);
+        const candidates = labels.map(label => {
+          const row = lookup.get(`${code}||${label}`) || {};
+          const share = Number(row.share_pct || 0);
+          const peerAvg = peers.length
+            ? peers.reduce((sum, peerCode) => sum + Number(lookup.get(`${peerCode}||${label}`)?.share_pct || 0), 0) / peers.length
+            : 0;
+          return {
+            code,
+            title: majorName(major),
+            label,
+            share_pct: share,
+            peer_share_pct: peerAvg,
+            lift_pp: share - peerAvg,
+            n: Number(row.n || 0),
+          };
+        })
+          .filter(row => row.share_pct > 0)
+          .sort((a, b) => Number(b.lift_pp || 0) - Number(a.lift_pp || 0) || Number(b.share_pct || 0) - Number(a.share_pct || 0));
+        return candidates[0] || null;
+      })
+        .filter(Boolean)
+        .sort((a, b) => Number(a.lift_pp || 0) - Number(b.lift_pp || 0));
+      if (!distinctive.length) return noData(id);
+      const maxLift = Math.max(1, ...distinctive.map(row => Math.max(0, Number(row.lift_pp || 0))));
+      const layout = horizontalBarLayout(id, distinctive.map(row => ({ label: row.title })), '%', { rightMargin: 170 });
+      Plotly.newPlot(id, [{
+        type: 'bar',
+        orientation: 'h',
+        y: distinctive.map(row => wrapAxisLabel(row.title, 24)),
+        x: distinctive.map(row => Math.max(0, row.lift_pp)),
+        text: distinctive.map(row => `+${Number(row.lift_pp || 0).toFixed(1)} pp | ${shortLocationLabel(row.label)}`),
+        textposition: 'outside',
+        cliponaxis: false,
+        customdata: distinctive.map(row => [row.title, row.label, row.share_pct, row.peer_share_pct, row.n, row.lift_pp]),
+        marker: { color: COLORS[3] },
+        hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>This major: %{customdata[2]:.1f}%<br>Peer average: %{customdata[3]:.1f}%<br>Gap: %{customdata[5]:+.1f} pp<br>%{customdata[4]:,.0f} alumni<extra></extra>',
+      }], {
+        ...layout,
+        xaxis: {
+          ...layout.xaxis,
+          title: 'Share above peer average',
+          range: [0, maxLift * 1.24],
+        },
+      }, plotConfig);
     }
 
     function drawMajorConcentration(id, rows, entityLabel) {
