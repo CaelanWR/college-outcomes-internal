@@ -64,15 +64,27 @@ ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 
-DOCTORATE_DEGREES = ["Research Doctorate", "Professional Doctorate", "Other Doctorate"]
+RESEARCH_DOCTORATE_VALUES = ["Research Doctorate", "PhD", "Doctorate", "Other Doctorate"]
+PROFESSIONAL_DOCTORATE_VALUES = ["Professional Doctorate"]
+DOCTORATE_DEGREES = [*RESEARCH_DOCTORATE_VALUES, *PROFESSIONAL_DOCTORATE_VALUES]
 DEGREE_ALIASES = {
     "All Doctorates": DOCTORATE_DEGREES,
     "Doctorate": DOCTORATE_DEGREES,
-    "PhD": ["Research Doctorate"],
-    "Research Doctorate": ["Research Doctorate"],
-    "Professional Doctorate": ["Professional Doctorate"],
-    "Other Doctorate": ["Other Doctorate"],
+    "PhD": RESEARCH_DOCTORATE_VALUES,
+    "Research Doctorate": RESEARCH_DOCTORATE_VALUES,
+    "Professional Doctorate": PROFESSIONAL_DOCTORATE_VALUES,
+    "Other Doctorate": RESEARCH_DOCTORATE_VALUES,
 }
+VISIBLE_DEGREE_ORDER = [
+    "Associates",
+    "Bachelors",
+    "Masters",
+    "MBA",
+    "LAW",
+    "MD",
+    "Research Doctorate",
+    "Professional Doctorate",
+]
 CIP_COLUMNS = {"cip2", "cip4", "cip6"}
 HORIZON_ORDER = {"1yr": 1, "5yr": 5, "10yr": 10, "early_2025": 0}
 SAME_SCHOOL_EMPLOYER_FILTER = """
@@ -612,6 +624,28 @@ def _degree_values(degree: str) -> list[str]:
     return DEGREE_ALIASES.get(degree, [degree])
 
 
+def _sql_string_list(values: list[str]) -> str:
+    return "(" + ",".join("'" + value.replace("'", "''") + "'" for value in values) + ")"
+
+
+def _display_degree_value(value: Any) -> Any:
+    if value in RESEARCH_DOCTORATE_VALUES:
+        return "Research Doctorate"
+    if value in PROFESSIONAL_DOCTORATE_VALUES:
+        return "Professional Doctorate"
+    return value
+
+
+def _degree_display_expr(column: str) -> str:
+    return f"""
+      CASE
+        WHEN {column} IN {_sql_string_list(RESEARCH_DOCTORATE_VALUES)} THEN 'Research Doctorate'
+        WHEN {column} IN {_sql_string_list(PROFESSIONAL_DOCTORATE_VALUES)} THEN 'Professional Doctorate'
+        ELSE {column}
+      END
+    """
+
+
 def _append_in_clause(clauses: list[str], params: list[Any], column: str, values: list[Any]) -> None:
     if not values:
         return
@@ -641,8 +675,7 @@ def _where(filters: QueryRequest, *, include_horizon: bool = True, include_postg
 
     if include_postgrad:
         if filters.postgrad.later_degree_type:
-            clauses.append("later_degree_type = ?")
-            params.append(filters.postgrad.later_degree_type)
+            _append_in_clause(clauses, params, "later_degree_type", _degree_values(filters.postgrad.later_degree_type))
         elif filters.postgrad.no_further_education is not None:
             clauses.append("no_further_education_flag = ?")
             params.append(1 if filters.postgrad.no_further_education else 0)
@@ -707,8 +740,7 @@ def _work_where(
         params.append(years_since_grad)
     if postgrad_dataset and _work_dataset_supports_postgrad(postgrad_dataset):
         if filters.postgrad.later_degree_type:
-            clauses.append("later_degree_type = ?")
-            params.append(filters.postgrad.later_degree_type)
+            _append_in_clause(clauses, params, "later_degree_type", _degree_values(filters.postgrad.later_degree_type))
         elif filters.postgrad.no_further_education is not None:
             clauses.append("no_further_education_flag = ?")
             params.append(1 if filters.postgrad.no_further_education else 0)
@@ -1039,11 +1071,24 @@ def _static_options() -> dict[str, Any]:
                     [_dataset_glob("current_students_fact")],
                 )
             ]
+        degree_totals: dict[str, float] = {}
+        for row in degree_rows:
+            label = _display_degree_value(row.get("degree"))
+            if not label:
+                continue
+            degree_totals[str(label)] = degree_totals.get(str(label), 0.0) + float(row.get("alumni") or 0)
+        ordered_degrees = [degree for degree in VISIBLE_DEGREE_ORDER if degree in degree_totals]
+        ordered_degrees.extend(
+            sorted(
+                degree
+                for degree in degree_totals
+                if degree not in set(ordered_degrees)
+            )
+        )
         return {
             "schools": schools,
             "degrees": [{"degree": "All", "label": "All"}]
-            + [{"degree": row["degree"], "label": row["degree"]} for row in degree_rows]
-            + [{"degree": "All Doctorates", "label": "All Doctorates"}],
+            + [{"degree": degree, "label": degree} for degree in ordered_degrees],
             "horizons": [
                 {"value": "1yr", "label": "1 year out"},
                 {"value": "5yr", "label": "5 years out"},
@@ -1210,19 +1255,22 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
                     )
                 ],
             }
-            later_degrees = [
+            later_degree_rows = _records_from_query(
+                con,
+                f"""
+                SELECT {_degree_display_expr("later_degree_type")} AS later_degree_type, SUM(profile_weight) AS n
+                FROM option_cohort
+                WHERE later_degree_type IS NOT NULL AND later_degree_type <> ''
+                GROUP BY 1
+                ORDER BY n DESC
+                """,
+            )
+            later_degrees = [degree for degree in VISIBLE_DEGREE_ORDER if any(row["later_degree_type"] == degree for row in later_degree_rows)]
+            later_degrees.extend(
                 row["later_degree_type"]
-                for row in _records_from_query(
-                    con,
-                    """
-                    SELECT later_degree_type, SUM(profile_weight) AS n
-                    FROM option_cohort
-                    WHERE later_degree_type IS NOT NULL AND later_degree_type <> ''
-                    GROUP BY later_degree_type
-                    ORDER BY n DESC
-                    """,
-                )
-            ]
+                for row in later_degree_rows
+                if row["later_degree_type"] not in set(later_degrees)
+            )
             result = {
                 **static,
                 "major_options": majors,
@@ -2187,7 +2235,7 @@ def _school_demographic_comparison(con: duckdb.DuckDBPyConnection, filters: Quer
 def _school_postgrad_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
     return _school_cohort_label_comparison(
         con,
-        "CASE WHEN later_degree_type IS NOT NULL AND later_degree_type <> '' THEN later_degree_type WHEN no_further_education_flag = 1 THEN 'No further education' ELSE NULL END",
+        f"CASE WHEN later_degree_type IS NOT NULL AND later_degree_type <> '' THEN {_degree_display_expr('later_degree_type')} WHEN no_further_education_flag = 1 THEN 'No further education' ELSE NULL END",
         "",
         MIN_CELL_WEIGHT,
         filters,
@@ -2605,7 +2653,7 @@ def _major_postgrad_comparison(con: duckdb.DuckDBPyConnection, filters: QueryReq
             {cip_col} AS code,
             COALESCE(major_title, {cip_col}) AS title,
             COALESCE(
-              later_degree_type,
+              {_degree_display_expr("later_degree_type")},
               CASE WHEN no_further_education_flag = 1 THEN 'No further education' ELSE 'Unknown' END
             ) AS label,
             profile_weight
@@ -3447,7 +3495,7 @@ def _create_coverage_groups(
         SELECT
           unitid,
           MAX(school_name) AS school_name,
-          degree,
+          {_degree_display_expr("degree")} AS degree,
           grad_year,
           cip4 AS code,
           MAX(major_title) AS title,
@@ -3455,7 +3503,7 @@ def _create_coverage_groups(
           MAX(calibration_ipeds_completions) AS ipeds_completions
         FROM read_parquet(?)
         {where_sql}
-        GROUP BY unitid, degree, grad_year, cip4
+        GROUP BY unitid, {_degree_display_expr("degree")}, grad_year, cip4
         HAVING grad_year IS NOT NULL
           AND cip4 IS NOT NULL
           AND MAX(calibration_observed_completions) IS NOT NULL
@@ -3649,7 +3697,7 @@ def _postgrad_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> li
         WITH eligible AS (
           SELECT
             grad_year,
-            COALESCE(later_degree_type, CASE WHEN no_further_education_flag = 1 THEN 'No further education' ELSE 'Unknown' END) AS degree_type,
+            COALESCE({_degree_display_expr("later_degree_type")}, CASE WHEN no_further_education_flag = 1 THEN 'No further education' ELSE 'Unknown' END) AS degree_type,
             profile_weight
           FROM cohort_slice
           WHERE grad_year IS NOT NULL
@@ -3692,17 +3740,19 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
     limit = _safe_limit(filters.top_n)
 
     def detail_degree_values(degree_type: str) -> list[str]:
-        if degree_type in {"PhD", "Doctorate", "Research Doctorate"}:
-            return ["PhD", "Doctorate", "Research Doctorate"]
+        if degree_type in {"PhD", "Doctorate", "Research Doctorate", "Other Doctorate"}:
+            return RESEARCH_DOCTORATE_VALUES
+        if degree_type == "Professional Doctorate":
+            return PROFESSIONAL_DOCTORATE_VALUES
         return [degree_type]
 
     def detail_degree_label(degree_type: str | None) -> str | None:
-        if degree_type in {"PhD", "Doctorate", "Research Doctorate"}:
-            return "PhD / Doctorate"
+        if degree_type in {"PhD", "Doctorate", "Research Doctorate", "Other Doctorate"}:
+            return "Research Doctorate"
         return degree_type
 
     def show_program_detail(degree_type: str | None) -> bool:
-        return degree_type in {"Masters", "PhD", "Doctorate", "Research Doctorate"}
+        return degree_type in {"Masters", "PhD", "Doctorate", "Research Doctorate", "Other Doctorate"}
 
     flows = _records_from_query(
         con,
@@ -3712,7 +3762,7 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
         ),
         flows AS (
           SELECT
-            COALESCE(later_degree_type, CASE WHEN no_further_education_flag = 1 THEN 'No further education' ELSE 'Unknown' END) AS degree_type,
+            COALESCE({_degree_display_expr("later_degree_type")}, CASE WHEN no_further_education_flag = 1 THEN 'No further education' ELSE 'Unknown' END) AS degree_type,
             SUM(profile_weight) AS n
           FROM cohort_slice
           GROUP BY 1
