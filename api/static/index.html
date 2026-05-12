@@ -3638,9 +3638,6 @@
       if (tab === 'earnings') {
         if (state.viewMode === 'snapshot') {
           $('content').innerHTML = [
-            metric(entities, num(rows.length), 4),
-            metric('Alumni', num(o.alumni), 4),
-            metric('Weighted Median Salary', money(o.median_salary), 4),
             card(`Salary Distributions by ${entity} (${salaryHorizon})`, 'compare-salary-distribution', 12, true, { topControl: true }),
             card(`Median Salary by ${entity} (${salaryHorizon})`, 'compare-salary', 12, true, { topControl: state.selectionMode === 'major_compare' }),
           ].join('');
@@ -3648,9 +3645,6 @@
           drawCompareSalary('compare-salary');
         } else {
           $('content').innerHTML = [
-            metric(entities, num(rows.length), 4),
-            metric('Alumni', num(o.alumni), 4),
-            metric('Weighted Median Salary', money(o.median_salary), 4),
             card(`Salary Trend by ${entity} (${salaryHorizon})`, 'compare-salary-trend', 6, true, { topControl: state.selectionMode === 'major_compare' }),
             card(`Salary Distributions by ${entity} (${salaryHorizon})`, 'compare-salary-distribution', 6, true, { topControl: true }),
           ].join('');
@@ -3662,9 +3656,6 @@
 
       if (tab === 'postgrad') {
         $('content').innerHTML = [
-          metric(entities, num(rows.length), 4),
-          metric('Alumni', num(o.alumni), 4),
-          metric('Weighted Median Salary', money(o.median_salary), 4),
           card(`Further Education Rate by ${entity}`, 'compare-postgrad', 7, true, { topControl: state.selectionMode === 'major_compare' }),
           card('Later Degree Paths by School', 'school-postgrad-heatmap', 5, true, { topControl: true }),
         ].join('');
@@ -3679,9 +3670,6 @@
 
       if (state.viewMode === 'snapshot') {
         $('content').innerHTML = [
-          metric(entities, num(rows.length), 4),
-          metric('Alumni', num(o.alumni), 4),
-          metric('Weighted Median Salary', money(o.median_salary), 4),
           card(`Alumni by ${entity}`, 'compare-alumni', 7, true, { topControl: state.selectionMode === 'major_compare' }),
           card(`${entity} Comparison Table`, 'compare-table', 5, true),
         ].join('');
@@ -3689,9 +3677,6 @@
         drawCompareTable('compare-table');
       } else {
         $('content').innerHTML = [
-          metric(entities, num(rows.length), 4),
-          metric('Alumni', num(o.alumni), 4),
-          metric('Weighted Median Salary', money(o.median_salary), 4),
           card(`Alumni Trend by ${entity}`, 'compare-alumni-trend', 7, true, { topControl: state.selectionMode === 'major_compare' }),
           card(`${entity} Comparison Table`, 'compare-table', 5, true),
         ].join('');
@@ -3708,9 +3693,6 @@
       if (tab === 'earnings') {
         if (state.viewMode === 'snapshot') {
           $('content').innerHTML = [
-            metric('Majors', num(rows.length), 4),
-            metric('Alumni', num(o.alumni), 4),
-            metric('Weighted Median Salary', money(o.median_salary), 4),
             card(`Salary Distributions by Major (${salaryHorizon})`, 'compare-salary-distribution', 12, true, { topControl: true }),
             card(`Median Salary by Major (${salaryHorizon})`, 'compare-salary', 6, true, { topControl: true }),
             card('Salary vs Later Education', 'major-compare-scatter', 6, true),
@@ -3722,9 +3704,6 @@
           drawMajorCompareTable('compare-table');
         } else {
           $('content').innerHTML = [
-            metric('Majors', num(rows.length), 4),
-            metric('Alumni', num(o.alumni), 4),
-            metric('Weighted Median Salary', money(o.median_salary), 4),
             card(`Salary Trend by Major (${salaryHorizon})`, 'compare-salary-trend', 7, true, { topControl: true }),
             card(`Salary Distributions by Major (${salaryHorizon})`, 'compare-salary-distribution', 5, true, { topControl: true }),
             card('Major Salary Table', 'compare-table', 12),
@@ -3842,9 +3821,6 @@
 
       if (state.viewMode === 'overtime') {
         $('content').innerHTML = [
-          metric('Majors', num(rows.length), 4),
-          metric('Alumni', num(o.alumni), 4),
-          metric('Weighted Median Salary', money(o.median_salary), 4),
           card('Major Share Over Time', 'compare-alumni-trend', 12, true, { topControl: true }),
           card(`Salary Trend by Major (${salaryHorizon})`, 'compare-salary-trend', 12, true, { topControl: true }),
         ].join('');
@@ -3852,9 +3828,6 @@
         drawCompareSalaryTrend('compare-salary-trend');
       } else {
         $('content').innerHTML = [
-          metric('Majors', num(rows.length), 4),
-          metric('Alumni', num(o.alumni), 4),
-          metric('Weighted Median Salary', money(o.median_salary), 4),
           card('Major Share of Class', 'compare-alumni', 6, true, { topControl: true }),
           card(`Median Salary by Major (${salaryHorizon})`, 'compare-salary', 6, true, { topControl: true }),
         ].join('');
@@ -4017,7 +3990,7 @@
       const internshipSummary = career.internships?.summary || {};
       const internshipWindow = internshipSummary.rate_window ? ` (${internshipSummary.rate_window})` : '';
       const comparing = state.selectionMode === 'compare' || state.selectionMode === 'major_compare';
-      const metrics = [
+      const metrics = comparing ? [] : [
         metric(`Recent internship rate${internshipWindow}`, pct(internshipSummary.internship_rate_pct), 3),
         metric('Avg employers by 5 yrs', mobility.avg_employers_5yr ?? '—', 3),
         metric('First employer retention 5 yrs', pct(mobility.first_employer_retention_5yr_pct), 3),
@@ -4050,18 +4023,20 @@
           ...(comparing ? [
             card('Recent Internship Rate Comparison', 'career-internship-rates', 5, true, { topControl: true }),
             card('Recent Top Internship Companies by Comparison', 'career-internship-employers', 7, true, { topControl: true }),
-          ] : []),
-          card('Employer Pay and Progression', 'career-employer-tenure', 6, true, { topControl: true }),
-          card('Superstar Alumni Paths', 'career-superstars', 6, false, { topControl: true, export: false }),
-          ...(comparing ? [] : [card('Internships That Became Jobs', 'career-internships', 12, false, { topControl: true, export: false })]),
+          ] : [
+            card('Employer Pay and Progression', 'career-employer-tenure', 6, true, { topControl: true }),
+            card('Superstar Alumni Paths', 'career-superstars', 6, false, { topControl: true, export: false }),
+            card('Internships That Became Jobs', 'career-internships', 12, false, { topControl: true, export: false }),
+          ]),
         ].join('');
         if (comparing) {
           drawCareerInternshipRates('career-internship-rates');
           drawCareerInternshipEmployers('career-internship-employers');
+        } else {
+          drawCareerEmployerTenure('career-employer-tenure');
+          drawCareerSuperstars('career-superstars');
+          drawCareerInternships('career-internships');
         }
-        drawCareerEmployerTenure('career-employer-tenure');
-        drawCareerSuperstars('career-superstars');
-        if (!comparing) drawCareerInternships('career-internships');
       }
     }
 
@@ -4696,7 +4671,6 @@
       if (state.viewMode === 'snapshot') {
         if (isCompare) {
           $('content').innerHTML = [
-            ...coverageMetrics(),
             card('IPEDS vs Revelio Completions by School', 'coverage-school-bars', 7, true),
             card('School Coverage Table', 'coverage-school-table', 5),
           ].join('');
