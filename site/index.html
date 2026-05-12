@@ -1889,6 +1889,7 @@
       const chartId = typeof id === 'string' ? id : id?.id;
       return Promise.resolve(nativePlotlyNewPlot(id, ...args)).then(plot => {
         markChartExportable(chartId || plot?.id);
+        bindLegendGroupToggles(plot);
         return plot;
       });
     };
@@ -4884,17 +4885,68 @@
     }
 
     function bindLegendGroupToggles(plot) {
+      if (!plot || plot.__revelioLegendInteractionsBound) return plot;
+      plot.__revelioLegendInteractionsBound = true;
+      const isHidden = trace => trace?.visible === 'legendonly' || trace?.visible === false;
+      const keyForTrace = (trace, idx) => trace?.legendgroup ? `group:${trace.legendgroup}` : `trace:${idx}`;
+      const legendKeys = () => {
+        const keys = [];
+        (plot.data || []).forEach((trace, idx) => {
+          if (trace?.showlegend === false) return;
+          if (!trace?.name && trace?.showlegend !== true) return;
+          const key = keyForTrace(trace, idx);
+          if (!keys.includes(key)) keys.push(key);
+        });
+        return keys;
+      };
+      const indicesForKey = key => {
+        if (!key) return [];
+        if (key.startsWith('group:')) {
+          const group = key.slice(6);
+          return (plot.data || [])
+            .map((trace, idx) => trace?.legendgroup === group ? idx : -1)
+            .filter(idx => idx >= 0);
+        }
+        const idx = Number(key.slice(6));
+        return Number.isInteger(idx) && idx >= 0 ? [idx] : [];
+      };
+      const indicesForKeys = keys => [...new Set(keys.flatMap(indicesForKey))];
+      const clickedKey = event => {
+        const idx = Number(event?.curveNumber);
+        if (!Number.isInteger(idx) || !plot.data?.[idx]) return null;
+        return keyForTrace(plot.data[idx], idx);
+      };
+
       plot.on('plotly_legendclick', event => {
-        const clicked = plot.data?.[event.curveNumber];
-        const group = clicked?.legendgroup;
-        if (!group) return true;
-        const indices = plot.data
-          .map((trace, idx) => trace.legendgroup === group ? idx : -1)
-          .filter(idx => idx >= 0);
-        const visible = indices.some(idx => plot.data[idx].visible !== 'legendonly');
+        const key = clickedKey(event);
+        if (!key) return true;
+        const indices = indicesForKey(key);
+        const visible = indices.some(idx => !isHidden(plot.data[idx]));
         Plotly.restyle(plot, { visible: visible ? 'legendonly' : true }, indices);
         return false;
       });
+
+      plot.on('plotly_legenddoubleclick', event => {
+        const key = clickedKey(event);
+        if (!key) return true;
+        const keys = legendKeys();
+        if (!keys.includes(key)) keys.push(key);
+        const targetIndices = indicesForKey(key);
+        const otherIndices = indicesForKeys(keys.filter(otherKey => otherKey !== key));
+        const allIndices = indicesForKeys(keys);
+        const isIsolated = targetIndices.some(idx => !isHidden(plot.data[idx]))
+          && otherIndices.length
+          && otherIndices.every(idx => isHidden(plot.data[idx]));
+
+        if (isIsolated) {
+          Plotly.restyle(plot, { visible: true }, allIndices);
+        } else {
+          if (otherIndices.length) Plotly.restyle(plot, { visible: 'legendonly' }, otherIndices);
+          Plotly.restyle(plot, { visible: true }, targetIndices);
+        }
+        return false;
+      });
+      return plot;
     }
 
     function topSeriesLabels(rows, labelKey, limit) {
