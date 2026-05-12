@@ -3826,8 +3826,8 @@
       const o = state.data.overview || {};
       return [
         metric('Alumni', num(o.alumni), 4),
-        metric('Weighted Median Salary', money(o.median_salary), 4),
-        metric('Salary Observations', num(o.salary_weight), 4),
+        metric('Unique Employers', num(o.unique_employers), 4),
+        metric('Unique Locations', num(o.unique_locations), 4),
       ];
     }
 
@@ -4089,11 +4089,11 @@
 
       if (tab === 'coverage') {
         $('content').innerHTML = [
-          card('Salary Observation Rate by Major', 'major-coverage-rate', 6, true),
+          card('Matched Alumni by Major', 'major-coverage-alumni', 6, true),
           card('Unique Employers by Major', 'major-coverage-employers', 6, true),
           card('Major Data Support Table', 'compare-table', 12),
         ].join('');
-        drawMajorCompareCoverageRate('major-coverage-rate');
+        drawMajorCompareMatchedAlumni('major-coverage-alumni');
         drawMajorCompareEmployerReach('major-coverage-employers');
         drawMajorCompareTable('compare-table');
         return;
@@ -4219,7 +4219,7 @@
         $('content').innerHTML = cards.join('');
         drawSalaryDistribution('salary-distribution');
         if (!hasMajor) drawMajorSalary('top-major-salary');
-        $('salary-table').innerHTML = table(['Major', 'Alumni', 'Salary observations', 'Median salary', 'Mean salary'], state.data.top_majors || [], row => [
+        $('salary-table').innerHTML = table(['Major', 'Alumni', 'Earnings records', 'Median salary', 'Mean salary'], state.data.top_majors || [], row => [
           row.title, num(row.alumni), num(row.salary_weight), money(row.median_salary), money(row.weighted_mean_salary)
         ]);
       } else {
@@ -4357,7 +4357,7 @@
           customdata: slice.map(row => [row.n_alumni, row.salary_obs, row.p25_salary, row.p75_salary]),
           line: { color: COLORS[0], width: 4 },
           marker: { size: 7, color: COLORS[0] },
-          hovertemplate: 'Year %{x}<br>Median %{y:$,.0f}<br>P25 %{customdata[2]:$,.0f}<br>P75 %{customdata[3]:$,.0f}<br>%{customdata[1]:,.0f} salary observations<extra></extra>',
+          hovertemplate: 'Year %{x}<br>Median %{y:$,.0f}<br>P25 %{customdata[2]:$,.0f}<br>P75 %{customdata[3]:$,.0f}<br>%{customdata[1]:,.0f} earnings records<extra></extra>',
         });
       } else {
         seriesNames.forEach((series, i) => {
@@ -4371,7 +4371,7 @@
             customdata: slice.map(row => [series, row.n_alumni, row.salary_obs]),
             line: { color: COLORS[i % COLORS.length], width: 3 },
             marker: { size: 6, color: COLORS[i % COLORS.length] },
-            hovertemplate: '%{customdata[0]}<br>Year %{x}<br>Median %{y:$,.0f}<br>%{customdata[2]:,.0f} salary observations<extra></extra>',
+            hovertemplate: '%{customdata[0]}<br>Year %{x}<br>Median %{y:$,.0f}<br>%{customdata[2]:,.0f} earnings records<extra></extra>',
           });
         });
       }
@@ -5448,10 +5448,10 @@
 
     function drawComparisonTable(id) {
       const rows = state.data.school_comparison || [];
-      $(id).innerHTML = table(['School', 'Alumni', 'Salary obs', 'Median salary', 'Mean salary', 'Later ed'], rows, row => [
+      $(id).innerHTML = table(['School', 'Alumni', 'Employers', 'Median salary', 'Mean salary', 'Later ed'], rows, row => [
         shortSchool(row.school_name),
         num(row.alumni),
-        num(row.salary_weight),
+        num(row.unique_employers),
         money(row.median_salary),
         money(row.weighted_mean_salary),
         pct(row.later_degree_pct),
@@ -6052,25 +6052,24 @@
       }], horizontalBarLayout(id, rows.map(row => ({ label: majorName(row) }))), plotConfig);
     }
 
-    function drawMajorCompareCoverageRate(id) {
+    function drawMajorCompareMatchedAlumni(id) {
       const rows = (state.data.major_comparison || [])
         .filter(row => Number(row.alumni || 0) > 0)
-        .map(row => ({ ...row, observation_rate: 100 * Number(row.salary_weight || 0) / Number(row.alumni || 1) }))
-        .sort((a, b) => Number(a.observation_rate || 0) - Number(b.observation_rate || 0))
+        .sort((a, b) => Number(a.alumni || 0) - Number(b.alumni || 0))
         .slice(-topNFor(id));
       if (!rows.length) return noData(id);
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
         y: rows.map(row => wrapAxisLabel(majorName(row), 24)),
-        x: rows.map(row => row.observation_rate),
-        text: rows.map(row => pct(row.observation_rate)),
+        x: rows.map(row => row.alumni),
+        text: rows.map(row => num(row.alumni)),
         textposition: 'outside',
         cliponaxis: false,
-        customdata: rows.map(row => [majorName(row), row.salary_weight, row.alumni]),
+        customdata: rows.map(row => [majorName(row), row.alumni, row.unique_employers]),
         marker: { color: COLORS[0] },
-        hovertemplate: '%{customdata[0]}<br>Salary obs: %{customdata[1]:,.0f}<br>Alumni: %{customdata[2]:,.0f}<extra></extra>',
-      }], horizontalBarLayout(id, rows.map(row => ({ label: majorName(row) })), '%'), plotConfig);
+        hovertemplate: '%{customdata[0]}<br>%{customdata[1]:,.0f} matched alumni<br>%{customdata[2]:,.0f} employers<extra></extra>',
+      }], horizontalBarLayout(id, rows.map(row => ({ label: majorName(row) }))), plotConfig);
     }
 
     function drawMajorDemographicStacked(id, rows) {
@@ -6101,10 +6100,10 @@
 
     function drawMajorCompareTable(id) {
       const rows = (state.data.major_comparison || []).slice().sort((a, b) => Number(b.alumni || 0) - Number(a.alumni || 0));
-      $(id).innerHTML = table(['Major', 'Alumni', 'Salary obs', 'Median salary', 'Mean salary', 'Later ed'], rows, row => [
+      $(id).innerHTML = table(['Major', 'Alumni', 'Employers', 'Median salary', 'Mean salary', 'Later ed'], rows, row => [
         majorName(row),
         num(row.alumni),
-        num(row.salary_weight),
+        num(row.unique_employers),
         money(row.median_salary),
         money(row.weighted_mean_salary),
         pct(row.later_degree_pct),
@@ -6359,7 +6358,7 @@
           <div class="salary-stat"><strong>${money(summary.p25)}</strong><span>P25</span></div>
           <div class="salary-stat"><strong>${money(summary.median)}</strong><span>Median</span></div>
           <div class="salary-stat"><strong>${money(summary.p75)}</strong><span>P75</span></div>
-          <div class="salary-stat"><strong>${num(summary.salary_weight)}</strong><span>Observations</span></div>
+          <div class="salary-stat"><strong>${num(summary.salary_weight)}</strong><span>Earnings records</span></div>
         </div>
         <div id="${plotId}" class="distribution-curve"></div>
       `;
@@ -6373,7 +6372,7 @@
         line: { color: COLORS[0], width: 4, shape: 'linear' },
         fillcolor: 'rgba(47, 128, 237, 0.16)',
         customdata: points.map(r => [r.start, r.end, r.rawN]),
-        hovertemplate: `Salary %{customdata[0]:$,.0f}-%{customdata[1]:$,.0f}<br>${horizonLabel}<br>%{y:,.0f} observations<extra></extra>`,
+        hovertemplate: `Salary %{customdata[0]:$,.0f}-%{customdata[1]:$,.0f}<br>${horizonLabel}<br>%{y:,.0f} earnings records<extra></extra>`,
       }], {
         ...layoutBase,
         margin: { ...layoutBase.margin, l: 50, r: 20, t: 8, b: 58 },
@@ -6426,7 +6425,7 @@
             summary.median,
             summary.p75,
           ]),
-          hovertemplate: '<b>%{customdata[0]}</b><br>Salary %{customdata[1]:$,.0f}-%{customdata[2]:$,.0f}<br>%{y:.1f}% of observations<extra></extra>',
+          hovertemplate: '<b>%{customdata[0]}</b><br>Salary %{customdata[1]:$,.0f}-%{customdata[2]:$,.0f}<br>%{y:.1f}% of earnings records<extra></extra>',
         };
       });
       const legendTraces = codes.map((code, i) => legendDotTrace(labelFor.get(code) || code, COLORS[i % COLORS.length], `${id}-dist-${i}`));
@@ -6435,7 +6434,7 @@
         height: 470,
         margin: { ...layoutBase.margin, l: 74, r: 32, t: 18, b: 62 },
         xaxis: { title: `Salary (${horizonLabel})`, tickprefix: '$', tickformat: '~s', automargin: true, range: globalSpec ? [globalSpec.start, globalSpec.end] : undefined },
-        yaxis: { title: 'Share of salary observations', ticksuffix: '%', automargin: true, rangemode: 'tozero' },
+        yaxis: { title: 'Share of earnings records', ticksuffix: '%', automargin: true, rangemode: 'tozero' },
         legend: { orientation: 'h', y: 1.16, x: 0, itemwidth: 30 },
       }, plotConfig).then(plot => bindLegendGroupToggles(plot));
     }
