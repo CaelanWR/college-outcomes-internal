@@ -884,7 +884,7 @@
 
     .controls-main {
       display: grid;
-      grid-template-columns: minmax(300px, 1.45fr) minmax(170px, 0.7fr) max-content minmax(280px, 1.15fr) max-content max-content;
+      grid-template-columns: minmax(300px, 1.35fr) minmax(160px, 0.62fr) minmax(220px, 0.92fr) minmax(220px, 0.82fr) max-content max-content;
       gap: 14px 16px;
       width: 100%;
       align-items: end;
@@ -910,8 +910,9 @@
     }
 
     .control-grow { flex: 1 1 320px; min-width: 280px; }
-    .control-major { min-width: 280px; }
+    .control-major { min-width: 220px; }
     .control-degree { min-width: 180px; }
+    .control-years { display: none; }
     .control-mode .btn { white-space: nowrap; }
     .control > select { width: 100%; }
     .control > .segmented { width: auto; }
@@ -947,6 +948,43 @@
     .compare-only { display: none; }
     body.school-compare-mode .school-compare-only,
     body.major-compare-mode .major-compare-only { display: flex; }
+    .compare-status-control { display: none; }
+    body.school-compare-mode .compare-status-control,
+    body.major-compare-mode .compare-status-control { display: flex; }
+    .compare-status {
+      width: 100%;
+      min-height: 44px;
+      border: 1px solid rgba(45,66,106,0.16);
+      border-radius: 14px;
+      background: linear-gradient(135deg, rgba(45,66,106,0.96), rgba(48,96,150,0.96));
+      color: #fff;
+      box-shadow: 0 12px 28px rgba(45,66,106,0.20);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 2px;
+      padding: 8px 13px;
+      text-align: left;
+      font: inherit;
+    }
+    .compare-status strong {
+      font-size: 0.95rem;
+      line-height: 1.05;
+      letter-spacing: -0.01em;
+    }
+    .compare-status span {
+      max-width: 100%;
+      color: rgba(255,255,255,0.74);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
 
     .content {
       width: auto;
@@ -1770,6 +1808,13 @@
         <label>Major</label>
         <select id="major-select"></select>
       </div>
+      <div class="control compare-status-control">
+        <span class="control-label">Analysis Mode</span>
+        <button id="compare-status" class="compare-status" type="button">
+          <strong>Single school</strong>
+          <span>Open advanced options to compare</span>
+        </button>
+      </div>
       <div class="control control-view">
         <span class="control-label">View</span>
         <span class="segmented" id="view-toggle">
@@ -1832,7 +1877,7 @@
           <select id="to-year-select"></select>
         </div>
         <div class="control">
-          <label>Horizon Mode</label>
+          <label>Years Out</label>
           <select id="horizon-select"></select>
         </div>
         <div class="control">
@@ -2713,6 +2758,7 @@
       });
       populateSelect($('compare-major-select'), options.major_options || [], row => `${row.title} (${row.code})`, row => row.code, existingCompareMajors);
       renderCompareMajorPicker(options.major_options || [], existingCompareMajors);
+      syncCompareStatus();
     }
 
     async function loadOptions(preserveMajor = true) {
@@ -3923,6 +3969,16 @@
       }
 
       if (tab === 'postgrad') {
+        if (state.viewMode === 'overtime') {
+          $('content').innerHTML = [
+            card('Further Education Paths Over Time by School', 'school-postgrad-trend-compare', 12, true, { topControl: true }),
+          ].join('');
+          drawCompareCategoryTrend('school-postgrad-trend-compare', state.data.school_postgrad_trend_comparison || [], {
+            labelTransform: label => legendLabel(label, 24),
+            yTitle: 'Share of alumni',
+          });
+          return;
+        }
         $('content').innerHTML = [
           card(`Further Education Rate by ${entity}`, 'compare-postgrad', 7, true, { topControl: state.selectionMode === 'major_compare' }),
           card('Later Degree Paths by School', 'school-postgrad-heatmap', 5, true, { topControl: true }),
@@ -3990,6 +4046,16 @@
       }
 
       if (tab === 'employers') {
+        if (state.viewMode === 'overtime') {
+          $('content').innerHTML = [
+            card('Employer Share Over Time by Major', 'major-employer-trend-compare', 12, true, { topControl: true }),
+          ].join('');
+          drawCompareCategoryTrend('major-employer-trend-compare', state.data.major_employer_trend_comparison || [], {
+            labelTransform: label => legendLabel(label, 26),
+            yTitle: 'Share of employed alumni',
+          });
+          return;
+        }
         const concentration = state.data.major_concentration || {};
         $('content').innerHTML = [
           card('Top 10 Employers by Major', 'major-employer-heatmap', 8, true, { topControl: true }),
@@ -4012,6 +4078,16 @@
       }
 
       if (tab === 'geography') {
+        if (state.viewMode === 'overtime') {
+          $('content').innerHTML = [
+            card('City Share Over Time by Major', 'major-geo-trend-compare', 12, true, { topControl: true }),
+          ].join('');
+          drawCompareCategoryTrend('major-geo-trend-compare', state.data.major_geography_trend_comparison || [], {
+            labelTransform: shortLocationLabel,
+            yTitle: 'Share of located alumni',
+          });
+          return;
+        }
         const concentration = state.data.major_concentration || {};
         $('content').innerHTML = [
           card('City Share by Major', 'major-geo-heatmap', 8, true, { topControl: true }),
@@ -4029,6 +4105,22 @@
       }
 
       if (tab === 'roles') {
+        if (state.viewMode === 'overtime') {
+          const roleTrend = state.data.major_role_trend_comparison || {};
+          $('content').innerHTML = [
+            card('Role Share Over Time by Major', 'major-role-trend-compare', 6, true, { topControl: true }),
+            card('Industry Share Over Time by Major', 'major-industry-trend-compare', 6, true, { topControl: true }),
+          ].join('');
+          drawCompareCategoryTrend('major-role-trend-compare', roleTrend.roles || [], {
+            labelTransform: label => legendLabel(label, 24),
+            yTitle: 'Share of employed alumni',
+          });
+          drawCompareCategoryTrend('major-industry-trend-compare', roleTrend.industries || [], {
+            labelTransform: label => legendLabel(label, 24),
+            yTitle: 'Share of employed alumni',
+          });
+          return;
+        }
         const roleCompare = state.data.major_role_comparison || {};
         const concentration = state.data.major_concentration || {};
         $('content').innerHTML = [
@@ -4053,6 +4145,22 @@
       }
 
       if (tab === 'demographics') {
+        if (state.viewMode === 'overtime') {
+          const demoTrend = state.data.major_demographic_trend_comparison || {};
+          $('content').innerHTML = [
+            card('Gender Mix Over Time by Major', 'major-gender-trend-compare', 6, true, { topControl: true }),
+            card('Race/Ethnicity Over Time by Major', 'major-race-trend-compare', 6, true, { topControl: true }),
+          ].join('');
+          drawCompareCategoryTrend('major-gender-trend-compare', demoTrend.gender || [], {
+            labelTransform: label => legendLabel(label, 20),
+            yTitle: 'Share of alumni',
+          });
+          drawCompareCategoryTrend('major-race-trend-compare', demoTrend.race_ethnicity || [], {
+            labelTransform: label => legendLabel(label, 22),
+            yTitle: 'Share of alumni',
+          });
+          return;
+        }
         const demoCompare = state.data.major_demographic_comparison || {};
         $('content').innerHTML = [
           card('Gender Composition by Major', 'major-gender-stack', 6, true),
@@ -4068,6 +4176,16 @@
       }
 
       if (tab === 'postgrad') {
+        if (state.viewMode === 'overtime') {
+          $('content').innerHTML = [
+            card('Further Education Paths Over Time by Major', 'major-postgrad-trend-compare', 12, true, { topControl: true }),
+          ].join('');
+          drawCompareCategoryTrend('major-postgrad-trend-compare', state.data.major_postgrad_trend_comparison || [], {
+            labelTransform: label => legendLabel(label, 24),
+            yTitle: 'Share of alumni',
+          });
+          return;
+        }
         $('content').innerHTML = [
           card('Further Education Rate by Major', 'compare-postgrad', 5, true, { topControl: true }),
           card('Later Degree Paths by Major', 'major-postgrad-heatmap', 7, true, { topControl: true }),
@@ -4117,6 +4235,16 @@
     }
 
     function renderSchoolCompareEmployers() {
+      if (state.viewMode === 'overtime') {
+        $('content').innerHTML = [
+          card('Employer Share Over Time by School', 'school-employer-trend-compare', 12, true, { topControl: true }),
+        ].join('');
+        drawCompareCategoryTrend('school-employer-trend-compare', state.data.school_employer_trend_comparison || [], {
+          labelTransform: label => legendLabel(label, 26),
+          yTitle: 'Share of employed alumni',
+        });
+        return;
+      }
       $('content').innerHTML = [
         card('Top Employers by School', 'school-employer-heatmap', 8, true, { topControl: true }),
         card('Employer Breadth by School', 'school-employer-reach', 4, true),
@@ -4130,6 +4258,16 @@
     }
 
     function renderSchoolCompareGeography() {
+      if (state.viewMode === 'overtime') {
+        $('content').innerHTML = [
+          card('City Share Over Time by School', 'school-geo-trend-compare', 12, true, { topControl: true }),
+        ].join('');
+        drawCompareCategoryTrend('school-geo-trend-compare', state.data.school_geography_trend_comparison || [], {
+          labelTransform: shortLocationLabel,
+          yTitle: 'Share of located alumni',
+        });
+        return;
+      }
       $('content').innerHTML = [
         card('City Share by School', 'school-geo-share-heatmap', 6, true, { topControl: true }),
         card('City Earnings by School', 'school-geo-salary-heatmap', 6, true, { topControl: true }),
@@ -4151,6 +4289,22 @@
 
     function renderSchoolCompareRoles() {
       const roleCompare = state.data.school_role_comparison || {};
+      if (state.viewMode === 'overtime') {
+        const roleTrend = state.data.school_role_trend_comparison || {};
+        $('content').innerHTML = [
+          card('Role Share Over Time by School', 'school-role-trend-compare', 6, true, { topControl: true }),
+          card('Industry Share Over Time by School', 'school-industry-trend-compare', 6, true, { topControl: true }),
+        ].join('');
+        drawCompareCategoryTrend('school-role-trend-compare', roleTrend.roles || [], {
+          labelTransform: label => legendLabel(label, 24),
+          yTitle: 'Share of employed alumni',
+        });
+        drawCompareCategoryTrend('school-industry-trend-compare', roleTrend.industries || [], {
+          labelTransform: label => legendLabel(label, 24),
+          yTitle: 'Share of employed alumni',
+        });
+        return;
+      }
       $('content').innerHTML = [
         card('Broad Role Mix by School', 'school-role-heatmap', 6, true, { topControl: true }),
         card('Industry Mix by School', 'school-industry-heatmap', 6, true, { topControl: true }),
@@ -4169,6 +4323,22 @@
 
     function renderSchoolCompareDemographics() {
       const demoCompare = state.data.school_demographic_comparison || {};
+      if (state.viewMode === 'overtime') {
+        const demoTrend = state.data.school_demographic_trend_comparison || {};
+        $('content').innerHTML = [
+          card('Gender Mix Over Time by School', 'school-gender-trend-compare', 6, true, { topControl: true }),
+          card('Race/Ethnicity Over Time by School', 'school-race-trend-compare', 6, true, { topControl: true }),
+        ].join('');
+        drawCompareCategoryTrend('school-gender-trend-compare', demoTrend.gender || [], {
+          labelTransform: label => legendLabel(label, 20),
+          yTitle: 'Share of alumni',
+        });
+        drawCompareCategoryTrend('school-race-trend-compare', demoTrend.race_ethnicity || [], {
+          labelTransform: label => legendLabel(label, 22),
+          yTitle: 'Share of alumni',
+        });
+        return;
+      }
       $('content').innerHTML = [
         card('Gender Composition by School', 'school-gender-stack', 6, true),
         card('Race/Ethnicity by School', 'school-race-heatmap', 6, true, { topControl: true }),
@@ -5315,6 +5485,63 @@
           if (label) options.onClick(label);
         });
       });
+    }
+
+    function drawCompareCategoryTrend(id, rows, options = {}) {
+      const cleanRows = (rows || [])
+        .filter(row => row.code && row.title && row.label && row.grad_year !== null && row.grad_year !== undefined && row.share_pct !== null && row.share_pct !== undefined);
+      if (!cleanRows.length) return noData(id);
+      const entityOrder = compareRows().map(row => String(row.code)).filter(Boolean);
+      const entityLabels = new Map();
+      cleanRows.forEach(row => {
+        if (!entityLabels.has(String(row.code))) entityLabels.set(String(row.code), row.title);
+      });
+      const entityCodes = [
+        ...entityOrder.filter(code => entityLabels.has(code)),
+        ...[...entityLabels.keys()].filter(code => !entityOrder.includes(code)),
+      ];
+      const labelLimit = Math.max(1, Math.min(topNFor(id), options.maxLabels || 8));
+      const labels = topSeriesLabels(cleanRows, 'label', labelLimit);
+      const dashes = ['solid', 'dash', 'dot', 'dashdot', 'longdash', 'longdashdot'];
+      const traces = [];
+      const legendTraces = [];
+      entityCodes.forEach((code, entityIdx) => {
+        const entityLabel = options.entityLabelTransform
+          ? options.entityLabelTransform(entityLabels.get(code))
+          : (state.selectionMode === 'major_compare' ? legendLabel(entityLabels.get(code), 24) : shortSchool(entityLabels.get(code)));
+        labels.forEach((label, labelIdx) => {
+          const slice = cleanRows
+            .filter(row => String(row.code) === code && row.label === label)
+            .sort((a, b) => Number(a.grad_year) - Number(b.grad_year));
+          if (!slice.length) return;
+          const displayLabel = options.labelTransform ? options.labelTransform(label) : legendLabel(label, 24);
+          const traceName = `${entityLabel} · ${displayLabel}`;
+          const legendgroup = `${id}-${entityIdx}-${labelIdx}`;
+          traces.push({
+            type: 'scatter',
+            mode: 'lines+markers',
+            name: traceName,
+            legendgroup,
+            showlegend: false,
+            x: slice.map(row => row.grad_year),
+            y: slice.map(row => Number(row.share_pct || 0)),
+            line: { color: COLORS[entityIdx % COLORS.length], width: 2.8, dash: dashes[labelIdx % dashes.length] },
+            marker: { color: COLORS[entityIdx % COLORS.length], size: 6 },
+            customdata: slice.map(row => [entityLabel, displayLabel, row.n, row.weighted_mean_salary]),
+            hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>Class of %{x}<br>%{y:.1f}%<extra></extra>',
+          });
+          legendTraces.push(legendDotTrace(traceName, COLORS[entityIdx % COLORS.length], legendgroup));
+        });
+      });
+      if (!traces.length) return noData(id);
+      Plotly.newPlot(id, [...traces, ...legendTraces], {
+        ...layoutBase,
+        height: options.height || 500,
+        margin: { ...layoutBase.margin, l: 82, r: 38, t: 34, b: 68 },
+        xaxis: { title: 'Graduation year', automargin: true, dtick: 5 },
+        yaxis: { title: options.yTitle || 'Share of alumni', ticksuffix: '%', automargin: true, rangemode: 'tozero' },
+        legend: { orientation: 'h', y: 1.18, x: 0, itemwidth: 30 },
+      }, plotConfig).then(plot => bindLegendGroupToggles(plot));
     }
 
     function drawMajorTrend(id) {
@@ -6826,6 +7053,7 @@
       });
       storage.setItem('outcomes.compareSchools', JSON.stringify(values));
       renderCompareSchoolPicker(state.options?.schools || [], new Set(values));
+      syncCompareStatus();
       setAdvancedOpen(true);
       scheduleCompareSchoolWarmup();
     }
@@ -6834,7 +7062,27 @@
       const values = selectedValues($('compare-major-select')).map(String);
       storage.setItem('outcomes.compareMajors', JSON.stringify(values));
       renderCompareMajorPicker(state.options?.major_options || [], new Set(values));
+      syncCompareStatus();
       setAdvancedOpen(true);
+    }
+
+    function syncCompareStatus(modeOverride = null) {
+      const node = $('compare-status');
+      if (!node) return;
+      const mode = modeOverride || state.selectionMode || currentSelectionMode();
+      if (mode === 'compare') {
+        const primary = shortSchool(selectedOptionLabel('school-select', 'Base school'));
+        const count = trimCompareSchools(selectedValues($('compare-school-select')), $('school-select')?.value || '').length;
+        node.innerHTML = `<strong>School comparison</strong><span>${escapeHtml(primary)} + ${count} ${count === 1 ? 'school' : 'schools'}</span>`;
+        return;
+      }
+      if (mode === 'major_compare') {
+        const count = selectedValues($('compare-major-select')).length;
+        const school = shortSchool(selectedOptionLabel('school-select', 'Selected school'));
+        node.innerHTML = `<strong>Major comparison</strong><span>${escapeHtml(num(count))} majors at ${escapeHtml(school)}</span>`;
+        return;
+      }
+      node.innerHTML = '<strong>Single school</strong><span>Open advanced options to compare</span>';
     }
 
     function titleCase(value) {
@@ -6875,6 +7123,7 @@
       $('advanced-btn').addEventListener('click', () => {
         setAdvancedOpen(!$('advanced-panel').classList.contains('open'));
       });
+      $('compare-status').addEventListener('click', () => setAdvancedOpen(true));
       $('advanced-reset-btn').addEventListener('click', () => resetAdvancedOptions());
       $('advanced-apply-btn').addEventListener('click', () => applyAdvancedOptions());
       $('download-visible-btn').addEventListener('click', () => downloadVisibleCharts());
@@ -7026,6 +7275,7 @@
       document.querySelectorAll('[data-selection-mode]').forEach(button => {
         button.classList.toggle('active', button.dataset.selectionMode === selectedMode);
       });
+      syncCompareStatus(selectedMode);
     }
 
     function syncHorizonToggle() {

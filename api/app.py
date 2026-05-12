@@ -2095,6 +2095,90 @@ def _school_outcome_comparison(
     )
 
 
+def _entity_compare_fields(filters: QueryRequest) -> tuple[str, str, str]:
+    if filters.compare_dimension == "major":
+        cip_col = _cip_col(filters)
+        return cip_col, f"COALESCE(major_title, {cip_col})", f"AND {cip_col} IS NOT NULL"
+    return "unitid", "school_name", ""
+
+
+def _entity_outcome_trend_comparison(
+    con: duckdb.DuckDBPyConnection,
+    filters: QueryRequest,
+    label_sql: str,
+    where_extra: str,
+    min_weight: float,
+) -> list[dict[str, Any]]:
+    limit = min(_safe_limit(filters.top_n), 8)
+    entity_code_sql, entity_title_sql, entity_filter_sql = _entity_compare_fields(filters)
+    return _records_from_query(
+        con,
+        f"""
+        WITH raw AS (
+          SELECT
+            {entity_code_sql} AS code,
+            {entity_title_sql} AS title,
+            grad_year,
+            {label_sql} AS label,
+            final_weight,
+            salary
+          FROM slice
+          WHERE grad_year IS NOT NULL
+            {entity_filter_sql}
+            {where_extra}
+        ),
+        eligible AS (
+          SELECT *
+          FROM raw
+          WHERE label IS NOT NULL
+            AND TRIM(CAST(label AS VARCHAR)) <> ''
+            AND LOWER(TRIM(CAST(label AS VARCHAR))) NOT IN ('empty', 'unknown', 'other')
+        ),
+        top_labels AS (
+          SELECT label, SUM(final_weight) AS total_n
+          FROM eligible
+          GROUP BY label
+          HAVING SUM(final_weight) > ?
+          ORDER BY total_n DESC
+          LIMIT {limit}
+        ),
+        denom AS (
+          SELECT code, grad_year, SUM(final_weight) AS total_n
+          FROM eligible
+          GROUP BY code, grad_year
+        ),
+        grouped AS (
+          SELECT
+            e.code,
+            MAX(e.title) AS title,
+            e.grad_year,
+            e.label,
+            SUM(e.final_weight) AS n,
+            SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight ELSE 0 END) AS salary_weight,
+            SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight * e.salary ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight ELSE 0 END), 0) AS weighted_mean_salary
+          FROM eligible e
+          JOIN top_labels t USING (label)
+          GROUP BY e.code, e.grad_year, e.label
+        )
+        SELECT
+          g.code,
+          g.title,
+          g.grad_year,
+          g.label,
+          ROUND(g.n, 2) AS n,
+          ROUND(100.0 * g.n / NULLIF(d.total_n, 0), 2) AS share_pct,
+          ROUND(g.salary_weight) AS salary_weight,
+          CASE WHEN g.salary_weight > ? THEN ROUND(g.weighted_mean_salary) ELSE NULL END AS weighted_mean_salary
+        FROM grouped g
+        JOIN denom d USING (code, grad_year)
+        WHERE g.n > ?
+        ORDER BY g.label, g.title, g.grad_year
+        """,
+        [min_weight, SALARY_MIN_WEIGHT, min_weight],
+    )
+
+
 def _school_cohort_label_comparison(
     con: duckdb.DuckDBPyConnection,
     label_sql: str,
@@ -2156,6 +2240,77 @@ def _school_cohort_label_comparison(
         JOIN denom d USING (code)
         WHERE g.n > ?
         ORDER BY g.label, g.title
+        """,
+        [min_weight, min_weight],
+    )
+
+
+def _entity_cohort_label_trend_comparison(
+    con: duckdb.DuckDBPyConnection,
+    filters: QueryRequest,
+    label_sql: str,
+    where_extra: str,
+    min_weight: float,
+) -> list[dict[str, Any]]:
+    limit = min(_safe_limit(filters.top_n), 8)
+    entity_code_sql, entity_title_sql, entity_filter_sql = _entity_compare_fields(filters)
+    return _records_from_query(
+        con,
+        f"""
+        WITH raw AS (
+          SELECT
+            {entity_code_sql} AS code,
+            {entity_title_sql} AS title,
+            grad_year,
+            {label_sql} AS label,
+            profile_weight
+          FROM cohort_slice
+          WHERE grad_year IS NOT NULL
+            {entity_filter_sql}
+            {where_extra}
+        ),
+        eligible AS (
+          SELECT *
+          FROM raw
+          WHERE label IS NOT NULL
+            AND TRIM(CAST(label AS VARCHAR)) <> ''
+            AND LOWER(TRIM(CAST(label AS VARCHAR))) NOT IN ('empty', 'unknown', 'other')
+        ),
+        top_labels AS (
+          SELECT label, SUM(profile_weight) AS total_n
+          FROM eligible
+          GROUP BY label
+          HAVING SUM(profile_weight) > ?
+          ORDER BY CASE WHEN label = 'No further education' THEN 1 ELSE 0 END, total_n DESC
+          LIMIT {limit}
+        ),
+        denom AS (
+          SELECT code, grad_year, SUM(profile_weight) AS total_n
+          FROM eligible
+          GROUP BY code, grad_year
+        ),
+        grouped AS (
+          SELECT
+            e.code,
+            MAX(e.title) AS title,
+            e.grad_year,
+            e.label,
+            SUM(e.profile_weight) AS n
+          FROM eligible e
+          JOIN top_labels t USING (label)
+          GROUP BY e.code, e.grad_year, e.label
+        )
+        SELECT
+          g.code,
+          g.title,
+          g.grad_year,
+          g.label,
+          ROUND(g.n, 2) AS n,
+          ROUND(100.0 * g.n / NULLIF(d.total_n, 0), 2) AS share_pct
+        FROM grouped g
+        JOIN denom d USING (code, grad_year)
+        WHERE g.n > ?
+        ORDER BY g.label, g.title, g.grad_year
         """,
         [min_weight, min_weight],
     )
@@ -4862,18 +5017,82 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                     if view_mode == "overtime" and tab == "earnings":
                         result["salary_trend_by_major"] = _salary_trend_by_major(con, filters)
                     if tab == "employers":
-                        result["major_employer_comparison"] = _major_employer_comparison(con, filters)
-                        result["major_concentration"] = _major_concentration(con, filters)
+                        if view_mode == "overtime":
+                            result["major_employer_trend_comparison"] = _entity_outcome_trend_comparison(
+                                con,
+                                filters,
+                                "employer",
+                                f"""
+                                    AND employer IS NOT NULL
+                                    AND employer <> ''
+                                    AND unknown_employer_flag = 0
+                                    AND named_employer_flag = 1
+                                    AND career_employer_flag = 1
+                                    {_same_school_employer_filter(filters)}
+                                """,
+                                EMPLOYER_ROW_MIN_WEIGHT,
+                            )
+                        else:
+                            result["major_employer_comparison"] = _major_employer_comparison(con, filters)
+                            result["major_concentration"] = _major_concentration(con, filters)
                     if tab == "geography":
-                        result["major_geography_comparison"] = _major_geography_comparison(con, filters)
-                        result["major_concentration"] = _major_concentration(con, filters)
+                        if view_mode == "overtime":
+                            result["major_geography_trend_comparison"] = _entity_outcome_trend_comparison(
+                                con,
+                                filters,
+                                _location_label_expr(),
+                                "AND COALESCE(location, city) IS NOT NULL AND LOWER(COALESCE(location, city)) NOT IN ('empty', 'unknown')",
+                                GEOGRAPHY_ROW_MIN_WEIGHT,
+                            )
+                        else:
+                            result["major_geography_comparison"] = _major_geography_comparison(con, filters)
+                            result["major_concentration"] = _major_concentration(con, filters)
                     if tab == "roles":
-                        result["major_role_comparison"] = _major_role_comparison(con, filters)
-                        result["major_concentration"] = _major_concentration(con, filters)
+                        if view_mode == "overtime":
+                            result["major_role_trend_comparison"] = {
+                                "roles": _entity_outcome_trend_comparison(
+                                    con,
+                                    filters,
+                                    "role_k50_v3",
+                                    "AND role_k50_v3 IS NOT NULL AND role_k50_v3 <> '' AND NOT (degree = 'Bachelors' AND horizon = '1yr' AND role_k50_v3 = 'Corporate Attorney')",
+                                    MIN_CELL_WEIGHT,
+                                ),
+                                "industries": _entity_outcome_trend_comparison(
+                                    con,
+                                    filters,
+                                    "industry_k50",
+                                    "AND industry_k50 IS NOT NULL AND industry_k50 <> ''",
+                                    MIN_CELL_WEIGHT,
+                                ),
+                            }
+                        else:
+                            result["major_role_comparison"] = _major_role_comparison(con, filters)
+                            result["major_concentration"] = _major_concentration(con, filters)
                     if tab == "demographics":
-                        result["major_demographic_comparison"] = _major_demographic_comparison(con, filters)
+                        if view_mode == "overtime":
+                            result["major_demographic_trend_comparison"] = {
+                                "gender": _entity_cohort_label_trend_comparison(con, filters, "gender", "AND gender IS NOT NULL AND gender <> ''", MIN_CELL_WEIGHT),
+                                "race_ethnicity": _entity_cohort_label_trend_comparison(
+                                    con,
+                                    filters,
+                                    "race_ethnicity",
+                                    "AND race_ethnicity IS NOT NULL AND race_ethnicity <> ''",
+                                    MIN_CELL_WEIGHT,
+                                ),
+                            }
+                        else:
+                            result["major_demographic_comparison"] = _major_demographic_comparison(con, filters)
                     if tab == "postgrad":
-                        result["major_postgrad_comparison"] = _major_postgrad_comparison(con, filters)
+                        if view_mode == "overtime":
+                            result["major_postgrad_trend_comparison"] = _entity_cohort_label_trend_comparison(
+                                con,
+                                filters,
+                                f"CASE WHEN later_degree_type IS NOT NULL AND later_degree_type <> '' THEN {_degree_display_expr('later_degree_type')} WHEN no_further_education_flag = 1 THEN 'No further education' ELSE NULL END",
+                                "",
+                                MIN_CELL_WEIGHT,
+                            )
+                        else:
+                            result["major_postgrad_comparison"] = _major_postgrad_comparison(con, filters)
                 else:
                     result["school_comparison"] = _school_comparison(con)
                     if tab in {"all", "full"}:
@@ -4894,15 +5113,79 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                     if view_mode == "overtime" and tab == "earnings":
                         result["salary_trend_by_school"] = _salary_trend_by_school(con, filters)
                     if tab == "employers":
-                        result["school_employer_comparison"] = _school_employer_comparison(con, filters)
+                        if view_mode == "overtime":
+                            result["school_employer_trend_comparison"] = _entity_outcome_trend_comparison(
+                                con,
+                                filters,
+                                "employer",
+                                f"""
+                                    AND employer IS NOT NULL
+                                    AND employer <> ''
+                                    AND unknown_employer_flag = 0
+                                    AND named_employer_flag = 1
+                                    AND career_employer_flag = 1
+                                    {_same_school_employer_filter(filters)}
+                                """,
+                                EMPLOYER_ROW_MIN_WEIGHT,
+                            )
+                        else:
+                            result["school_employer_comparison"] = _school_employer_comparison(con, filters)
                     if tab == "geography":
-                        result["school_geography_comparison"] = _school_geography_comparison(con, filters)
+                        if view_mode == "overtime":
+                            result["school_geography_trend_comparison"] = _entity_outcome_trend_comparison(
+                                con,
+                                filters,
+                                _location_label_expr(),
+                                "AND COALESCE(location, city) IS NOT NULL AND LOWER(COALESCE(location, city)) NOT IN ('empty', 'unknown')",
+                                GEOGRAPHY_ROW_MIN_WEIGHT,
+                            )
+                        else:
+                            result["school_geography_comparison"] = _school_geography_comparison(con, filters)
                     if tab == "roles":
-                        result["school_role_comparison"] = _school_role_comparison(con, filters)
+                        if view_mode == "overtime":
+                            result["school_role_trend_comparison"] = {
+                                "roles": _entity_outcome_trend_comparison(
+                                    con,
+                                    filters,
+                                    "role_k50_v3",
+                                    "AND role_k50_v3 IS NOT NULL AND role_k50_v3 <> '' AND NOT (degree = 'Bachelors' AND horizon = '1yr' AND role_k50_v3 = 'Corporate Attorney')",
+                                    MIN_CELL_WEIGHT,
+                                ),
+                                "industries": _entity_outcome_trend_comparison(
+                                    con,
+                                    filters,
+                                    "industry_k50",
+                                    "AND industry_k50 IS NOT NULL AND industry_k50 <> ''",
+                                    MIN_CELL_WEIGHT,
+                                ),
+                            }
+                        else:
+                            result["school_role_comparison"] = _school_role_comparison(con, filters)
                     if tab == "demographics":
-                        result["school_demographic_comparison"] = _school_demographic_comparison(con, filters)
+                        if view_mode == "overtime":
+                            result["school_demographic_trend_comparison"] = {
+                                "gender": _entity_cohort_label_trend_comparison(con, filters, "gender", "AND gender IS NOT NULL AND gender <> ''", MIN_CELL_WEIGHT),
+                                "race_ethnicity": _entity_cohort_label_trend_comparison(
+                                    con,
+                                    filters,
+                                    "race_ethnicity",
+                                    "AND race_ethnicity IS NOT NULL AND race_ethnicity <> ''",
+                                    MIN_CELL_WEIGHT,
+                                ),
+                            }
+                        else:
+                            result["school_demographic_comparison"] = _school_demographic_comparison(con, filters)
                     if tab == "postgrad":
-                        result["school_postgrad_comparison"] = _school_postgrad_comparison(con, filters)
+                        if view_mode == "overtime":
+                            result["school_postgrad_trend_comparison"] = _entity_cohort_label_trend_comparison(
+                                con,
+                                filters,
+                                f"CASE WHEN later_degree_type IS NOT NULL AND later_degree_type <> '' THEN {_degree_display_expr('later_degree_type')} WHEN no_further_education_flag = 1 THEN 'No further education' ELSE NULL END",
+                                "",
+                                MIN_CELL_WEIGHT,
+                            )
+                        else:
+                            result["school_postgrad_comparison"] = _school_postgrad_comparison(con, filters)
                 if tab == "earnings":
                     result["salary_distribution"] = _salary_distribution(con)
                     result["salary_distributions_by_entity"] = _salary_distribution_by_entity(con, filters)
