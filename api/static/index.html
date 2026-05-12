@@ -3826,20 +3826,6 @@
         }))
         .sort((a, b) => b.value - a.value);
       const visible = ranked.slice(0, limit);
-      const hidden = ranked.slice(limit);
-      const hiddenValue = hidden.reduce((sum, row) => sum + Number(row.value || 0), 0);
-      if (hidden.length && hiddenValue > 0) {
-        visible.push({
-          label: 'Other',
-          value: hiddenValue,
-          salaryWeight: 0,
-          salarySum: 0,
-          median_salary: null,
-          drillable: false,
-          isOther: true,
-          hiddenCount: hidden.length,
-        });
-      }
       return visible;
     }
 
@@ -6789,6 +6775,7 @@
       const domain = options.payDomain ?? treemapPayDomain(nodes);
       const rootTotal = sumRows(rows, 'n');
       const parentTotal = sumRows(filterRowsByHierarchyPath(rows, levels, path), 'n') || rootTotal;
+      const tileShare = row => parentTotal ? (Number(row.value || 0) / parentTotal) * 100 : null;
       updateTreemapLegend(id, domain);
       Plotly.newPlot(id, [{
         type: 'treemap',
@@ -6797,17 +6784,17 @@
         labels: nodes.map(row => row.label),
         parents: nodes.map(() => ''),
         values: nodes.map(row => row.value),
-        textinfo: 'label',
+        text: nodes.map(row => `${escapeHtml(legendLabel(row.label, 24))}<br>${pct(tileShare(row))}`),
+        textinfo: 'text',
+        texttemplate: '%{text}',
         marker: {
-          colors: nodes.map(row => row.isOther ? '#B9C4D3' : payColor(Number(row.median_salary), domain)),
+          colors: nodes.map(row => payColor(Number(row.median_salary), domain)),
           line: { width: 1.25, color: '#ffffff' },
         },
         customdata: nodes.map(row => [
           rootTotal ? (row.value / rootTotal) * 100 : null,
-          parentTotal ? (row.value / parentTotal) * 100 : null,
-          row.isOther
-            ? `${num(row.hiddenCount)} smaller categories`
-            : (row.median_salary === null || row.median_salary === undefined ? 'Mean pay unavailable' : `Mean pay: ${money(row.median_salary)}`),
+          tileShare(row),
+          row.median_salary === null || row.median_salary === undefined ? 'Mean pay unavailable' : `Mean pay: ${money(row.median_salary)}`,
           row.drillable ? 'Click to drill' : '',
         ]),
         hovertemplate: '<b>%{label}</b><br>%{value:,.0f} alumni<br>%{customdata[0]:.1f}% of total<br>%{customdata[2]}<extra></extra>',
