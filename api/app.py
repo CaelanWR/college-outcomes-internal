@@ -3713,6 +3713,25 @@ def _coverage(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
         """,
         [MIN_CELL_WEIGHT, MIN_CELL_WEIGHT],
     )
+    selected_major_rows = _records_from_query(
+        con,
+        f"""
+        SELECT
+          code,
+          COALESCE(MAX(title), code) AS title,
+          ROUND(SUM(COALESCE(revelio_completions, 0))) AS revelio_completions,
+          ROUND(SUM(COALESCE(ipeds_completions, 0))) AS ipeds_completions,
+          {coverage_expr} AS coverage_pct
+        FROM coverage_selected
+        WHERE code IS NOT NULL
+        GROUP BY code
+        HAVING SUM(COALESCE(revelio_completions, 0)) > ?
+            OR SUM(COALESCE(ipeds_completions, 0)) > ?
+        ORDER BY revelio_completions DESC
+        LIMIT 40
+        """,
+        [MIN_CELL_WEIGHT, MIN_CELL_WEIGHT],
+    )
     school_rows = _records_from_query(
         con,
         f"""
@@ -3750,6 +3769,7 @@ def _coverage(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
     return {
         "degree": degree_rows,
         "bachelor_majors": bachelor_major_rows,
+        "selected_majors": selected_major_rows,
         "schools": school_rows,
         "trend": trend_rows,
     }

@@ -3869,11 +3869,17 @@
     }
 
     function coverageMetrics() {
-      const o = state.data.overview || {};
+      const coverage = state.data.coverage || {};
+      const baseRows = state.selectionMode === 'compare'
+        ? (coverage.schools || [])
+        : (state.selectionMode === 'major_compare' ? (coverage.selected_majors || []) : (coverage.trend || coverage.degree || []));
+      const revelio = baseRows.reduce((sum, row) => sum + Number(row.revelio_completions || 0), 0);
+      const ipeds = baseRows.reduce((sum, row) => sum + Number(row.ipeds_completions || 0), 0);
+      const coveragePct = ipeds > 0 ? (100 * revelio / ipeds) : null;
       return [
-        metric('Alumni', num(o.alumni), 4),
-        metric('Unique Employers', num(o.unique_employers), 4),
-        metric('Unique Locations', num(o.unique_locations), 4),
+        metric('Grad Coverage', pct(coveragePct), 4),
+        metric('Revelio Completions', num(revelio), 4),
+        metric('IPEDS Completions', num(ipeds), 4),
       ];
     }
 
@@ -4206,14 +4212,7 @@
       }
 
       if (tab === 'coverage') {
-        $('content').innerHTML = [
-          card('Matched Alumni by Major', 'major-coverage-alumni', 6, true),
-          card('Unique Employers by Major', 'major-coverage-employers', 6, true),
-          card('Major Data Support Table', 'compare-table', 12),
-        ].join('');
-        drawMajorCompareMatchedAlumni('major-coverage-alumni');
-        drawMajorCompareEmployerReach('major-coverage-employers');
-        drawMajorCompareTable('compare-table');
+        renderCoverage();
         return;
       }
 
@@ -5129,15 +5128,28 @@
 
     function renderCoverage() {
       const coverage = state.data.coverage || {};
-      const isCompare = state.selectionMode === 'compare';
+      const isSchoolCompare = state.selectionMode === 'compare';
+      const isMajorCompare = state.selectionMode === 'major_compare';
       if (state.viewMode === 'snapshot') {
-        if (isCompare) {
+        if (isSchoolCompare) {
           $('content').innerHTML = [
+            ...coverageMetrics(),
             card('IPEDS vs Revelio Completions by School', 'coverage-school-bars', 7, true),
             card('School Coverage Table', 'coverage-school-table', 5),
           ].join('');
           drawCoverageOverlayBars('coverage-school-bars', coverage.schools || [], 'school_name', 16);
           $('coverage-school-table').innerHTML = coverageTable(coverage.schools || [], 'School', 'school_name', 24);
+          return;
+        }
+        if (isMajorCompare) {
+          const rows = coverage.selected_majors || [];
+          $('content').innerHTML = [
+            ...coverageMetrics(),
+            card('Grad Coverage by Major vs IPEDS', 'coverage-selected-major-bars', 7, true),
+            card('Major Coverage Table', 'coverage-selected-major-table', 5),
+          ].join('');
+          drawCoverageOverlayBars('coverage-selected-major-bars', rows, 'title', 16);
+          $('coverage-selected-major-table').innerHTML = coverageTable(rows, 'Major', 'title', 24);
           return;
         }
         $('content').innerHTML = [
