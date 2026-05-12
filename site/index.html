@@ -957,7 +957,8 @@
 
     .api-connection.connected { display: none; }
 
-    .auth-modal {
+    .auth-modal,
+    .detail-modal {
       position: fixed;
       inset: 0;
       z-index: 1000;
@@ -968,7 +969,8 @@
       backdrop-filter: blur(16px);
     }
 
-    .auth-modal.open { display: grid; }
+    .auth-modal.open,
+    .detail-modal.open { display: grid; }
 
     .auth-card {
       width: min(560px, calc(100vw - 32px));
@@ -977,6 +979,144 @@
       background: linear-gradient(180deg, #ffffff, #f4f8fc);
       box-shadow: 0 30px 80px rgba(8,24,38,0.28);
       padding: clamp(24px, 3vw, 34px);
+    }
+
+    .detail-card {
+      width: min(920px, calc(100vw - 32px));
+      max-height: min(780px, calc(100vh - 32px));
+      overflow: auto;
+      border: 1px solid rgba(255,255,255,0.30);
+      border-radius: 28px;
+      background: linear-gradient(180deg, #ffffff, #f6f8fb);
+      box-shadow: 0 30px 80px rgba(8,24,38,0.28);
+      padding: clamp(22px, 3vw, 32px);
+    }
+
+    .detail-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 16px;
+      margin-bottom: 18px;
+    }
+
+    .detail-header h2 {
+      margin: 0 0 6px;
+      font-size: clamp(1.45rem, 2.5vw, 2.1rem);
+      letter-spacing: -0.04em;
+      line-height: 1.05;
+    }
+
+    .detail-subtitle {
+      color: var(--muted);
+      font-weight: 850;
+      line-height: 1.35;
+    }
+
+    .detail-close {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--navy);
+      cursor: pointer;
+      font-size: 1.35rem;
+      font-weight: 900;
+      line-height: 1;
+      width: 40px;
+      height: 40px;
+      flex: 0 0 auto;
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .detail-panel {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255,255,255,0.74);
+      padding: 16px;
+      min-width: 0;
+    }
+
+    .detail-panel h3 {
+      margin: 0 0 12px;
+      font-size: 1rem;
+      letter-spacing: 0.01em;
+    }
+
+    .detail-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .detail-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      border: 0;
+      border-radius: 14px;
+      background: transparent;
+      color: var(--navy);
+      cursor: pointer;
+      font: inherit;
+      padding: 5px 4px;
+      text-align: left;
+      width: 100%;
+    }
+
+    .detail-row:hover,
+    .detail-row.active {
+      background: rgba(72, 235, 143, 0.10);
+    }
+
+    .detail-row-label {
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .detail-row-label span:first-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 900;
+    }
+
+    .detail-bar-track {
+      height: 8px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e8eef6;
+    }
+
+    .detail-bar-fill {
+      height: 100%;
+      min-width: 2px;
+      border-radius: inherit;
+      background: var(--navy);
+    }
+
+    .detail-row-value {
+      color: var(--muted);
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .detail-hint {
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      font-weight: 800;
+    }
+
+    @media (max-width: 860px) {
+      .detail-grid { grid-template-columns: 1fr; }
     }
 
     .auth-card h2 {
@@ -1773,6 +1913,19 @@
     </div>
   </div>
 
+  <div id="drilldown-modal" class="detail-modal" role="dialog" aria-modal="true" aria-labelledby="drilldown-title">
+    <div class="detail-card">
+      <div class="detail-header">
+        <div>
+          <h2 id="drilldown-title">Path detail</h2>
+          <div id="drilldown-subtitle" class="detail-subtitle"></div>
+        </div>
+        <button id="drilldown-close" class="detail-close" type="button" aria-label="Close detail">×</button>
+      </div>
+      <div id="drilldown-body"></div>
+    </div>
+  </div>
+
   <div id="refresh-state" class="refresh-state">Refreshing...</div>
   <div id="export-tray" class="export-tray" hidden></div>
 
@@ -1826,6 +1979,7 @@
       selectedPostgradDegree: null,
       selectedPostgradSchool: null,
       selectedPostgradProgram: null,
+      activeDrilldownContext: null,
       roleTreePath: [],
       industryTreePath: [],
       topNByChart: {},
@@ -2681,6 +2835,130 @@
 
     function escapeHtml(value) {
       return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    }
+
+    function closeDrilldownModal() {
+      $('drilldown-modal')?.classList.remove('open');
+      state.activeDrilldownContext = null;
+    }
+
+    function setDrilldownModal(title, subtitle, bodyHtml) {
+      $('drilldown-title').textContent = title || 'Path detail';
+      $('drilldown-subtitle').textContent = subtitle || '';
+      $('drilldown-body').innerHTML = bodyHtml || '';
+      $('drilldown-modal').classList.add('open');
+    }
+
+    function drilldownBars(title, rows, color, clickAttr, activeLabel = '') {
+      const cleanRows = (rows || []).filter(row => row.label).slice(0, 10);
+      if (!cleanRows.length) {
+        return `
+          <div class="detail-panel">
+            <h3>${escapeHtml(title)}</h3>
+            <div class="empty">No detail available for this slice.</div>
+          </div>
+        `;
+      }
+      const maxValue = Math.max(1, ...cleanRows.map(row => Number(row.n || 0)));
+      const rowHtml = cleanRows.map(row => {
+        const value = Number(row.n || 0);
+        const width = Math.max(3, 100 * value / maxValue);
+        const label = String(row.label || '');
+        const active = activeLabel && label === activeLabel;
+        const attr = clickAttr ? ` ${clickAttr}="${escapeHtml(label)}"` : '';
+        return `
+          <button class="detail-row ${active ? 'active' : ''}" type="button"${attr}>
+            <span class="detail-row-label">
+              <span title="${escapeHtml(label)}">${escapeHtml(label)}</span>
+              <span class="detail-bar-track"><span class="detail-bar-fill" style="width:${width}%; background:${color};"></span></span>
+            </span>
+            <span class="detail-row-value">${num(value)}</span>
+          </button>
+        `;
+      }).join('');
+      return `
+        <div class="detail-panel">
+          <h3>${escapeHtml(title)}</h3>
+          <div class="detail-list">${rowHtml}</div>
+        </div>
+      `;
+    }
+
+    function renderPostgradDrilldownBody(detail, context) {
+      const schools = detail?.schools || [];
+      const programs = detail?.programs || [];
+      const schoolTitle = context.selectedProgram
+        ? `Top schools for ${context.selectedProgram}`
+        : `Top schools for ${context.degree}`;
+      const programTitle = context.selectedSchool
+        ? `Top programs at ${context.selectedSchool}`
+        : `Top programs for ${context.degree}`;
+      return `
+        <div class="detail-grid">
+          ${drilldownBars(schoolTitle, schools, COLORS[0], 'data-drill-school', context.selectedSchool)}
+          ${drilldownBars(programTitle, programs, COLORS[1], 'data-drill-program', context.selectedProgram)}
+        </div>
+        <div class="detail-hint">Click a school to narrow the program list, or click a program to see the schools behind it.</div>
+      `;
+    }
+
+    async function openPostgradDrilldown(context) {
+      const degree = context?.degree || context?.label;
+      if (!degree || degree === 'No further education') {
+        setDrilldownModal(
+          'No further education',
+          context?.title || '',
+          '<div class="empty">There is no destination school or program detail for alumni with no later degree observed.</div>'
+        );
+        return;
+      }
+      const nextContext = {
+        dimension: context.dimension,
+        code: String(context.code || ''),
+        title: context.title || '',
+        degree,
+        selectedSchool: context.selectedSchool || null,
+        selectedProgram: context.selectedProgram || null,
+      };
+      state.activeDrilldownContext = nextContext;
+      const suffix = nextContext.selectedSchool
+        ? `Filtered to ${nextContext.selectedSchool}`
+        : nextContext.selectedProgram
+          ? `Filtered to ${nextContext.selectedProgram}`
+          : 'Click a row to go one level deeper.';
+      setDrilldownModal(
+        `${degree} paths`,
+        `${nextContext.title} · ${suffix}`,
+        '<div class="empty">Loading deeper detail...</div>'
+      );
+      try {
+        const advanced = activeAdvancedControls();
+        const filters = dashboardFiltersForCurrentView({
+          active_tab: 'postgrad',
+          view_mode: 'snapshot',
+          compare_mode: false,
+          compare_dimension: 'school',
+          schools: nextContext.dimension === 'school' ? [nextContext.code] : getSelectedSchools(advanced),
+          majors: nextContext.dimension === 'major' ? [nextContext.code] : getSelectedMajors(advanced),
+          postgrad: { later_degree_type: null, no_further_education: null },
+          selected_postgrad_degree: degree,
+          selected_postgrad_school: nextContext.selectedSchool,
+          selected_postgrad_program: nextContext.selectedProgram,
+          top_n: REQUEST_TOP_N,
+        });
+        const data = await fetchDashboard(filters);
+        setDrilldownModal(
+          `${degree} paths`,
+          `${nextContext.title} · ${suffix}`,
+          renderPostgradDrilldownBody(data.postgrad || {}, nextContext)
+        );
+      } catch (error) {
+        setDrilldownModal(
+          `${degree} paths`,
+          nextContext.title,
+          `<div class="empty">Could not load detail.<br>${escapeHtml(error.message)}</div>`
+        );
+      }
     }
 
     function slug(value) {
@@ -3654,6 +3932,12 @@
           yTitle: 'Path',
           labelTransform: label => legendLabel(label, 26),
           hoverLabel: 'Path share',
+          onClick: point => openPostgradDrilldown({
+            dimension: 'school',
+            code: point.code,
+            title: point.title,
+            degree: point.label,
+          }),
         });
         return;
       }
@@ -3793,6 +4077,12 @@
           yTitle: 'Path',
           labelTransform: label => legendLabel(label, 28),
           hoverLabel: 'Path share',
+          onClick: point => openPostgradDrilldown({
+            dimension: 'major',
+            code: point.code,
+            title: point.title,
+            degree: point.label,
+          }),
         });
         return;
       }
@@ -5191,7 +5481,7 @@
       const z = labels.map(label => schoolCodes.map(code => Number(lookup.get(`${code}||${label}`)?.[valueKey] || 0)));
       const customdata = labels.map(label => schools.map(school => {
         const row = lookup.get(`${school.code}||${label}`) || {};
-        return [row.label || label, schoolName(school), Number(row.n || 0), row.share_pct ?? null, row.median_salary ?? row.weighted_mean_salary ?? null];
+        return [row.label || label, schoolName(school), Number(row.n || 0), row.share_pct ?? null, row.median_salary ?? row.weighted_mean_salary ?? null, school.code];
       }));
       const hovertemplate = isMoney
         ? `%{customdata[0]}<br>%{customdata[1]}<br>${options.hoverLabel || 'Median earnings'}: %{z:$,.0f}<br>Share: %{customdata[3]:.1f}%<br>People: %{customdata[2]:,.0f}<extra></extra>`
@@ -5213,7 +5503,22 @@
         margin: { ...layoutBase.margin, l: 168, r: 42, t: 26, b: 88 },
         xaxis: { title: 'School', automargin: true },
         yaxis: { title: options.yTitle || '', automargin: true },
-      }, plotConfig);
+      }, plotConfig).then(plot => {
+        if (!options.onClick) return;
+        plot.on('plotly_click', event => {
+          const point = event.points?.[0];
+          const data = point?.customdata;
+          if (!data) return;
+          if (Number(data[2] || 0) <= 0) return;
+          options.onClick({
+            label: data[0],
+            title: data[1],
+            n: data[2],
+            share_pct: point.z,
+            code: data[5],
+          });
+        });
+      });
     }
 
     function drawSchoolEmployerReach(id) {
@@ -5543,7 +5848,7 @@
       const z = labels.map(label => majorCodes.map(code => Number(lookup.get(`${code}||${label}`)?.share_pct || 0)));
       const customdata = labels.map(label => majors.map(major => {
         const row = lookup.get(`${major.code}||${label}`) || {};
-        return [row.label || label, majorName(major), Number(row.n || 0), row.weighted_mean_salary || null];
+        return [row.label || label, majorName(major), Number(row.n || 0), row.weighted_mean_salary || null, major.code];
       }));
       Plotly.newPlot(id, [{
         type: 'heatmap',
@@ -5565,7 +5870,22 @@
         margin: { ...layoutBase.margin, l: 168, r: 42, t: 26, b: 88 },
         xaxis: { title: 'Major', automargin: true },
         yaxis: { title: options.yTitle || '', automargin: true },
-      }, plotConfig);
+      }, plotConfig).then(plot => {
+        if (!options.onClick) return;
+        plot.on('plotly_click', event => {
+          const point = event.points?.[0];
+          const data = point?.customdata;
+          if (!data) return;
+          if (Number(data[2] || 0) <= 0) return;
+          options.onClick({
+            label: data[0],
+            title: data[1],
+            n: data[2],
+            share_pct: point.z,
+            code: data[4],
+          });
+        });
+      });
     }
 
     function drawMajorCompareTopShare(id, rows, title) {
@@ -6456,6 +6776,27 @@
     function bindEvents() {
       $('connect-btn').addEventListener('click', () => connect());
       $('auth-connect-btn').addEventListener('click', () => connect({ fromAuth: true }));
+      $('drilldown-close').addEventListener('click', () => closeDrilldownModal());
+      $('drilldown-modal').addEventListener('click', event => {
+        if (event.target === $('drilldown-modal')) {
+          closeDrilldownModal();
+          return;
+        }
+        const school = event.target.closest('[data-drill-school]');
+        const program = event.target.closest('[data-drill-program]');
+        if (!school && !program) return;
+        event.preventDefault();
+        const context = state.activeDrilldownContext;
+        if (!context) return;
+        openPostgradDrilldown({
+          ...context,
+          selectedSchool: school ? school.dataset.drillSchool : null,
+          selectedProgram: program ? program.dataset.drillProgram : null,
+        });
+      });
+      document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') closeDrilldownModal();
+      });
       ['auth-api-url', 'auth-api-password'].forEach(id => {
         $(id).addEventListener('keydown', event => {
           if (event.key === 'Enter') connect({ fromAuth: true });
