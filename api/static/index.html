@@ -1792,7 +1792,7 @@
     const TOP_N_OPTIONS = [5, 8, 10, 12, 16, 20, 30, 50];
     const REQUEST_TOP_N = Math.max(...TOP_N_OPTIONS);
     const DASHBOARD_CACHE_LIMIT = 72;
-    const TAB_ORDER = ['overview', 'earnings', 'employers', 'career', 'geography', 'roles', 'demographics', 'postgrad', 'coverage'];
+    const TAB_ORDER = ['career', 'earnings', 'employers', 'geography', 'roles', 'demographics', 'postgrad', 'coverage', 'overview'];
     const MAX_COMPARE_SCHOOLS = 3;
     let resizeTimer = null;
     let compareWarmupTimer = null;
@@ -2229,7 +2229,7 @@
       const generation = state.prefetchGeneration;
       state.prefetchTimer = window.setTimeout(() => {
         prefetchDashboardViews(baseFilters, generation);
-      }, 650);
+      }, 250);
     }
 
     async function prefetchDashboardViews(baseFilters, generation) {

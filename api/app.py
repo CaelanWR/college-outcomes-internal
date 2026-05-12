@@ -38,6 +38,19 @@ DUCKDB_TEMP_DIR = Path(os.environ.get("OUTCOMES_DUCKDB_TEMP_DIR", "/tmp/duckdb")
 DEFAULT_SCHOOL_CACHE_DIR = "/var/data/outcomes_school_cache" if Path("/var/data").exists() else "/tmp/outcomes_school_cache"
 SCHOOL_CACHE_DIR = Path(os.environ.get("OUTCOMES_SCHOOL_CACHE_DIR", DEFAULT_SCHOOL_CACHE_DIR)).expanduser()
 MAX_COMPARE_SCHOOLS = int(os.environ.get("OUTCOMES_MAX_COMPARE_SCHOOLS", "3"))
+CAREER_WORK_DATASETS = [
+    "annual_salary",
+    "annual_seniority",
+    "annual_employers",
+    "employer_tenure",
+    "mobility",
+    "career_archetypes",
+    "internship_summary",
+    "internship_employers",
+    "internship_roles",
+    "internship_industries",
+    "internship_geography",
+]
 QUERY_SEMAPHORE = threading.BoundedSemaphore(int(os.environ.get("OUTCOMES_QUERY_CONCURRENCY", "1")))
 SCHOOL_CACHE_LOCK = threading.Lock()
 RESPONSE_CACHE_LOCK = threading.Lock()
@@ -166,7 +179,7 @@ def _dataset_root(dataset: str) -> Path:
     return _platform_root() / dataset
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=64)
 def _dataset_files(dataset: str) -> tuple[str, ...]:
     root = _dataset_root(dataset)
     if not root.exists():
@@ -241,6 +254,68 @@ def _school_base_cache(unitid: str) -> list[str]:
     return [str(path)]
 
 
+def _work_cache_key(dataset: str, unitid: str) -> str:
+    manifest_path = _platform_root() / "platform_manifest.json"
+    manifest_mtime = int(manifest_path.stat().st_mtime) if manifest_path.exists() else 0
+    full_dataset = f"work_facts/{dataset}"
+    payload = {
+        "dataset": full_dataset,
+        "unitid": str(unitid),
+        "version": _manifest().get("version"),
+        "manifest_mtime": manifest_mtime,
+        "file_count": len(_dataset_files(full_dataset)),
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:20]
+
+
+def _school_work_cache(dataset: str, unitid: str) -> list[str]:
+    full_dataset = f"work_facts/{dataset}"
+    if not _dataset_exists(full_dataset):
+        return []
+    key = _work_cache_key(dataset, unitid)
+    safe_dataset = dataset.replace("/", "__")
+    SCHOOL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    path = SCHOOL_CACHE_DIR / f"work_{safe_dataset}_unitid_{unitid}_{key}.parquet"
+    if path.exists() and path.stat().st_size > 0:
+        return [str(path)]
+
+    with SCHOOL_CACHE_LOCK:
+        if path.exists() and path.stat().st_size > 0:
+            return [str(path)]
+        tmp_path = SCHOOL_CACHE_DIR / f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp"
+        con = _connect()
+        try:
+            target = str(tmp_path).replace("'", "''")
+            con.execute(
+                f"""
+                COPY (
+                  SELECT *
+                  FROM read_parquet(?)
+                  WHERE unitid = ?
+                ) TO '{target}' (FORMAT PARQUET, COMPRESSION 'SNAPPY')
+                """,
+                [_dataset_glob(full_dataset), str(unitid)],
+            )
+        finally:
+            con.close()
+        os.replace(tmp_path, path)
+    return [str(path)]
+
+
+def _work_source_for_filters(dataset: str, filters: QueryRequest) -> list[str]:
+    schools = list(dict.fromkeys(str(school) for school in filters.schools if str(school)))
+    if len(schools) == 1:
+        return _school_work_cache(dataset, schools[0])
+    if filters.compare_mode and filters.compare_dimension == "school" and schools:
+        if len(schools) > MAX_COMPARE_SCHOOLS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"School compare is capped at {MAX_COMPARE_SCHOOLS} schools for performance.",
+            )
+        return [path for school in schools for path in _school_work_cache(dataset, school)]
+    return _dataset_glob(f"work_facts/{dataset}")
+
+
 def _dataset_exists(dataset: str) -> bool:
     return bool(_dataset_files(dataset))
 
@@ -249,7 +324,7 @@ def _work_dataset_exists(dataset: str) -> bool:
     return _dataset_exists(f"work_facts/{dataset}")
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=64)
 def _dataset_columns(dataset: str) -> frozenset[str]:
     if not _dataset_exists(dataset):
         return frozenset()
@@ -3686,7 +3761,7 @@ def _career_archetypes(con: duckdb.DuckDBPyConnection, filters: QueryRequest) ->
         ORDER BY archetype_score DESC NULLS LAST, n_alumni DESC
         LIMIT {limit}
         """,
-        [_dataset_glob("work_facts/career_archetypes"), *params, MIN_CELL_WEIGHT],
+        [_work_source_for_filters("career_archetypes", filters), *params, MIN_CELL_WEIGHT],
     )
 
 
@@ -3720,7 +3795,7 @@ def _career_earnings(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> l
         HAVING SUM(weighted_salary_n) > ?
         ORDER BY series, years_since_grad
         """,
-        [_dataset_glob("work_facts/annual_salary"), *params, SALARY_MIN_WEIGHT],
+        [_work_source_for_filters("annual_salary", filters), *params, SALARY_MIN_WEIGHT],
     )
 
 
@@ -3831,7 +3906,7 @@ def _career_internships(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -
         FROM read_parquet(?)
         {where_sql}
         """,
-        [_dataset_glob("work_facts/internship_summary"), *params],
+        [_work_source_for_filters("internship_summary", filters), *params],
     )
     summary = dict(summary or {})
     summary["rate_window"] = rate_window_label
@@ -3857,7 +3932,7 @@ def _career_internships(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -
             HAVING SUM(n_alumni) > ?
             ORDER BY internship_rate_pct DESC NULLS LAST, n_interns DESC
             """,
-            [_dataset_glob("work_facts/internship_summary"), *params, MIN_CELL_WEIGHT],
+            [_work_source_for_filters("internship_summary", filters), *params, MIN_CELL_WEIGHT],
         )
         if _work_dataset_exists("internship_employers"):
             limit = _safe_limit(filters.top_n)
@@ -3919,7 +3994,7 @@ def _career_internships(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -
                   AND n > ?
                 ORDER BY series, employer_rank, label
                 """,
-                [_dataset_glob("work_facts/internship_employers"), *employer_params, MIN_CELL_WEIGHT],
+                [_work_source_for_filters("internship_employers", filters), *employer_params, MIN_CELL_WEIGHT],
             )
 
     def top_rows(dataset: str, column: str) -> list[dict[str, Any]]:
@@ -3955,7 +4030,7 @@ def _career_internships(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -
             ORDER BY SUM(n_internship_positions) DESC
             LIMIT {limit}
             """,
-            [_dataset_glob(f"work_facts/{dataset}"), *dataset_params, MIN_CELL_WEIGHT],
+            [_work_source_for_filters(dataset, filters), *dataset_params, MIN_CELL_WEIGHT],
         )
 
     return {
@@ -4238,7 +4313,7 @@ def _career_seniority(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> 
         HAVING SUM(n_alumni) > ?
         ORDER BY years_since_grad, stage_order
         """,
-        [_dataset_glob("work_facts/annual_seniority"), *params, MIN_CELL_WEIGHT],
+        [_work_source_for_filters("annual_seniority", filters), *params, MIN_CELL_WEIGHT],
     )
 
 
@@ -4287,7 +4362,7 @@ def _career_average_seniority(con: duckdb.DuckDBPyConnection, filters: QueryRequ
         HAVING SUM(n_alumni) > ?
         ORDER BY series, years_since_grad
         """,
-        [_dataset_glob("work_facts/annual_seniority"), *params, MIN_CELL_WEIGHT],
+        [_work_source_for_filters("annual_seniority", filters), *params, MIN_CELL_WEIGHT],
     )
 
 
@@ -4319,7 +4394,7 @@ def _career_employer_tenure(con: duckdb.DuckDBPyConnection, filters: QueryReques
         ORDER BY n_starters DESC
         LIMIT {limit}
         """,
-        [_dataset_glob("work_facts/employer_tenure"), *params, EMPLOYER_ROW_MIN_WEIGHT],
+        [_work_source_for_filters("employer_tenure", filters), *params, EMPLOYER_ROW_MIN_WEIGHT],
     )
 
 
@@ -4405,7 +4480,7 @@ def _career_employer_share(con: duckdb.DuckDBPyConnection, filters: QueryRequest
         LEFT JOIN denominators d USING (years_since_grad)
         ORDER BY b.employer, b.years_since_grad
         """,
-        [_dataset_glob("work_facts/annual_employers"), *params, MIN_CELL_WEIGHT],
+        [_work_source_for_filters("annual_employers", filters), *params, MIN_CELL_WEIGHT],
     )
 
 
@@ -4429,7 +4504,7 @@ def _career_mobility(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> d
         FROM read_parquet(?)
         {where_sql}
         """,
-        [_dataset_glob("work_facts/mobility"), *params],
+        [_work_source_for_filters("mobility", filters), *params],
     )
 
 
@@ -4679,6 +4754,13 @@ def warm_cache(filters: QueryRequest, _: None = Depends(require_internal_passwor
         )
     with _query_slot():
         paths = [path for school in schools for path in _school_base_cache(school)]
+        work_paths = [
+            path
+            for school in schools
+            for dataset in CAREER_WORK_DATASETS
+            for path in _school_work_cache(dataset, school)
+        ]
+        paths.extend(work_paths)
     return {
         "status": "ok",
         "schools": schools,
