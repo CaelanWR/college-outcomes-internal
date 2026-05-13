@@ -1377,6 +1377,70 @@ def _overview(con: duckdb.DuckDBPyConnection, filters: QueryRequest | None = Non
     return row
 
 
+def _overview_employer_summary(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
+    return {
+        "top_employer": _single_record(
+            con,
+            """
+            SELECT
+              employer,
+              ROUND(SUM(final_weight), 2) AS n,
+              ROUND(100.0 * SUM(final_weight) / NULLIF((SELECT SUM(final_weight) FROM slice), 0), 2) AS share_pct
+            FROM slice
+            WHERE employer IS NOT NULL
+              AND employer <> ''
+              AND unknown_employer_flag = 0
+              AND named_employer_flag = 1
+              AND career_employer_flag = 1
+            GROUP BY employer
+            HAVING SUM(final_weight) > ?
+            ORDER BY SUM(final_weight) DESC
+            LIMIT 1
+            """,
+            [EMPLOYER_ROW_MIN_WEIGHT],
+        )
+    }
+
+
+def _overview_role_summary(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
+    top_role = _single_record(
+        con,
+        """
+        SELECT
+          role_k50_v3 AS label,
+          ROUND(SUM(final_weight), 2) AS n,
+          ROUND(100.0 * SUM(final_weight) / NULLIF((SELECT SUM(final_weight) FROM slice), 0), 2) AS share_pct
+        FROM slice
+        WHERE role_k50_v3 IS NOT NULL
+          AND role_k50_v3 <> ''
+          AND NOT (degree = 'Bachelors' AND horizon = '1yr' AND role_k50_v3 = 'Corporate Attorney')
+        GROUP BY role_k50_v3
+        HAVING SUM(final_weight) > ?
+        ORDER BY SUM(final_weight) DESC
+        LIMIT 1
+        """,
+        [MIN_CELL_WEIGHT],
+    )
+    top_industry = _single_record(
+        con,
+        """
+        SELECT
+          industry_k50 AS label,
+          ROUND(SUM(final_weight), 2) AS n,
+          ROUND(100.0 * SUM(final_weight) / NULLIF((SELECT SUM(final_weight) FROM slice), 0), 2) AS share_pct
+        FROM slice
+        WHERE industry_k50 IS NOT NULL
+          AND industry_k50 <> ''
+        GROUP BY industry_k50
+        HAVING SUM(final_weight) > ?
+        ORDER BY SUM(final_weight) DESC
+        LIMIT 1
+        """,
+        [MIN_CELL_WEIGHT],
+    )
+    return {"top_role": top_role, "top_industry": top_industry}
+
+
 def _salary_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
     rows = _records_from_query(
         con,
@@ -5892,6 +5956,8 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
 
             if tab == "overview":
                 result["overview"] = _overview(con, filters)
+                result["employer_summary"] = _overview_employer_summary(con)
+                result["role_summary"] = _overview_role_summary(con)
                 if view_mode == "snapshot":
                     result["top_majors"] = _top_majors(con, filters)
                     result["employers"] = _employers(con, filters)

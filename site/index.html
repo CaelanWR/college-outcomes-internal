@@ -2205,6 +2205,13 @@
       font-weight: 700;
     }
 
+    .metric.metric-text strong {
+      font-family: 'Source Sans 3', 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+      font-size: clamp(1.05rem, 1.55vw, 1.35rem);
+      line-height: 1.08;
+      letter-spacing: -0.02em;
+    }
+
     .no-data,
     .empty,
     .error {
@@ -4848,8 +4855,10 @@
       return next;
     }
 
-    function metric(label, value, span = 3, extraClass = '') {
-      return `<div class="metric span-${span} ${extraClass}"><strong>${value}</strong><span>${label}</span></div>`;
+    function metric(label, value, span = 3, extraClass = '', title = '') {
+      const display = value === null || value === undefined || value === '' ? 'No data' : String(value);
+      const fullTitle = title || display;
+      return `<div class="metric span-${span} ${extraClass}"><strong title="${escapeHtml(fullTitle)}">${escapeHtml(display)}</strong><span>${escapeHtml(label)}</span></div>`;
     }
 
     function currentStudentTotal() {
@@ -4863,17 +4872,19 @@
         const row = selectedCareerRows.find(item => Number(item.years_since_grad) === year);
         return row?.median_salary ?? null;
       };
-      if (selectedCareerRows.length) {
-        return [
-          metric('Median Starting Salary', money(o.median_starting_salary ?? careerMedianAt(1) ?? o.median_salary), 4),
-          metric('Median Salary at 5 Years', money(careerMedianAt(5)), 4),
-          metric('Median Salary at 10 Years', money(careerMedianAt(10)), 4),
-        ];
-      }
+      const textMetric = (label, value) => metric(label, legendLabel(value || 'No data', 28), 3, 'metric-text', value || 'No data');
+      const topEmployer = state.data.employer_summary?.top_employer?.employer || state.data.employers?.top?.[0]?.employer || '';
+      const topRole = state.data.role_summary?.top_role?.label || state.data.roles?.roles?.[0]?.label || '';
+      const topIndustry = state.data.role_summary?.top_industry?.label || state.data.roles?.industries?.[0]?.label || '';
+      const degree = $('degree-select')?.value || 'Bachelors';
+      const fourthMetric = degree === 'Bachelors'
+        ? metric('With Grad Degree', pct(o.later_degree_pct), 3)
+        : (topIndustry ? textMetric('Top Industry', topIndustry) : metric('Median Salary at 5 Years', money(careerMedianAt(5)), 3));
       return [
-        metric('Median Starting Salary', money(o.median_starting_salary ?? o.median_salary), 4),
-        metric('Career Employers', num(o.unique_employers), 4),
-        metric('Career Cities', num(o.unique_locations), 4),
+        metric('Avg New Grad Salary', money(o.weighted_mean_starting_salary ?? o.weighted_mean_salary), 3),
+        textMetric('Top Employer', topEmployer),
+        textMetric('Most Common Role', topRole),
+        fourthMetric,
       ];
     }
 
