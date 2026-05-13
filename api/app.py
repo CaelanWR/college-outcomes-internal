@@ -976,7 +976,9 @@ def _create_current_slice_table(con: duckdb.DuckDBPyConnection, filters: QueryRe
         """,
         [_dataset_glob("current_students_fact"), *params],
     )
-    return True
+    # Treat an empty current-student slice as unavailable. Otherwise graduate
+    # degree pages can try to pick "top majors" from an empty current table.
+    return con.execute(f"SELECT 1 FROM {table_name} LIMIT 1").fetchone() is not None
 
 
 def _create_cohort_slice_table(con: duckdb.DuckDBPyConnection, filters: QueryRequest, table_name: str) -> None:
