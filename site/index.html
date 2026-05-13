@@ -3016,6 +3016,29 @@
       }
     }
 
+    function openRoleIndustryComparisonDrilldown(context) {
+      const comparePayload = state.selectionMode === 'major_compare'
+        ? state.data.major_role_comparison
+        : state.data.school_role_comparison;
+      const detailKey = context.kind === 'industry' ? 'industry_details' : 'role_details';
+      const rows = (comparePayload?.[detailKey] || [])
+        .filter(row => String(row.code) === String(context.code) && String(row.parent_label) === String(context.label))
+        .sort((a, b) => Number(b.n || 0) - Number(a.n || 0))
+        .slice(0, topNFor(context.chartId || 'drilldown'));
+      const kindTitle = context.kind === 'industry' ? 'Sub-industries' : 'Detailed roles';
+      const body = `
+        <div class="detail-grid single">
+          ${drilldownBars(`${kindTitle} within ${context.label}`, rows, context.kind === 'industry' ? COLORS[1] : COLORS[3], null)}
+        </div>
+        <div class="detail-hint">Shares are within ${escapeHtml(context.label)} for ${escapeHtml(context.title)}.</div>
+      `;
+      setDrilldownModal(
+        `${kindTitle}: ${context.label}`,
+        `${context.title} · ${pct(context.share_pct)} of ${context.kind === 'industry' ? 'industry' : 'role'} outcomes`,
+        body
+      );
+    }
+
     function slug(value) {
       return String(value || '')
         .toLowerCase()
@@ -4134,11 +4157,13 @@
           yTitle: 'Role',
           labelTransform: label => legendLabel(label, 32),
           hoverLabel: 'Role share',
+          onClick: point => openRoleIndustryComparisonDrilldown({ ...point, kind: 'role', chartId: 'major-role-heatmap' }),
         });
         drawMajorComparisonHeatmap('major-industry-heatmap', roleCompare.industries || [], {
           yTitle: 'Industry',
           labelTransform: label => legendLabel(label, 32),
           hoverLabel: 'Industry share',
+          onClick: point => openRoleIndustryComparisonDrilldown({ ...point, kind: 'industry', chartId: 'major-industry-heatmap' }),
         });
         drawMajorConcentration('major-role-concentration', concentration.roles || [], 'Role');
         drawMajorConcentration('major-industry-concentration', concentration.industries || [], 'Industry');
@@ -4307,11 +4332,13 @@
         yTitle: 'Role',
         labelTransform: label => legendLabel(label, 32),
         hoverLabel: 'Role share',
+        onClick: point => openRoleIndustryComparisonDrilldown({ ...point, kind: 'role', chartId: 'school-role-heatmap' }),
       });
       drawSchoolComparisonHeatmap('school-industry-heatmap', roleCompare.industries || [], {
         yTitle: 'Industry',
         labelTransform: label => legendLabel(label, 32),
         hoverLabel: 'Industry share',
+        onClick: point => openRoleIndustryComparisonDrilldown({ ...point, kind: 'industry', chartId: 'school-industry-heatmap' }),
       });
     }
 

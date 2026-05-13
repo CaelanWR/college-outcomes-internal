@@ -2348,6 +2348,96 @@ def _school_geography_comparison(con: duckdb.DuckDBPyConnection, filters: QueryR
     )
 
 
+def _entity_detail_comparison(
+    con: duckdb.DuckDBPyConnection,
+    filters: QueryRequest,
+    parent_column: str,
+    child_column: str,
+    where_extra: str,
+    min_weight: float,
+) -> list[dict[str, Any]]:
+    base_columns = _dataset_columns("base_fact")
+    if parent_column not in base_columns or child_column not in base_columns or parent_column == child_column:
+        return []
+    limit = _safe_limit(filters.top_n)
+    entity_code_sql, entity_title_sql, entity_filter_sql = _entity_compare_fields(filters)
+    parent_expr = f"TRIM(CAST({parent_column} AS VARCHAR))"
+    child_expr = f"TRIM(CAST({child_column} AS VARCHAR))"
+    return _records_from_query(
+        con,
+        f"""
+        WITH raw AS (
+          SELECT
+            {entity_code_sql} AS code,
+            {entity_title_sql} AS title,
+            {parent_expr} AS parent_label,
+            {child_expr} AS label,
+            final_weight,
+            salary
+          FROM slice
+          WHERE {parent_column} IS NOT NULL
+            AND {child_column} IS NOT NULL
+            {entity_filter_sql}
+            {where_extra}
+        ),
+        eligible AS (
+          SELECT *
+          FROM raw
+          WHERE parent_label IS NOT NULL
+            AND parent_label <> ''
+            AND LOWER(parent_label) NOT IN ('empty', 'unknown', 'other')
+            AND label IS NOT NULL
+            AND label <> ''
+            AND LOWER(label) NOT IN ('empty', 'unknown', 'other')
+            AND label <> parent_label
+        ),
+        top_parents AS (
+          SELECT parent_label, SUM(final_weight) AS total_n
+          FROM eligible
+          GROUP BY parent_label
+          HAVING SUM(final_weight) > ?
+          ORDER BY total_n DESC
+          LIMIT {limit}
+        ),
+        denom AS (
+          SELECT code, parent_label, SUM(final_weight) AS total_n
+          FROM eligible
+          JOIN top_parents USING (parent_label)
+          GROUP BY code, parent_label
+        ),
+        grouped AS (
+          SELECT
+            e.code,
+            MAX(e.title) AS title,
+            e.parent_label,
+            e.label,
+            SUM(e.final_weight) AS n,
+            SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight ELSE 0 END) AS salary_weight,
+            SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight * e.salary ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight ELSE 0 END), 0) AS weighted_mean_salary
+          FROM eligible e
+          JOIN top_parents USING (parent_label)
+          GROUP BY e.code, e.parent_label, e.label
+        )
+        SELECT
+          g.code,
+          g.title,
+          g.parent_label,
+          g.label,
+          ROUND(g.n) AS n,
+          ROUND(100.0 * g.n / NULLIF(d.total_n, 0), 2) AS share_pct,
+          CASE WHEN g.salary_weight > ? THEN ROUND(g.weighted_mean_salary) ELSE NULL END AS weighted_mean_salary
+        FROM grouped g
+        JOIN denom d
+          ON g.code = d.code
+         AND g.parent_label = d.parent_label
+        WHERE g.n > ?
+        ORDER BY g.parent_label, g.title, g.n DESC
+        """,
+        [min_weight, SALARY_MIN_WEIGHT, min_weight],
+    )
+
+
 def _school_role_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, list[dict[str, Any]]]:
     return {
         "roles": _school_outcome_comparison(
@@ -2370,6 +2460,24 @@ def _school_role_comparison(con: duckdb.DuckDBPyConnection, filters: QueryReques
             """,
             MIN_CELL_WEIGHT,
             filters,
+        ),
+        "role_details": _entity_detail_comparison(
+            con,
+            filters,
+            "role_k50_v3",
+            "role_k150_v3",
+            """
+                AND NOT (degree = 'Bachelors' AND horizon = '1yr' AND role_k50_v3 = 'Corporate Attorney')
+            """,
+            MIN_CELL_WEIGHT,
+        ),
+        "industry_details": _entity_detail_comparison(
+            con,
+            filters,
+            "industry_k50",
+            "industry_k200",
+            "",
+            MIN_CELL_WEIGHT,
         ),
     }
 
@@ -2647,6 +2755,22 @@ def _major_role_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest
     return {
         "roles": group("role_k50_v3", exclude_corporate_attorney=True),
         "industries": group("industry_k50"),
+        "role_details": _entity_detail_comparison(
+            con,
+            filters,
+            "role_k50_v3",
+            "role_k150_v3",
+            "AND NOT (degree = 'Bachelors' AND horizon = '1yr' AND role_k50_v3 = 'Corporate Attorney')",
+            MIN_CELL_WEIGHT,
+        ),
+        "industry_details": _entity_detail_comparison(
+            con,
+            filters,
+            "industry_k50",
+            "industry_k200",
+            "",
+            MIN_CELL_WEIGHT,
+        ),
     }
 
 
