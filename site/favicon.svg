@@ -6,19 +6,19 @@
       <stop offset="1" stop-color="#ECE7DC"/>
     </linearGradient>
     <linearGradient id="cap" x1="13" y1="17" x2="52" y2="41" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#48EB8F"/>
-      <stop offset="0.48" stop-color="#48EB8F"/>
-      <stop offset="1" stop-color="#2D426A"/>
+      <stop offset="0" stop-color="#3B73B9"/>
+      <stop offset="0.52" stop-color="#2D5F9F"/>
+      <stop offset="1" stop-color="#24395F"/>
     </linearGradient>
     <linearGradient id="band" x1="20" y1="34" x2="44" y2="47" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#2D426A"/>
-      <stop offset="1" stop-color="#48EB8F"/>
+      <stop offset="1" stop-color="#1F3356"/>
     </linearGradient>
   </defs>
   <rect x="2" y="2" width="60" height="60" rx="17" fill="url(#badge)" stroke="#FFFFFF" stroke-width="2"/>
   <path d="M10.5 27.2 32 16.4l21.5 10.8L32 38 10.5 27.2Z" fill="url(#cap)"/>
   <path d="M20.4 33.2v9.3c0 4.1 23.2 4.1 23.2 0v-9.3L32 39l-11.6-5.8Z" fill="url(#band)"/>
-  <path d="M48.5 29.3v13.5" fill="none" stroke="#2D426A" stroke-width="3.4" stroke-linecap="round"/>
-  <circle cx="48.5" cy="46.6" r="4.2" fill="#48EB8F" stroke="#2D426A" stroke-width="1.4"/>
-  <path d="M32 17.5 53.5 28.3" fill="none" stroke="#FFFFFF" stroke-opacity="0.34" stroke-width="1.4" stroke-linecap="round"/>
+  <path d="M48.5 29.3v13.5" fill="none" stroke="#48EB8F" stroke-width="3.4" stroke-linecap="round"/>
+  <circle cx="48.5" cy="46.6" r="4.2" fill="#48EB8F" stroke="#2D426A" stroke-width="1.2"/>
+  <path d="M32 17.5 53.5 28.3" fill="none" stroke="#FFFFFF" stroke-opacity="0.22" stroke-width="1.4" stroke-linecap="round"/>
 </svg>
