@@ -2349,6 +2349,7 @@
     const REQUEST_TOP_N = Math.max(...TOP_N_OPTIONS);
     const DASHBOARD_CACHE_LIMIT = 72;
     const TAB_ORDER = ['career', 'earnings', 'employers', 'geography', 'roles', 'demographics', 'postgrad', 'coverage', 'overview'];
+    const DASHBOARD_VIEW_MODES = ['snapshot', 'overtime'];
     const MAX_COMPARE_SCHOOLS = 3;
     let resizeTimer = null;
     let compareWarmupTimer = null;
@@ -2809,10 +2810,39 @@
       const generation = state.prefetchGeneration;
       state.prefetchTimer = window.setTimeout(() => {
         prefetchDashboardViews(baseFilters, generation);
-      }, 250);
+      }, 75);
+    }
+
+    function canWarmFullSchoolSlice(filters) {
+      return !filters.compare_mode
+        && !filters.selected_employer
+        && !filters.selected_employer_role
+        && !filters.selected_postgrad_degree
+        && !filters.selected_postgrad_school
+        && !filters.selected_postgrad_program;
+    }
+
+    function hydrateTabCachesFromFullDashboard(baseFilters, fullData) {
+      TAB_ORDER.forEach(tab => {
+        DASHBOARD_VIEW_MODES.forEach(viewMode => {
+          setCachedDashboard({ ...baseFilters, active_tab: tab, view_mode: viewMode }, fullData);
+        });
+      });
     }
 
     async function prefetchDashboardViews(baseFilters, generation) {
+      if (generation !== state.prefetchGeneration || state.loading) return;
+      if (canWarmFullSchoolSlice(baseFilters)) {
+        const fullFilters = { ...baseFilters, active_tab: 'all', view_mode: 'all' };
+        try {
+          const fullData = await fetchDashboard(fullFilters);
+          if (generation !== state.prefetchGeneration) return;
+          hydrateTabCachesFromFullDashboard(baseFilters, fullData);
+          if (!state.loading) setStatus('ok', `${fullData.meta?.data_version || 'Connected'} | all tabs ready`);
+        } catch {
+          // Fall back to individual tab prefetching below if the full payload fails.
+        }
+      }
       if (generation !== state.prefetchGeneration || state.loading) return;
       const activeTab = state.tab || 'overview';
       const activeView = state.viewMode || defaultViewForTab(activeTab);
