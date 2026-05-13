@@ -259,79 +259,99 @@
     .loading-chart {
       position: relative;
       z-index: 1;
-      height: 174px;
+      height: 188px;
       border: 1px solid rgba(255,255,255,0.13);
       border-radius: 22px;
       background:
-        linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px),
+        radial-gradient(circle at 50% 50%, rgba(72,235,143,0.15), transparent 34%),
+        radial-gradient(circle at 50% 50%, rgba(255,255,255,0.08), transparent 58%),
         rgba(9,25,48,0.20);
-      background-size: 100% 42px, 72px 100%;
       overflow: hidden;
+      display: grid;
+      place-items: center;
     }
 
-    .loading-chart svg {
+    .loading-pie-wrap {
+      position: relative;
+      width: 154px;
+      height: 154px;
+      display: grid;
+      place-items: center;
+      transform: translateZ(0);
+    }
+
+    .loading-pie {
       position: absolute;
       inset: 0;
-      width: 100%;
-      height: 100%;
-      overflow: visible;
+      border-radius: 50%;
+      background:
+        conic-gradient(
+          from -22deg,
+          var(--green) 0deg 84deg,
+          #72aff4 84deg 158deg,
+          #ffffff 158deg 174deg,
+          #87d6ad 174deg 236deg,
+          #2d426a 236deg 310deg,
+          rgba(255,255,255,0.16) 310deg 360deg
+        );
+      box-shadow: 0 20px 44px rgba(0,0,0,0.24), 0 0 0 10px rgba(72,235,143,0.08);
+      animation: loading-pie-spin 1.9s cubic-bezier(0.56, 0, 0.21, 1) infinite;
     }
 
-    .loading-axis {
-      stroke: rgba(255,255,255,0.22);
-      stroke-width: 2;
-    }
-
-    .loading-path-shadow {
-      fill: none;
-      stroke: rgba(72,235,143,0.14);
-      stroke-width: 11;
-      stroke-linecap: round;
-    }
-
-    .loading-path {
-      fill: none;
-      stroke: var(--green);
-      stroke-width: 4;
-      stroke-linecap: round;
-      stroke-dasharray: 410;
-      stroke-dashoffset: 410;
-      filter: drop-shadow(0 0 10px rgba(72,235,143,0.55));
-      animation: loading-chart-draw 2.4s ease-in-out infinite;
-    }
-
-    .loading-point {
-      fill: #fff;
-      stroke: var(--green);
-      stroke-width: 3;
-      opacity: 0;
-      animation: loading-point-pop 2.4s ease-in-out infinite;
-    }
-
-    .loading-point:nth-of-type(2) { animation-delay: 0.28s; }
-    .loading-point:nth-of-type(3) { animation-delay: 0.56s; }
-    .loading-point:nth-of-type(4) { animation-delay: 0.84s; }
-    .loading-point:nth-of-type(5) { animation-delay: 1.12s; }
-
-    .loading-runner {
+    .loading-pie::before {
+      content: '';
       position: absolute;
-      left: 18px;
-      top: 114px;
-      width: 38px;
-      height: 38px;
+      inset: 14px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 48% 42%, rgba(255,255,255,0.14), transparent 34%),
+        rgba(9,25,48,0.82);
+      border: 1px solid rgba(255,255,255,0.14);
+    }
+
+    .loading-pie::after {
+      content: '';
+      position: absolute;
+      inset: -13px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.16);
+      animation: loading-ring-pulse 1.9s ease-in-out infinite;
+    }
+
+    .loading-pie-marker {
+      position: absolute;
+      inset: -7px;
+      border-radius: 50%;
+      animation: loading-pie-spin 1.9s cubic-bezier(0.56, 0, 0.21, 1) infinite;
+    }
+
+    .loading-pie-marker::after {
+      content: '';
+      position: absolute;
+      top: -2px;
+      left: calc(50% - 6px);
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 0 0 5px rgba(72,235,143,0.24), 0 0 22px rgba(72,235,143,0.72);
+    }
+
+    .loading-pie-core {
+      position: relative;
+      z-index: 1;
+      width: 68px;
+      height: 68px;
       border-radius: 50%;
       display: grid;
       place-items: center;
       background: #fff;
-      box-shadow: 0 12px 28px rgba(0,0,0,0.22), 0 0 0 7px rgba(72,235,143,0.16);
-      animation: loading-runner 2.4s cubic-bezier(0.56, 0, 0.21, 1) infinite;
+      box-shadow: 0 12px 28px rgba(0,0,0,0.20), inset 0 -3px 0 rgba(72,235,143,0.18);
     }
 
-    .loading-runner img {
-      width: 24px;
-      height: 24px;
-      animation: loading-runner-tilt 2.4s ease-in-out infinite;
+    .loading-pie-core img {
+      width: 39px;
+      height: 39px;
     }
 
     .loading-copy {
@@ -380,31 +400,15 @@
     .loading-pulse i:nth-child(2) { animation-delay: 0.16s; }
     .loading-pulse i:nth-child(3) { animation-delay: 0.32s; }
 
-    @keyframes loading-chart-draw {
-      0% { stroke-dashoffset: 410; opacity: 0.45; }
-      18%, 78% { stroke-dashoffset: 0; opacity: 1; }
-      100% { stroke-dashoffset: -410; opacity: 0.35; }
+    @keyframes loading-pie-spin {
+      0% { transform: rotate(0deg) scale(0.96); }
+      45% { transform: rotate(205deg) scale(1.02); }
+      100% { transform: rotate(360deg) scale(0.96); }
     }
 
-    @keyframes loading-point-pop {
-      0%, 16% { opacity: 0; transform: scale(0.6); }
-      25%, 72% { opacity: 1; transform: scale(1); }
-      100% { opacity: 0; transform: scale(0.8); }
-    }
-
-    @keyframes loading-runner {
-      0% { transform: translate(0, 0) scale(0.95); }
-      20% { transform: translate(82px, -52px) scale(1); }
-      42% { transform: translate(172px, -30px) scale(1); }
-      64% { transform: translate(276px, -86px) scale(1); }
-      82% { transform: translate(398px, -108px) scale(1.04); }
-      100% { transform: translate(398px, -108px) scale(0.92); }
-    }
-
-    @keyframes loading-runner-tilt {
-      0%, 100% { transform: rotate(-8deg); }
-      45% { transform: rotate(8deg); }
-      72% { transform: rotate(-3deg); }
+    @keyframes loading-ring-pulse {
+      0%, 100% { opacity: 0.36; transform: scale(0.96); }
+      46% { opacity: 0.82; transform: scale(1.04); }
     }
 
     @keyframes loading-dot {
@@ -413,10 +417,9 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .loading-path,
-      .loading-point,
-      .loading-runner,
-      .loading-runner img,
+      .loading-pie,
+      .loading-pie::after,
+      .loading-pie-marker,
       .loading-pulse i {
         animation: none;
       }
@@ -2214,17 +2217,11 @@
         <span>Internal demo</span>
       </div>
       <div class="loading-chart" aria-hidden="true">
-        <svg viewBox="0 0 460 174" preserveAspectRatio="none">
-          <line class="loading-axis" x1="22" y1="146" x2="438" y2="146"></line>
-          <line class="loading-axis" x1="22" y1="24" x2="22" y2="146"></line>
-          <path class="loading-path-shadow" d="M28 126 C78 72 118 76 158 100 S250 118 294 54 S382 28 432 30"></path>
-          <path class="loading-path" d="M28 126 C78 72 118 76 158 100 S250 118 294 54 S382 28 432 30"></path>
-          <circle class="loading-point" cx="78" cy="78" r="5"></circle>
-          <circle class="loading-point" cx="158" cy="100" r="5"></circle>
-          <circle class="loading-point" cx="294" cy="54" r="5"></circle>
-          <circle class="loading-point" cx="432" cy="30" r="5"></circle>
-        </svg>
-        <span class="loading-runner"><img src="./favicon.svg" alt="" /></span>
+        <div class="loading-pie-wrap">
+          <span class="loading-pie"></span>
+          <span class="loading-pie-marker"></span>
+          <span class="loading-pie-core"><img src="./favicon.svg" alt="" /></span>
+        </div>
       </div>
       <div class="loading-copy">
         <div>
