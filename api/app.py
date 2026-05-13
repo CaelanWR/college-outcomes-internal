@@ -3236,6 +3236,104 @@ def _major_postgrad_comparison(con: duckdb.DuckDBPyConnection, filters: QueryReq
     )
 
 
+def _postgrad_detail_degree_values(degree_type: str) -> list[str]:
+    if degree_type in {"PhD", "Doctorate", "Research Doctorate", "Other Doctorate"}:
+        return RESEARCH_DOCTORATE_VALUES
+    if degree_type == "Professional Doctorate":
+        return PROFESSIONAL_DOCTORATE_VALUES
+    return [degree_type]
+
+
+def _postgrad_detail_degree_label(degree_type: str | None) -> str | None:
+    if degree_type in {"PhD", "Doctorate", "Research Doctorate", "Other Doctorate"}:
+        return "Research Doctorate"
+    return degree_type
+
+
+def _postgrad_show_program_detail(degree_type: str | None) -> bool:
+    return degree_type in {"Masters", "PhD", "Research Doctorate"}
+
+
+def _postgrad_detail_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
+    selected = filters.selected_postgrad_degree
+    if not selected or selected == "No further education":
+        return {
+            "selected_degree": selected,
+            "detail_degree": _postgrad_detail_degree_label(selected),
+            "show_program_detail": False,
+            "schools": [],
+            "programs": [],
+        }
+    selected_values = _postgrad_detail_degree_values(selected)
+    placeholders = ",".join(["?"] * len(selected_values))
+    per_entity_limit = min(_safe_limit(filters.top_n), 10)
+    entity_code_sql, entity_title_sql, entity_filter_sql = _entity_compare_fields(filters)
+
+    def grouped_destination(column: str) -> list[dict[str, Any]]:
+        return _records_from_query(
+            con,
+            f"""
+            WITH degree_slice AS (
+              SELECT
+                {entity_code_sql} AS code,
+                {entity_title_sql} AS title,
+                {column} AS label,
+                profile_weight
+              FROM cohort_slice
+              WHERE later_degree_type IN ({placeholders})
+                {entity_filter_sql}
+                AND {column} IS NOT NULL
+                AND {column} <> ''
+            ),
+            denom AS (
+              SELECT code, SUM(profile_weight) AS total_n
+              FROM degree_slice
+              GROUP BY code
+            ),
+            grouped AS (
+              SELECT
+                code,
+                MAX(title) AS title,
+                label,
+                SUM(profile_weight) AS n
+              FROM degree_slice
+              GROUP BY code, label
+            ),
+            ranked AS (
+              SELECT
+                g.code,
+                g.title,
+                g.label,
+                g.n,
+                d.total_n,
+                ROW_NUMBER() OVER (PARTITION BY g.code ORDER BY g.n DESC, g.label) AS entity_rank
+              FROM grouped g
+              JOIN denom d USING (code)
+              WHERE g.n > 0
+            )
+            SELECT
+              code,
+              title,
+              label,
+              ROUND(n) AS n,
+              ROUND(100.0 * n / NULLIF(total_n, 0), 1) AS share_pct,
+              entity_rank
+            FROM ranked
+            WHERE entity_rank <= {per_entity_limit}
+            ORDER BY title, entity_rank
+            """,
+            selected_values,
+        )
+
+    return {
+        "selected_degree": selected,
+        "detail_degree": _postgrad_detail_degree_label(selected),
+        "show_program_detail": _postgrad_show_program_detail(selected),
+        "schools": grouped_destination("later_school"),
+        "programs": grouped_destination("later_program") if _postgrad_show_program_detail(selected) else [],
+    }
+
+
 def _top_majors(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
     cip_col = _cip_col(filters)
     limit = _safe_limit(filters.top_n)
@@ -4296,21 +4394,6 @@ def _postgrad_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> li
 def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
     limit = _safe_limit(filters.top_n)
 
-    def detail_degree_values(degree_type: str) -> list[str]:
-        if degree_type in {"PhD", "Doctorate", "Research Doctorate", "Other Doctorate"}:
-            return RESEARCH_DOCTORATE_VALUES
-        if degree_type == "Professional Doctorate":
-            return PROFESSIONAL_DOCTORATE_VALUES
-        return [degree_type]
-
-    def detail_degree_label(degree_type: str | None) -> str | None:
-        if degree_type in {"PhD", "Doctorate", "Research Doctorate", "Other Doctorate"}:
-            return "Research Doctorate"
-        return degree_type
-
-    def show_program_detail(degree_type: str | None) -> bool:
-        return degree_type in {"Masters", "PhD", "Research Doctorate"}
-
     flows = _records_from_query(
         con,
         f"""
@@ -4341,7 +4424,7 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
     schools: list[dict[str, Any]] = []
     programs: list[dict[str, Any]] = []
     if selected and selected != "No further education":
-        selected_values = detail_degree_values(selected)
+        selected_values = _postgrad_detail_degree_values(selected)
         placeholders = ",".join(["?"] * len(selected_values))
         school_filter_sql = ""
         school_filter_params: list[Any] = []
@@ -4374,7 +4457,7 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
             """,
             [*selected_values, *school_filter_params, MIN_CELL_WEIGHT],
         )
-        if show_program_detail(selected):
+        if _postgrad_show_program_detail(selected):
             program_filter_sql = ""
             program_filter_params: list[Any] = []
             if filters.selected_postgrad_school:
@@ -4409,10 +4492,10 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
     return {
         "flows": flows,
         "selected_degree": selected,
-        "detail_degree": detail_degree_label(selected),
+        "detail_degree": _postgrad_detail_degree_label(selected),
         "selected_school": filters.selected_postgrad_school,
         "selected_program": filters.selected_postgrad_program,
-        "show_program_detail": show_program_detail(selected),
+        "show_program_detail": _postgrad_show_program_detail(selected),
         "schools": schools,
         "programs": programs,
     }
@@ -5426,6 +5509,8 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                         result["major_role_comparison"] = _major_role_comparison(con, filters)
                         result["major_demographic_comparison"] = _major_demographic_comparison(con, filters)
                         result["major_postgrad_comparison"] = _major_postgrad_comparison(con, filters)
+                        if filters.selected_postgrad_degree:
+                            result["postgrad_detail_comparison"] = _postgrad_detail_comparison(con, filters)
                         result["major_concentration"] = _major_concentration(con, filters)
                         result["career"] = _career(con, filters)
                         result["coverage"] = _coverage(con, filters)
@@ -5519,6 +5604,8 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                             )
                         else:
                             result["major_postgrad_comparison"] = _major_postgrad_comparison(con, filters)
+                            if filters.selected_postgrad_degree:
+                                result["postgrad_detail_comparison"] = _postgrad_detail_comparison(con, filters)
                 else:
                     result["school_comparison"] = _school_comparison(con)
                     if tab in {"all", "full"}:
@@ -5533,6 +5620,8 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                         result["school_role_comparison"] = _school_role_comparison(con, filters)
                         result["school_demographic_comparison"] = _school_demographic_comparison(con, filters)
                         result["school_postgrad_comparison"] = _school_postgrad_comparison(con, filters)
+                        if filters.selected_postgrad_degree:
+                            result["postgrad_detail_comparison"] = _postgrad_detail_comparison(con, filters)
                         result["school_concentration"] = _school_concentration(con, filters)
                         result["career"] = _career(con, filters)
                         result["coverage"] = _coverage(con, filters)
@@ -5621,6 +5710,8 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                             )
                         else:
                             result["school_postgrad_comparison"] = _school_postgrad_comparison(con, filters)
+                            if filters.selected_postgrad_degree:
+                                result["postgrad_detail_comparison"] = _postgrad_detail_comparison(con, filters)
                 if tab == "earnings":
                     result["salary_distribution"] = _salary_distribution(con)
                     result["salary_distributions_by_entity"] = _salary_distribution_by_entity(con, filters)
