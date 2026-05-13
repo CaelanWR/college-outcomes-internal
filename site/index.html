@@ -2881,6 +2881,8 @@
       state.selectionMode = advanced.selectionMode;
       persistAdvancedControls(advanced);
       syncSelectionMode(advanced.selectionMode);
+      applyDefaultViewForTab(state.tab, advanced.selectionMode);
+      syncViewToggle();
       if (compareNeedsSelections(advanced)) {
         setAdvancedOpen(true);
         state.data = {
@@ -2961,7 +2963,10 @@
       return false;
     }
 
-    function defaultViewForTab(tab) {
+    function defaultViewForTab(tab, selectionMode = state.selectionMode) {
+      if (selectionMode === 'compare' || selectionMode === 'major_compare') {
+        return tab === 'career' ? 'overtime' : 'snapshot';
+      }
       const overTimeTabs = new Set(['overview', 'earnings', 'career', 'geography', 'demographics']);
       return overTimeTabs.has(tab) ? 'overtime' : 'snapshot';
     }
@@ -8705,8 +8710,8 @@
       });
     }
 
-    function applyDefaultViewForTab(tab) {
-      const nextMode = defaultViewForTab(tab);
+    function applyDefaultViewForTab(tab, selectionMode = state.selectionMode) {
+      const nextMode = defaultViewForTab(tab, selectionMode);
       if (state.viewMode !== nextMode) {
         state.viewMode = nextMode;
         storage.setItem('outcomes.viewMode', state.viewMode);
