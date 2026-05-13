@@ -2179,6 +2179,47 @@ def _entity_outcome_trend_comparison(
     )
 
 
+def _entity_employer_breadth_trend_comparison(
+    con: duckdb.DuckDBPyConnection,
+    filters: QueryRequest,
+) -> list[dict[str, Any]]:
+    entity_code_sql, entity_title_sql, entity_filter_sql = _entity_compare_fields(filters)
+    same_school_filter = _same_school_employer_filter(filters)
+    return _records_from_query(
+        con,
+        f"""
+        WITH eligible AS (
+          SELECT
+            {entity_code_sql} AS code,
+            {entity_title_sql} AS title,
+            grad_year,
+            employer,
+            final_weight
+          FROM slice
+          WHERE grad_year IS NOT NULL
+            {entity_filter_sql}
+            AND employer IS NOT NULL
+            AND employer <> ''
+            AND unknown_employer_flag = 0
+            AND named_employer_flag = 1
+            AND career_employer_flag = 1
+            {same_school_filter}
+        )
+        SELECT
+          code,
+          MAX(title) AS title,
+          grad_year,
+          COUNT(DISTINCT employer) AS unique_employers,
+          ROUND(SUM(final_weight)) AS employer_records
+        FROM eligible
+        GROUP BY code, grad_year
+        HAVING SUM(final_weight) > ?
+        ORDER BY title, grad_year
+        """,
+        [EMPLOYER_ROW_MIN_WEIGHT],
+    )
+
+
 def _school_cohort_label_comparison(
     con: duckdb.DuckDBPyConnection,
     label_sql: str,
@@ -5240,6 +5281,9 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                                 """,
                                 EMPLOYER_ROW_MIN_WEIGHT,
                             )
+                            result["major_employer_breadth_trend_comparison"] = _entity_employer_breadth_trend_comparison(
+                                con, filters
+                            )
                         else:
                             result["major_employer_comparison"] = _major_employer_comparison(con, filters)
                             result["major_concentration"] = _major_concentration(con, filters)
@@ -5335,6 +5379,9 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                                     {_same_school_employer_filter(filters)}
                                 """,
                                 EMPLOYER_ROW_MIN_WEIGHT,
+                            )
+                            result["school_employer_breadth_trend_comparison"] = _entity_employer_breadth_trend_comparison(
+                                con, filters
                             )
                         else:
                             result["school_employer_comparison"] = _school_employer_comparison(con, filters)

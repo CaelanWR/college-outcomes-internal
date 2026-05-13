@@ -4072,11 +4072,18 @@
       if (tab === 'employers') {
         if (state.viewMode === 'overtime') {
           $('content').innerHTML = [
-            card('Employer Share Over Time by Major', 'major-employer-trend-compare', 12, true, { topControl: true }),
+            card('Primary Employer Share Over Time by Major', 'major-employer-trend-compare', 7, true),
+            card('Employer Breadth Over Time by Major', 'major-employer-breadth-trend', 5, true),
           ].join('');
-          drawCompareCategoryTrend('major-employer-trend-compare', state.data.major_employer_trend_comparison || [], {
+          drawComparePrimaryCategoryTrend('major-employer-trend-compare', state.data.major_employer_trend_comparison || [], {
             labelTransform: label => legendLabel(label, 26),
             yTitle: 'Share of employed alumni',
+          });
+          drawTrendLines('major-employer-breadth-trend', state.data.major_employer_breadth_trend_comparison || [], 'title', 'unique_employers', {
+            yTitle: 'Named career employers',
+            hover: '%{y:,.0f}',
+            height: 500,
+            limitSeries: false,
           });
           return;
         }
@@ -4256,11 +4263,18 @@
     function renderSchoolCompareEmployers() {
       if (state.viewMode === 'overtime') {
         $('content').innerHTML = [
-          card('Employer Share Over Time by School', 'school-employer-trend-compare', 12, true, { topControl: true }),
+          card('Primary Employer Share Over Time by School', 'school-employer-trend-compare', 7, true),
+          card('Employer Breadth Over Time by School', 'school-employer-breadth-trend', 5, true),
         ].join('');
-        drawCompareCategoryTrend('school-employer-trend-compare', state.data.school_employer_trend_comparison || [], {
+        drawComparePrimaryCategoryTrend('school-employer-trend-compare', state.data.school_employer_trend_comparison || [], {
           labelTransform: label => legendLabel(label, 26),
           yTitle: 'Share of employed alumni',
+        });
+        drawTrendLines('school-employer-breadth-trend', state.data.school_employer_breadth_trend_comparison || [], 'title', 'unique_employers', {
+          yTitle: 'Named career employers',
+          hover: '%{y:,.0f}',
+          height: 500,
+          limitSeries: false,
         });
         return;
       }
