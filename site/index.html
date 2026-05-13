@@ -1553,6 +1553,36 @@
       font-weight: 800;
     }
 
+    .chart-horizon-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.82);
+      box-shadow: 0 8px 18px rgba(45,66,106,0.05);
+    }
+
+    .chart-horizon-control button {
+      min-height: 28px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted);
+      padding: 3px 10px;
+      cursor: pointer;
+      font-size: 0.78rem;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .chart-horizon-control button.active {
+      background: linear-gradient(135deg, var(--navy-dark), var(--navy));
+      color: #fff;
+      box-shadow: inset 0 -2px 0 rgba(72,235,143,0.44);
+    }
+
     .chart-download {
       min-height: 32px;
       border: 1px solid var(--line);
@@ -2311,6 +2341,11 @@
     };
     const pct = value => value === null || value === undefined ? 'No data' : `${Number(value).toFixed(1)}%`;
     const TOP_N_OPTIONS = [5, 8, 10, 12, 16, 20, 30, 50];
+    const HORIZON_OPTIONS = [
+      { value: '1yr', label: '1 yr' },
+      { value: '5yr', label: '5 yr' },
+      { value: '10yr', label: '10 yr' },
+    ];
     const REQUEST_TOP_N = Math.max(...TOP_N_OPTIONS);
     const DASHBOARD_CACHE_LIMIT = 72;
     const TAB_ORDER = ['career', 'earnings', 'employers', 'geography', 'roles', 'demographics', 'postgrad', 'coverage', 'overview'];
@@ -2671,7 +2706,7 @@
     }
 
     function activeHorizonLabel(compact = false) {
-      const horizon = (state.appliedAdvanced?.horizon || $('horizon-select')?.value || '1yr');
+      const horizon = activeHorizonValue();
       const labels = {
         '1yr': compact ? '1 yr out' : '1 year after graduation',
         '5yr': compact ? '5 yrs out' : '5 years after graduation',
@@ -3942,6 +3977,18 @@
       return `<label class="chart-top-control" for="${id}"><span>Show top</span><select id="${id}" data-top-n-control data-chart-id="${chartId}">${options}</select></label>`;
     }
 
+    function activeHorizonValue() {
+      return state.appliedAdvanced?.horizon || $('horizon-select')?.value || '1yr';
+    }
+
+    function horizonControl() {
+      const current = activeHorizonValue();
+      const buttons = HORIZON_OPTIONS.map(option => (
+        `<button type="button" data-chart-horizon="${option.value}" class="${option.value === current ? 'active' : ''}">${option.label}</button>`
+      )).join('');
+      return `<span class="chart-horizon-control" aria-label="Years after graduation">${buttons}</span>`;
+    }
+
     function chartDownloadControl(id) {
       return `
         <div class="save-menu" data-save-menu>
@@ -3958,6 +4005,7 @@
     function card(title, id, span = 6, tall = false, options = {}) {
       const controls = [
         chartInfoControl(id, title),
+        options.horizonControl ? horizonControl() : '',
         options.topControl ? topNControl(`${id}-top-n`) : '',
         options.controls || '',
         options.export === false ? '' : chartDownloadControl(id),
@@ -4224,15 +4272,15 @@
       if (tab === 'earnings') {
         if (state.viewMode === 'snapshot') {
           $('content').innerHTML = [
-            card(`Salary Distributions by ${entity} (${salaryHorizon})`, 'compare-salary-distribution', 12, true, { topControl: true }),
-            card(`Median Salary by ${entity} (${salaryHorizon})`, 'compare-salary', 12, true, { topControl: state.selectionMode === 'major_compare' }),
+            card(`Salary Distributions by ${entity} (${salaryHorizon})`, 'compare-salary-distribution', 12, true, { topControl: true, horizonControl: true }),
+            card(`Median Salary by ${entity} (${salaryHorizon})`, 'compare-salary', 12, true, { topControl: state.selectionMode === 'major_compare', horizonControl: true }),
           ].join('');
           drawCompareSalaryDistribution('compare-salary-distribution');
           drawCompareSalary('compare-salary');
         } else {
           $('content').innerHTML = [
-            card(`Salary Trend by ${entity} (${salaryHorizon})`, 'compare-salary-trend', 6, true, { topControl: state.selectionMode === 'major_compare' }),
-            card(`Salary Distributions by ${entity} (${salaryHorizon})`, 'compare-salary-distribution', 6, true, { topControl: true }),
+            card(`Salary Trend by ${entity} (${salaryHorizon})`, 'compare-salary-trend', 6, true, { topControl: state.selectionMode === 'major_compare', horizonControl: true }),
+            card(`Salary Distributions by ${entity} (${salaryHorizon})`, 'compare-salary-distribution', 6, true, { topControl: true, horizonControl: true }),
           ].join('');
           drawCompareSalaryTrend('compare-salary-trend');
           drawCompareSalaryDistribution('compare-salary-distribution');
@@ -4295,9 +4343,9 @@
       if (tab === 'earnings') {
         if (state.viewMode === 'snapshot') {
           $('content').innerHTML = [
-            card(`Salary Distributions by Major (${salaryHorizon})`, 'compare-salary-distribution', 12, true, { topControl: true }),
-            card(`Median Salary by Major (${salaryHorizon})`, 'compare-salary', 6, true, { topControl: true }),
-            card('Salary vs Later Education', 'major-compare-scatter', 6, true),
+            card(`Salary Distributions by Major (${salaryHorizon})`, 'compare-salary-distribution', 12, true, { topControl: true, horizonControl: true }),
+            card(`Median Salary by Major (${salaryHorizon})`, 'compare-salary', 6, true, { topControl: true, horizonControl: true }),
+            card(`Salary vs Later Education (${salaryHorizon})`, 'major-compare-scatter', 6, true, { horizonControl: true }),
             card('Major Salary Table', 'compare-table', 12),
           ].join('');
           drawCompareSalaryDistribution('compare-salary-distribution');
@@ -4306,8 +4354,8 @@
           drawMajorCompareTable('compare-table');
         } else {
           $('content').innerHTML = [
-            card(`Salary Trend by Major (${salaryHorizon})`, 'compare-salary-trend', 7, true, { topControl: true }),
-            card(`Salary Distributions by Major (${salaryHorizon})`, 'compare-salary-distribution', 5, true, { topControl: true }),
+            card(`Salary Trend by Major (${salaryHorizon})`, 'compare-salary-trend', 7, true, { topControl: true, horizonControl: true }),
+            card(`Salary Distributions by Major (${salaryHorizon})`, 'compare-salary-distribution', 5, true, { topControl: true, horizonControl: true }),
             card('Major Salary Table', 'compare-table', 12),
           ].join('');
           drawCompareSalaryTrend('compare-salary-trend');
@@ -4494,14 +4542,14 @@
       if (state.viewMode === 'overtime') {
         $('content').innerHTML = [
           card('Major Share Over Time', 'compare-alumni-trend', 12, true, { topControl: true }),
-          card(`Salary Trend by Major (${salaryHorizon})`, 'compare-salary-trend', 12, true, { topControl: true }),
+          card(`Salary Trend by Major (${salaryHorizon})`, 'compare-salary-trend', 12, true, { topControl: true, horizonControl: true }),
         ].join('');
         drawCompareAlumniTrend('compare-alumni-trend');
         drawCompareSalaryTrend('compare-salary-trend');
       } else {
         $('content').innerHTML = [
           card('Major Share of Class', 'compare-alumni', 6, true, { topControl: true }),
-          card(`Median Salary by Major (${salaryHorizon})`, 'compare-salary', 6, true, { topControl: true }),
+          card(`Median Salary by Major (${salaryHorizon})`, 'compare-salary', 6, true, { topControl: true, horizonControl: true }),
         ].join('');
         drawMajorCompareAlumni('compare-alumni');
         drawMajorCompareSalary('compare-salary');
@@ -4539,6 +4587,7 @@
     }
 
     function renderSchoolCompareGeography() {
+      const salaryHorizon = activeHorizonLabel();
       if (state.viewMode === 'overtime') {
         $('content').innerHTML = [
           card('Primary City Share Over Time by School', 'school-geo-trend-compare', 12, true),
@@ -4551,7 +4600,7 @@
       }
       $('content').innerHTML = [
         card('City Share by School', 'school-geo-share-heatmap', 6, true, { topControl: true }),
-        card('City Earnings by School', 'school-geo-salary-heatmap', 6, true, { topControl: true }),
+        card(`City Earnings by School (${salaryHorizon})`, 'school-geo-salary-heatmap', 6, true, { topControl: true, horizonControl: true }),
       ].join('');
       drawSchoolComparisonHeatmap('school-geo-share-heatmap', state.data.school_geography_comparison || [], {
         yTitle: 'City',
@@ -4650,7 +4699,7 @@
       } else {
         $('content').innerHTML = [
           ...overviewMetrics(o),
-          card(`Salary Trend by Graduation Year (${salaryHorizon})`, 'salary-trend', 6),
+          card(`Salary Trend by Graduation Year (${salaryHorizon})`, 'salary-trend', 6, false, { horizonControl: true }),
           card('Alumni by Graduation Year', 'alumni-trend', 6),
           card('Top Majors Over Time', 'major-trend', 12, true, { topControl: true }),
         ].join('');
@@ -4665,9 +4714,9 @@
       const hasMajor = Boolean($('major-select')?.value);
       if (state.viewMode === 'snapshot') {
         const cards = [
-          card(`Salary Distribution (${salaryHorizon})`, 'salary-distribution', hasMajor ? 12 : 7, true),
+          card(`Salary Distribution (${salaryHorizon})`, 'salary-distribution', hasMajor ? 12 : 7, true, { horizonControl: true }),
         ];
-        if (!hasMajor) cards.push(card(`Top Majors by Median Salary (${salaryHorizon})`, 'top-major-salary', 5, true, { topControl: true }));
+        if (!hasMajor) cards.push(card(`Top Majors by Median Salary (${salaryHorizon})`, 'top-major-salary', 5, true, { topControl: true, horizonControl: true }));
         cards.push(card('Current Slice Earnings Table', 'salary-table', 12));
         $('content').innerHTML = cards.join('');
         drawSalaryDistribution('salary-distribution');
@@ -4677,10 +4726,10 @@
         ]);
       } else {
         const cards = [
-          card(`Salary Trend by Graduation Year (${salaryHorizon})`, 'earn-salary-trend', 7, true),
-          card(`Salary Distribution (${salaryHorizon})`, 'salary-distribution', 5, true),
+          card(`Salary Trend by Graduation Year (${salaryHorizon})`, 'earn-salary-trend', 7, true, { horizonControl: true }),
+          card(`Salary Distribution (${salaryHorizon})`, 'salary-distribution', 5, true, { horizonControl: true }),
         ];
-        if (!hasMajor) cards.push(card(`Top Majors by Salary (${salaryHorizon})`, 'top-major-salary', 12, true, { topControl: true }));
+        if (!hasMajor) cards.push(card(`Top Majors by Salary (${salaryHorizon})`, 'top-major-salary', 12, true, { topControl: true, horizonControl: true }));
         $('content').innerHTML = cards.join('');
         drawSalaryTrend('earn-salary-trend', true);
         drawSalaryDistribution('salary-distribution');
@@ -5204,17 +5253,18 @@
     }
 
     function renderGeography() {
+      const salaryHorizon = activeHorizonLabel();
       if (state.viewMode === 'snapshot') {
         $('content').innerHTML = [
           card('Top Cities by Alumni Share', 'geo-share', 7, true, { topControl: true }),
-          card('Median Earnings by City', 'geo-salary', 5, true, { topControl: true }),
+          card(`Median Earnings by City (${salaryHorizon})`, 'geo-salary', 5, true, { topControl: true, horizonControl: true }),
         ].join('');
         drawGeo('geo-share', 'share_pct');
         drawGeo('geo-salary', 'median_salary');
       } else {
         $('content').innerHTML = [
           card('City Share Over Time', 'geo-share-trend', 7, true, { topControl: true }),
-          card('Current City Earnings', 'geo-salary', 5, true, { topControl: true }),
+          card(`Current City Earnings (${salaryHorizon})`, 'geo-salary', 5, true, { topControl: true, horizonControl: true }),
         ].join('');
         drawTrendLines('geo-share-trend', state.data.geography_trend || [], 'location', 'share_pct', {
           yTitle: 'Share of alumni',
@@ -7604,6 +7654,17 @@
         queuePlotResize();
       });
       $('content').addEventListener('click', event => {
+        const horizonButton = event.target.closest('[data-chart-horizon]');
+        if (horizonButton) {
+          event.preventDefault();
+          const value = horizonButton.dataset.chartHorizon;
+          if (!HORIZON_OPTIONS.some(option => option.value === value)) return;
+          if ($('horizon-select')) $('horizon-select').value = value;
+          state.appliedAdvanced = { ...activeAdvancedControls(), horizon: value };
+          syncHorizonToggle();
+          refresh({ resetDrill: true });
+          return;
+        }
         const saveMenuButton = event.target.closest('[data-save-chart-menu]');
         if (saveMenuButton && !saveMenuButton.hidden) {
           event.preventDefault();
