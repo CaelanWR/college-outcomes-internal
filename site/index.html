@@ -1380,7 +1380,7 @@
     }
 
     .detail-card {
-      width: min(920px, calc(100vw - 32px));
+      width: min(1120px, calc(100vw - 32px));
       max-height: min(780px, calc(100vh - 32px));
       overflow: auto;
       border: 1px solid rgba(255,255,255,0.30);
@@ -1521,6 +1521,71 @@
     .detail-table .num {
       font-variant-numeric: tabular-nums;
       text-align: right;
+    }
+
+    .destination-compare-wrap {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      overflow: auto;
+      background: rgba(255,255,255,0.78);
+    }
+
+    .destination-compare-table {
+      border-collapse: collapse;
+      min-width: 880px;
+      width: 100%;
+    }
+
+    .destination-compare-table th,
+    .destination-compare-table td {
+      border-bottom: 1px solid rgba(166, 179, 198, 0.28);
+      border-right: 1px solid rgba(166, 179, 198, 0.20);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .destination-compare-table th:last-child,
+    .destination-compare-table td:last-child {
+      border-right: 0;
+    }
+
+    .destination-compare-table thead th {
+      background: linear-gradient(180deg, rgba(247,250,253,0.98), rgba(240,246,252,0.94));
+      color: var(--muted);
+      font-size: 0.76rem;
+      font-weight: 950;
+      letter-spacing: 0.08em;
+      position: sticky;
+      text-transform: uppercase;
+      top: 0;
+      z-index: 1;
+    }
+
+    .destination-compare-table tbody tr:last-child td { border-bottom: 0; }
+
+    .destination-compare-table .rank-col {
+      color: var(--muted);
+      font-weight: 950;
+      text-align: right;
+      width: 46px;
+    }
+
+    .destination-cell {
+      min-width: 210px;
+    }
+
+    .destination-name {
+      color: var(--navy);
+      font-weight: 950;
+      line-height: 1.18;
+    }
+
+    .destination-share {
+      color: var(--green);
+      font-size: 0.84rem;
+      font-weight: 950;
+      margin-top: 4px;
     }
 
     .detail-list {
@@ -3596,7 +3661,7 @@
         : (state.data.school_postgrad_comparison || []);
     }
 
-    function renderComparePostgradDestinationPanels(detail, key, title, emptyLabel) {
+    function renderComparePostgradDestinationTable(detail, key, title, emptyLabel) {
       const rows = detail?.[key] || [];
       const groups = new Map();
       rows.forEach(row => {
@@ -3605,17 +3670,51 @@
         if (!groups.has(code)) groups.set(code, []);
         groups.get(code).push(row);
       });
-      const headers = [
-        { label: title, value: row => row.label || '' },
-        { label: 'Share', className: 'num', value: row => row.share_pct === null || row.share_pct === undefined ? '—' : pct(row.share_pct) },
-      ];
-      const panels = modalCompareEntities().map(entity => detailTableHtml(
-        entity.title,
-        headers,
-        (groups.get(entity.code) || []).sort((a, b) => Number(a.entity_rank || 99) - Number(b.entity_rank || 99)),
-        `No ${emptyLabel} detail for this path.`
-      )).join('');
-      return `<div class="detail-grid">${panels}</div>`;
+      const entities = modalCompareEntities();
+      const rowsByEntity = entities.map(entity => (groups.get(entity.code) || [])
+        .sort((a, b) => Number(a.entity_rank || 99) - Number(b.entity_rank || 99))
+        .slice(0, 8));
+      const maxRows = Math.max(0, ...rowsByEntity.map(group => group.length));
+      if (!maxRows) {
+        return `
+          <div class="detail-panel">
+            <h3>${escapeHtml(title)}</h3>
+            <div class="empty">No ${escapeHtml(emptyLabel)} detail for this path.</div>
+          </div>
+        `;
+      }
+      return `
+        <div class="detail-panel">
+          <h3>${escapeHtml(title)}</h3>
+          <div class="destination-compare-wrap">
+            <table class="destination-compare-table">
+              <thead>
+                <tr>
+                  <th class="rank-col">#</th>
+                  ${entities.map(entity => `<th>${escapeHtml(entity.title)}</th>`).join('')}
+                </tr>
+              </thead>
+              <tbody>
+                ${Array.from({ length: maxRows }, (_, idx) => `
+                  <tr>
+                    <td class="rank-col">${idx + 1}</td>
+                    ${rowsByEntity.map(group => {
+                      const row = group[idx];
+                      if (!row) return '<td class="destination-cell muted">—</td>';
+                      return `
+                        <td class="destination-cell">
+                          <div class="destination-name">${escapeHtml(row.label || '')}</div>
+                          <div class="destination-share">${row.share_pct === null || row.share_pct === undefined ? '—' : pct(row.share_pct)}</div>
+                        </td>
+                      `;
+                    }).join('')}
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
     }
 
     function renderComparePostgradDrilldownBody(detail, context) {
@@ -3628,10 +3727,10 @@
           Destination shares are within the selected ${escapeHtml(degree)} path for each ${escapeHtml(compareEntityLabel().toLowerCase())}.
         </div>
       `);
-      sections.push(renderComparePostgradDestinationPanels(detail, 'schools', 'Destination school', 'school'));
+      sections.push(renderComparePostgradDestinationTable(detail, 'schools', 'Destination schools', 'school'));
       if (detail?.show_program_detail && programs.length) {
         sections.push('<div class="detail-hint">Programs are shown separately for masters and research doctorate paths.</div>');
-        sections.push(renderComparePostgradDestinationPanels(detail, 'programs', 'Program', 'program'));
+        sections.push(renderComparePostgradDestinationTable(detail, 'programs', 'Programs', 'program'));
       }
       if (!schools.length && !programs.length) {
         return '<div class="empty">No destination detail available for this path.</div>';
