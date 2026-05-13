@@ -203,17 +203,14 @@
     .loading-card {
       position: relative;
       z-index: 1;
-      width: min(520px, calc(100vw - 48px));
-      padding: 20px 22px 18px;
-      border: 1px solid rgba(72,235,143,0.28);
-      border-radius: 28px;
-      background:
-        radial-gradient(circle at 16% 8%, rgba(72,235,143,0.22), transparent 28%),
-        radial-gradient(circle at 88% 18%, rgba(72,175,244,0.18), transparent 30%),
-        linear-gradient(135deg, var(--navy-dark), var(--navy));
+      width: auto;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      background: transparent;
       color: #fff;
-      box-shadow: 0 28px 70px rgba(20,44,65,0.28), inset 0 -3px 0 rgba(72,235,143,0.25);
-      overflow: hidden;
+      box-shadow: none;
+      overflow: visible;
       transform: translateZ(0);
       backface-visibility: hidden;
       -webkit-font-smoothing: antialiased;
@@ -221,23 +218,11 @@
     }
 
     .loading-card::after {
-      content: '';
-      position: absolute;
-      inset: auto -18% -42% 22%;
-      height: 160px;
-      border-radius: 999px;
-      background: rgba(255,255,255,0.08);
-      transform: rotate(-7deg);
+      display: none;
     }
 
     .loading-brand {
-      position: relative;
-      z-index: 1;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      margin-bottom: 14px;
+      display: none;
     }
 
     .loading-brand img {
@@ -259,25 +244,36 @@
     .loading-chart {
       position: relative;
       z-index: 1;
-      height: 188px;
-      border: 1px solid rgba(255,255,255,0.13);
-      border-radius: 22px;
-      background:
-        radial-gradient(circle at 50% 50%, rgba(72,235,143,0.15), transparent 34%),
-        radial-gradient(circle at 50% 50%, rgba(255,255,255,0.08), transparent 58%),
-        rgba(9,25,48,0.20);
-      overflow: hidden;
+      height: auto;
+      border: 0;
+      border-radius: 50%;
+      background: transparent;
+      overflow: visible;
       display: grid;
       place-items: center;
     }
 
     .loading-pie-wrap {
       position: relative;
-      width: 154px;
-      height: 154px;
+      width: 172px;
+      height: 172px;
       display: grid;
       place-items: center;
       transform: translateZ(0);
+      filter: drop-shadow(0 22px 42px rgba(20,44,65,0.28));
+    }
+
+    .loading-pie-wrap::before {
+      content: '';
+      position: absolute;
+      inset: -24px;
+      border-radius: 50%;
+      background:
+        conic-gradient(from 120deg, transparent 0deg 72deg, rgba(72,235,143,0.72) 72deg 118deg, transparent 118deg 360deg);
+      -webkit-mask: radial-gradient(circle, transparent 0 72px, #000 73px 78px, transparent 79px);
+      mask: radial-gradient(circle, transparent 0 72px, #000 73px 78px, transparent 79px);
+      opacity: 0.95;
+      animation: loading-pie-orbit 3.6s linear infinite;
     }
 
     .loading-pie {
@@ -294,18 +290,18 @@
           #2d426a 236deg 310deg,
           rgba(255,255,255,0.16) 310deg 360deg
         );
-      box-shadow: 0 20px 44px rgba(0,0,0,0.24), 0 0 0 10px rgba(72,235,143,0.08);
-      animation: loading-pie-spin 1.9s cubic-bezier(0.56, 0, 0.21, 1) infinite;
+      box-shadow: 0 0 0 12px rgba(255,255,255,0.16), 0 0 0 24px rgba(72,235,143,0.08);
+      animation: loading-pie-spin 2.15s cubic-bezier(0.56, 0, 0.21, 1) infinite;
     }
 
     .loading-pie::before {
       content: '';
       position: absolute;
-      inset: 14px;
+      inset: 28px;
       border-radius: 50%;
       background:
         radial-gradient(circle at 48% 42%, rgba(255,255,255,0.14), transparent 34%),
-        rgba(9,25,48,0.82);
+        rgba(9,25,48,0.76);
       border: 1px solid rgba(255,255,255,0.14);
     }
 
@@ -315,14 +311,14 @@
       inset: -13px;
       border-radius: 50%;
       border: 1px solid rgba(255,255,255,0.16);
-      animation: loading-ring-pulse 1.9s ease-in-out infinite;
+      animation: loading-ring-pulse 2.15s ease-in-out infinite;
     }
 
     .loading-pie-marker {
       position: absolute;
       inset: -7px;
       border-radius: 50%;
-      animation: loading-pie-spin 1.9s cubic-bezier(0.56, 0, 0.21, 1) infinite;
+      animation: loading-pie-marker-spin 2.15s cubic-bezier(0.56, 0, 0.21, 1) infinite;
     }
 
     .loading-pie-marker::after {
@@ -355,13 +351,7 @@
     }
 
     .loading-copy {
-      position: relative;
-      z-index: 1;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      margin-top: 14px;
+      display: none;
     }
 
     .loading-copy strong {
@@ -401,9 +391,21 @@
     .loading-pulse i:nth-child(3) { animation-delay: 0.32s; }
 
     @keyframes loading-pie-spin {
-      0% { transform: rotate(0deg) scale(0.96); }
-      45% { transform: rotate(205deg) scale(1.02); }
-      100% { transform: rotate(360deg) scale(0.96); }
+      0% { transform: rotate(-18deg) scale(0.94); }
+      42% { transform: rotate(192deg) scale(1.04); }
+      68% { transform: rotate(252deg) scale(0.98); }
+      100% { transform: rotate(342deg) scale(0.94); }
+    }
+
+    @keyframes loading-pie-marker-spin {
+      0% { transform: rotate(0deg); }
+      42% { transform: rotate(220deg); }
+      68% { transform: rotate(292deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    @keyframes loading-pie-orbit {
+      to { transform: rotate(360deg); }
     }
 
     @keyframes loading-ring-pulse {
@@ -419,6 +421,7 @@
     @media (prefers-reduced-motion: reduce) {
       .loading-pie,
       .loading-pie::after,
+      .loading-pie-wrap::before,
       .loading-pie-marker,
       .loading-pulse i {
         animation: none;
@@ -2210,25 +2213,14 @@
     </div>
   </div>
 
-  <div id="refresh-state" class="refresh-state" role="status" aria-live="polite">
+  <div id="refresh-state" class="refresh-state" role="status" aria-live="polite" aria-label="Loading outcomes">
     <div class="loading-card">
-      <div class="loading-brand">
-        <img src="./revelio-logo.svg" alt="Revelio Labs" />
-        <span>Internal demo</span>
-      </div>
       <div class="loading-chart" aria-hidden="true">
         <div class="loading-pie-wrap">
           <span class="loading-pie"></span>
           <span class="loading-pie-marker"></span>
           <span class="loading-pie-core"><img src="./favicon.svg" alt="" /></span>
         </div>
-      </div>
-      <div class="loading-copy">
-        <div>
-          <strong>Loading outcomes</strong>
-          <span>Building weighted charts for the current slice</span>
-        </div>
-        <span class="loading-pulse" aria-hidden="true"><i></i><i></i><i></i></span>
       </div>
     </div>
   </div>
