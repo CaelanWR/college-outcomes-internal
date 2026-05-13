@@ -1356,6 +1356,34 @@
       letter-spacing: 0.01em;
     }
 
+    .info-panel {
+      display: grid;
+      gap: 14px;
+      color: var(--ink);
+      font-weight: 650;
+      line-height: 1.45;
+    }
+
+    .info-panel ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    .info-panel li {
+      margin: 0 0 9px;
+    }
+
+    .info-taxonomy {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(72,175,244,0.08);
+      padding: 14px;
+    }
+
+    .info-taxonomy strong {
+      color: var(--navy);
+    }
+
     .detail-table-wrap {
       overflow-x: auto;
       border: 1px solid var(--line);
@@ -3745,18 +3773,76 @@
       return /\b(salary|salaries|earnings|pay)\b/.test(text);
     }
 
-    function chartInfoText(id, title) {
-      if (chartUsesSalaryDollars(id, title)) return SALARY_DOLLAR_NOTE;
-      if (`${id || ''} ${title || ''}`.toLowerCase().includes('internship')) {
-        return 'Internship rates default to recent graduates unless graduation years are selected.';
+    function chartInfoItems(id, title) {
+      const text = `${id || ''} ${title || ''}`.toLowerCase();
+      const items = [];
+      if (chartUsesSalaryDollars(id, title)) {
+        items.push(`${SALARY_DOLLAR_NOTE} Salary charts use Revelio compensation observations weighted by the selected profile/outcome weights.`);
       }
-      return '';
+      if (/\bmajor|cip|program/.test(text)) {
+        items.push('Majors and programs use IPEDS CIP taxonomy at the selected CIP level. The default 4-digit CIP view keeps related programs together while avoiding overly noisy 6-digit cells.');
+      }
+      if (/\bemployer|company|companies/.test(text)) {
+        items.push('Employers use Revelio normalized employer names. Unknown employers are removed, and school-as-employer rows are excluded unless the school-employer toggle is on.');
+      }
+      if (/\brole|treemap/.test(text)) {
+        items.push('Roles use Revelio role taxonomies: K50 for broad role families and K150 when drilling deeper into detailed roles.');
+      }
+      if (/\bindustry|treemap/.test(text)) {
+        items.push('Industries use Revelio normalized industry taxonomy. Treemaps show share of weighted alumni in each industry, with color reflecting available pay data when present.');
+      }
+      if (/\bgeograph|city|location/.test(text)) {
+        items.push('Geography comes from normalized location fields on profile positions. Shares use the current weighted alumni slice; salary-by-city uses salary observations in those locations.');
+      }
+      if (/\bdemographic|gender|race|ethnicity|female/.test(text)) {
+        items.push('Demographics use Revelio profile-level predicted gender and race/ethnicity fields. Unknown or empty values are dropped, so displayed shares are normalized across known values.');
+      }
+      if (/\bfurther education|postgrad|degree|law|mba|phd|masters|doctorate/.test(text)) {
+        items.push('Further education is inferred from later education records after the selected degree. Degree labels use IPEDS-aware categories such as Masters, MBA, LAW, MD, Research Doctorate, and Professional Doctorate.');
+      }
+      if (/\bcoverage|ipeds/.test(text)) {
+        items.push('Coverage compares weighted Revelio education completions with IPEDS completions for the same school, degree, major, and graduation-year slice where IPEDS is available.');
+      }
+      if (/\binternship/.test(text)) {
+        items.push('Internship rate is calculated for classes of 2020-2025 from positions classified as internships before or near graduation. It is a profile signal, so unreported internships are not counted.');
+      }
+      if (/\bcurrent student|student demand/.test(text)) {
+        items.push('Current-student views use active education rows and projected graduation years. They are not earnings outcomes and do not have post-graduation salary data.');
+      }
+      if (/\bseniority|career stage|progression|launchpad|superstar/.test(text)) {
+        items.push('Career stage uses Revelio seniority signals from profile positions and is weighted to the current slice.');
+        items.push('Seniority rollup: Entry = numeric seniority under 2 / Entry I-II; Associate = 2-<4 / Mid I-II; Management = 4-<6 / Senior I-II; Senior Leadership = 6+ / Manager, Director, Director+, and Executive bands.');
+      }
+      if (!items.length) {
+        items.push('This chart uses the current school, degree, major, cohort, demographic, further-education, and employer filters. Counts and shares are based on the dashboard analysis weights.');
+      }
+      if (!items.some(item => /weight/i.test(item))) {
+        items.push('Counts, shares, and comparisons use weighted Revelio profile data for the selected slice.');
+      }
+      return items;
+    }
+
+    function chartInfoHtml(id, title) {
+      const items = chartInfoItems(id, title);
+      return `
+        <div class="info-panel">
+          <ul>
+            ${items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}
+          </ul>
+          <div class="info-taxonomy">
+            <strong>Taxonomy note:</strong>
+            CIP = education program taxonomy; K50/K150 = Revelio role taxonomy; seniority stages are dashboard rollups of Revelio seniority bands/scores.
+          </div>
+        </div>
+      `;
+    }
+
+    function openChartInfo(id, title) {
+      setDrilldownModal(title || 'Chart details', 'How to read this chart', chartInfoHtml(id, title));
     }
 
     function chartInfoControl(id, title) {
-      const info = chartInfoText(id, title);
-      if (!info) return '';
-      return `<button type="button" class="chart-info" title="${escapeHtml(info)}" aria-label="${escapeHtml(info)}">i</button>`;
+      return `<button type="button" class="chart-info" title="How to read this chart" aria-label="How to read ${escapeHtml(title)}" data-chart-info-id="${escapeHtml(id)}" data-chart-info-title="${escapeHtml(title)}">i</button>`;
     }
 
     function selectedOptionLabel(id, fallback = '') {
@@ -4418,6 +4504,7 @@
               <p>${escapeHtml(subtitle)}</p>
             </div>
             <div class="card-actions">
+              ${chartInfoControl(id, title)}
               ${topNControl(`${id}-top-n`)}
               ${chartDownloadControl(id)}
               <button class="card-back ${(path || []).length ? '' : 'is-hidden'}" type="button" onclick="drillBack('${kind}')">Back</button>
@@ -5821,11 +5908,11 @@
             <div class="card span-8">
               <div class="postgrad-detail-stack">
                 <div class="postgrad-detail-panel">
-                  <div class="card-title-row"><h3>${schoolTitle}</h3><div class="card-controls">${topNControl('postgrad-schools-top-n')}</div></div>
+                  <div class="card-title-row"><h3>${schoolTitle}</h3><div class="card-controls">${chartInfoControl('postgrad-schools', schoolTitle)}${topNControl('postgrad-schools-top-n')}</div></div>
                   <div id="postgrad-schools" class="chart"></div>
                 </div>
                 <div class="postgrad-detail-panel">
-                  <div class="card-title-row"><h3>${programTitle}</h3><div class="card-controls">${topNControl('postgrad-programs-top-n')}</div></div>
+                  <div class="card-title-row"><h3>${programTitle}</h3><div class="card-controls">${chartInfoControl('postgrad-programs', programTitle)}${topNControl('postgrad-programs-top-n')}</div></div>
                   <div id="postgrad-programs" class="chart"></div>
                 </div>
               </div>
@@ -8319,6 +8406,13 @@
         queuePlotResize();
       });
       $('content').addEventListener('click', event => {
+        const infoButton = event.target.closest('[data-chart-info-id]');
+        if (infoButton) {
+          event.preventDefault();
+          document.querySelectorAll('[data-save-options]').forEach(node => { node.hidden = true; });
+          openChartInfo(infoButton.dataset.chartInfoId, infoButton.dataset.chartInfoTitle);
+          return;
+        }
         const horizonButton = event.target.closest('[data-chart-horizon]');
         if (horizonButton) {
           event.preventDefault();
