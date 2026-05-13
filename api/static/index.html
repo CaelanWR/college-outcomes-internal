@@ -4081,9 +4081,9 @@
       if (tab === 'geography') {
         if (state.viewMode === 'overtime') {
           $('content').innerHTML = [
-            card('City Share Over Time by Major', 'major-geo-trend-compare', 12, true, { topControl: true }),
+            card('Primary City Share Over Time by Major', 'major-geo-trend-compare', 12, true),
           ].join('');
-          drawCompareCategoryTrend('major-geo-trend-compare', state.data.major_geography_trend_comparison || [], {
+          drawComparePrimaryCategoryTrend('major-geo-trend-compare', state.data.major_geography_trend_comparison || [], {
             labelTransform: shortLocationLabel,
             yTitle: 'Share of located alumni',
           });
@@ -4254,9 +4254,9 @@
     function renderSchoolCompareGeography() {
       if (state.viewMode === 'overtime') {
         $('content').innerHTML = [
-          card('City Share Over Time by School', 'school-geo-trend-compare', 12, true, { topControl: true }),
+          card('Primary City Share Over Time by School', 'school-geo-trend-compare', 12, true),
         ].join('');
-        drawCompareCategoryTrend('school-geo-trend-compare', state.data.school_geography_trend_comparison || [], {
+        drawComparePrimaryCategoryTrend('school-geo-trend-compare', state.data.school_geography_trend_comparison || [], {
           labelTransform: shortLocationLabel,
           yTitle: 'Share of located alumni',
         });
@@ -5555,6 +5555,66 @@
           });
           legendTraces.push(legendDotTrace(traceName, COLORS[entityIdx % COLORS.length], legendgroup));
         });
+      });
+      if (!traces.length) return noData(id);
+      Plotly.newPlot(id, [...traces, ...legendTraces], {
+        ...layoutBase,
+        height: options.height || 500,
+        margin: { ...layoutBase.margin, l: 82, r: 38, t: 34, b: 68 },
+        xaxis: { title: 'Graduation year', automargin: true, dtick: 5 },
+        yaxis: { title: options.yTitle || 'Share of alumni', ticksuffix: '%', automargin: true, rangemode: 'tozero' },
+        legend: { orientation: 'h', y: 1.18, x: 0, itemwidth: 30 },
+      }, plotConfig).then(plot => bindLegendGroupToggles(plot));
+    }
+
+    function drawComparePrimaryCategoryTrend(id, rows, options = {}) {
+      const cleanRows = (rows || [])
+        .filter(row => row.code && row.title && row.label && row.grad_year !== null && row.grad_year !== undefined && row.share_pct !== null && row.share_pct !== undefined);
+      if (!cleanRows.length) return noData(id);
+      const entityOrder = compareRows().map(row => String(row.code)).filter(Boolean);
+      const entityLabels = new Map();
+      cleanRows.forEach(row => {
+        if (!entityLabels.has(String(row.code))) entityLabels.set(String(row.code), row.title);
+      });
+      const entityCodes = [
+        ...entityOrder.filter(code => entityLabels.has(code)),
+        ...[...entityLabels.keys()].filter(code => !entityOrder.includes(code)),
+      ];
+      const traces = [];
+      const legendTraces = [];
+      entityCodes.forEach((code, entityIdx) => {
+        const entityRows = cleanRows.filter(row => String(row.code) === code);
+        const labelScores = new Map();
+        entityRows.forEach(row => {
+          const label = String(row.label || '');
+          labelScores.set(label, (labelScores.get(label) || 0) + Number(row.n || 0));
+        });
+        const primaryLabel = [...labelScores.entries()].sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))[0]?.[0];
+        if (!primaryLabel) return;
+        const slice = entityRows
+          .filter(row => String(row.label) === primaryLabel)
+          .sort((a, b) => Number(a.grad_year) - Number(b.grad_year));
+        if (!slice.length) return;
+        const entityLabel = options.entityLabelTransform
+          ? options.entityLabelTransform(entityLabels.get(code))
+          : (state.selectionMode === 'major_compare' ? legendLabel(entityLabels.get(code), 24) : shortSchool(entityLabels.get(code)));
+        const displayLabel = options.labelTransform ? options.labelTransform(primaryLabel) : legendLabel(primaryLabel, 24);
+        const traceName = `${entityLabel} · ${displayLabel}`;
+        const legendgroup = `${id}-${entityIdx}`;
+        traces.push({
+          type: 'scatter',
+          mode: 'lines+markers',
+          name: traceName,
+          legendgroup,
+          showlegend: false,
+          x: slice.map(row => row.grad_year),
+          y: slice.map(row => Number(row.share_pct || 0)),
+          line: { color: COLORS[entityIdx % COLORS.length], width: 3.4 },
+          marker: { color: COLORS[entityIdx % COLORS.length], size: 7 },
+          customdata: slice.map(row => [entityLabel, displayLabel, row.n, row.weighted_mean_salary]),
+          hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>Class of %{x}<br>%{y:.1f}%<extra></extra>',
+        });
+        legendTraces.push(legendDotTrace(traceName, COLORS[entityIdx % COLORS.length], legendgroup));
       });
       if (!traces.length) return noData(id);
       Plotly.newPlot(id, [...traces, ...legendTraces], {
