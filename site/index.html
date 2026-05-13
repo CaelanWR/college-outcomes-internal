@@ -2347,7 +2347,7 @@
       { value: '10yr', label: '10 yr' },
     ];
     const REQUEST_TOP_N = Math.max(...TOP_N_OPTIONS);
-    const DASHBOARD_CACHE_LIMIT = 72;
+    const DASHBOARD_CACHE_LIMIT = 120;
     const TAB_ORDER = ['career', 'earnings', 'employers', 'geography', 'roles', 'demographics', 'postgrad', 'coverage', 'overview'];
     const DASHBOARD_VIEW_MODES = ['snapshot', 'overtime'];
     const MAX_COMPARE_SCHOOLS = 3;
@@ -2830,15 +2830,34 @@
       });
     }
 
+    function horizonWarmupValues(baseFilters) {
+      return [...new Set([
+        baseFilters.horizon || '1yr',
+        ...HORIZON_OPTIONS.map(option => option.value),
+      ])];
+    }
+
     async function prefetchDashboardViews(baseFilters, generation) {
       if (generation !== state.prefetchGeneration || state.loading) return;
       if (canWarmFullSchoolSlice(baseFilters)) {
-        const fullFilters = { ...baseFilters, active_tab: 'all', view_mode: 'all' };
+        const horizons = horizonWarmupValues(baseFilters);
+        let warmed = 0;
+        let latestData = null;
         try {
-          const fullData = await fetchDashboard(fullFilters);
-          if (generation !== state.prefetchGeneration) return;
-          hydrateTabCachesFromFullDashboard(baseFilters, fullData);
-          if (!state.loading) setStatus('ok', `${fullData.meta?.data_version || 'Connected'} | all tabs ready`);
+          for (const horizon of horizons) {
+            if (generation !== state.prefetchGeneration || state.loading) return;
+            const horizonFilters = { ...baseFilters, horizon };
+            const fullFilters = { ...horizonFilters, active_tab: 'all', view_mode: 'all' };
+            const fullData = await fetchDashboard(fullFilters);
+            if (generation !== state.prefetchGeneration) return;
+            hydrateTabCachesFromFullDashboard(horizonFilters, fullData);
+            warmed += 1;
+            latestData = fullData;
+          }
+          if (warmed === horizons.length) {
+            if (!state.loading) setStatus('ok', `${latestData?.meta?.data_version || 'Connected'} | all tabs and years ready`);
+            return;
+          }
         } catch {
           // Fall back to individual tab prefetching below if the full payload fails.
         }
