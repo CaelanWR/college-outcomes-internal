@@ -2938,10 +2938,11 @@
       const activeView = state.viewMode || defaultViewForTab(activeTab);
       const views = [];
       TAB_ORDER.forEach(tab => {
-        if (tab !== activeTab) views.push({ tab, viewMode: defaultViewForTab(tab) });
+        DASHBOARD_VIEW_MODES.forEach(viewMode => {
+          if (tab === activeTab && viewMode === activeView) return;
+          views.push({ tab, viewMode });
+        });
       });
-      const alternateView = activeView === 'overtime' ? 'snapshot' : 'overtime';
-      views.push({ tab: activeTab, viewMode: alternateView });
       for (const view of views) {
         if (generation !== state.prefetchGeneration || state.loading) return;
         const filters = { ...baseFilters, active_tab: view.tab, view_mode: view.viewMode };
@@ -3266,7 +3267,15 @@
         }
         const filters = dashboardFiltersForCurrentView();
         const cached = getCachedDashboard(filters);
-        state.data = cached || await fetchDashboard(filters);
+        if (cached) {
+          state.data = cached;
+        } else if (canWarmFullSchoolSlice(filters)) {
+          const fullFilters = { ...filters, active_tab: 'all', view_mode: 'all' };
+          state.data = await fetchDashboard(fullFilters);
+          hydrateTabCachesFromFullDashboard(filters, state.data);
+        } else {
+          state.data = await fetchDashboard(filters);
+        }
         showContent();
         render();
         setStatus('ok', `${state.data.meta?.data_version || 'Connected'} | loaded ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}`);
@@ -8214,7 +8223,7 @@
         document.querySelectorAll('.tab').forEach(node => node.classList.toggle('active', node === tab));
         applyDefaultViewForTab(state.tab);
         syncViewToggle();
-        refresh();
+        refresh({ resetDrill: true });
       });
 
       $('view-toggle').addEventListener('click', event => {
