@@ -4658,17 +4658,11 @@
       if (state.viewMode === 'overtime') {
         const demoTrend = state.data.school_demographic_trend_comparison || {};
         $('content').innerHTML = [
-          card('Gender Mix Over Time by School', 'school-gender-trend-compare', 6, true, { topControl: true }),
-          card('Race/Ethnicity Over Time by School', 'school-race-trend-compare', 6, true, { topControl: true }),
+          card('Share Female Over Time by School', 'school-gender-trend-compare', 12, true),
+          card('Race/Ethnicity by Class and School', 'school-race-trend-compare', 12, true, { topControl: true }),
         ].join('');
-        drawCompareCategoryTrend('school-gender-trend-compare', demoTrend.gender || [], {
-          labelTransform: label => legendLabel(label, 20),
-          yTitle: 'Share of alumni',
-        });
-        drawCompareCategoryTrend('school-race-trend-compare', demoTrend.race_ethnicity || [], {
-          labelTransform: label => legendLabel(label, 22),
-          yTitle: 'Share of alumni',
-        });
+        drawCompareFemaleTrend('school-gender-trend-compare', demoTrend.gender || []);
+        drawCompareRaceStackedBars('school-race-trend-compare', demoTrend.race_ethnicity || []);
         return;
       }
       $('content').innerHTML = [
@@ -5902,6 +5896,157 @@
         margin: { ...layoutBase.margin, l: 82, r: 38, t: 34, b: 68 },
         xaxis: { title: 'Graduation year', automargin: true, dtick: 5 },
         yaxis: { title: options.yTitle || 'Share of alumni', ticksuffix: '%', automargin: true, rangemode: 'tozero' },
+        legend: { orientation: 'h', y: 1.18, x: 0, itemwidth: 30 },
+      }, plotConfig).then(plot => bindLegendGroupToggles(plot));
+    }
+
+    function orderedCompareEntities(cleanRows) {
+      const entityOrder = compareRows().map(row => String(row.code)).filter(Boolean);
+      const entityLabels = new Map();
+      cleanRows.forEach(row => {
+        if (!entityLabels.has(String(row.code))) entityLabels.set(String(row.code), row.title);
+      });
+      return [
+        ...entityOrder.filter(code => entityLabels.has(code)),
+        ...[...entityLabels.keys()].filter(code => !entityOrder.includes(code)),
+      ].map(code => ({
+        code,
+        title: entityLabels.get(code),
+        label: state.selectionMode === 'major_compare' ? legendLabel(entityLabels.get(code), 24) : shortSchool(entityLabels.get(code)),
+      }));
+    }
+
+    function paddedPctRange(values, minimumSpan = 18) {
+      const finite = values.map(Number).filter(Number.isFinite);
+      if (!finite.length) return [0, 100];
+      let minValue = Math.min(...finite);
+      let maxValue = Math.max(...finite);
+      const mid = (minValue + maxValue) / 2;
+      if (maxValue - minValue < minimumSpan) {
+        minValue = mid - minimumSpan / 2;
+        maxValue = mid + minimumSpan / 2;
+      }
+      return [
+        Math.max(0, Math.floor((minValue - 3) / 5) * 5),
+        Math.min(100, Math.ceil((maxValue + 3) / 5) * 5),
+      ];
+    }
+
+    function drawCompareFemaleTrend(id, rows) {
+      const cleanRows = (rows || [])
+        .filter(row => row.code && row.title && row.label && row.grad_year !== null && row.grad_year !== undefined && row.share_pct !== null && row.share_pct !== undefined);
+      if (!cleanRows.length) return noData(id);
+      const entities = orderedCompareEntities(cleanRows);
+      if (!entities.length) return noData(id);
+      const byKey = new Map(cleanRows.map(row => [`${row.code}||${row.grad_year}||${String(row.label).toLowerCase()}`, row]));
+      const traces = [];
+      const values = [];
+      entities.forEach((entity, idx) => {
+        const years = [...new Set(cleanRows.filter(row => String(row.code) === entity.code).map(row => Number(row.grad_year)))]
+          .filter(Number.isFinite)
+          .sort((a, b) => a - b);
+        const points = years.map(year => {
+          const femaleRow = byKey.get(`${entity.code}||${year}||female`)
+            || cleanRows.find(row => String(row.code) === entity.code && Number(row.grad_year) === year && /female|women|woman/i.test(String(row.label)));
+          if (femaleRow) return { year, share: Number(femaleRow.share_pct || 0), n: Number(femaleRow.n || 0), source: 'Female' };
+          const maleRow = byKey.get(`${entity.code}||${year}||male`)
+            || cleanRows.find(row => String(row.code) === entity.code && Number(row.grad_year) === year && /^male$/i.test(String(row.label)));
+          if (maleRow) return { year, share: Math.max(0, 100 - Number(maleRow.share_pct || 0)), n: null, source: 'Female estimate' };
+          return null;
+        }).filter(Boolean);
+        if (!points.length) return;
+        values.push(...points.map(point => point.share));
+        const legendgroup = `${id}-${idx}`;
+        traces.push({
+          type: 'scatter',
+          mode: 'lines+markers',
+          name: entity.label,
+          legendgroup,
+          showlegend: false,
+          x: points.map(point => point.year),
+          y: points.map(point => point.share),
+          line: { color: COLORS[idx % COLORS.length], width: 3.6 },
+          marker: { color: COLORS[idx % COLORS.length], size: 7 },
+          customdata: points.map(point => [entity.title, point.source, point.n]),
+          hovertemplate: '%{customdata[0]}<br>Class of %{x}<br>Share female: %{y:.1f}%<extra></extra>',
+        });
+        traces.push(legendDotTrace(entity.label, COLORS[idx % COLORS.length], legendgroup));
+      });
+      if (!traces.length) return noData(id);
+      Plotly.newPlot(id, traces, {
+        ...layoutBase,
+        height: 430,
+        margin: { ...layoutBase.margin, l: 82, r: 38, t: 30, b: 68 },
+        xaxis: { title: 'Graduation year', automargin: true, dtick: 5 },
+        yaxis: { title: 'Share female', ticksuffix: '%', automargin: true, range: paddedPctRange(values, 18) },
+        legend: { orientation: 'h', y: 1.18, x: 0, itemwidth: 30 },
+      }, plotConfig).then(plot => bindLegendGroupToggles(plot));
+    }
+
+    function demographicColor(label, idx) {
+      const text = String(label || '').toLowerCase();
+      if (text.includes('white')) return '#74D39B';
+      if (text.includes('asian') || text === 'api') return '#61A9E8';
+      if (text.includes('hispanic') || text.includes('latino')) return '#F28E5B';
+      if (text.includes('black')) return '#8B6FD6';
+      if (text.includes('two') || text.includes('multi')) return '#F4D35D';
+      if (text.includes('native')) return '#E76A87';
+      return COLORS[idx % COLORS.length];
+    }
+
+    function drawCompareRaceStackedBars(id, rows) {
+      const cleanRows = (rows || [])
+        .filter(row => row.code && row.title && row.label && !isNoiseLabel(row.label) && row.grad_year !== null && row.grad_year !== undefined && row.share_pct !== null && row.share_pct !== undefined);
+      if (!cleanRows.length) return noData(id);
+      const entities = orderedCompareEntities(cleanRows);
+      if (!entities.length) return noData(id);
+      const entityCodes = new Set(entities.map(entity => entity.code));
+      const labelTotals = new Map();
+      cleanRows.forEach(row => {
+        if (!entityCodes.has(String(row.code))) return;
+        labelTotals.set(row.label, (labelTotals.get(row.label) || 0) + Number(row.n || 0));
+      });
+      const labels = [...labelTotals.entries()]
+        .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
+        .slice(0, topNFor(id))
+        .map(([label]) => label);
+      if (!labels.length) return noData(id);
+      const years = [...new Set(cleanRows.map(row => Number(row.grad_year)).filter(Number.isFinite))].sort((a, b) => a - b);
+      const lookup = new Map(cleanRows.map(row => [`${row.code}||${row.grad_year}||${row.label}`, row]));
+      const traces = [];
+      labels.forEach((label, labelIdx) => {
+        entities.forEach((entity, entityIdx) => {
+          const color = demographicColor(label, labelIdx);
+          traces.push({
+            type: 'bar',
+            name: legendLabel(label, 24),
+            legendgroup: `race-${label}`,
+            showlegend: entityIdx === 0,
+            offsetgroup: entity.code,
+            x: years,
+            y: years.map(year => Number(lookup.get(`${entity.code}||${year}||${label}`)?.share_pct || 0)),
+            marker: {
+              color,
+              opacity: 0.86,
+              line: { color: 'rgba(255,255,255,0.76)', width: 0.8 },
+            },
+            customdata: years.map(year => {
+              const row = lookup.get(`${entity.code}||${year}||${label}`) || {};
+              return [entity.title, label, Number(row.n || 0)];
+            }),
+            hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>Class of %{x}<br>%{y:.1f}%<br>%{customdata[2]:,.0f} alumni<extra></extra>',
+          });
+        });
+      });
+      Plotly.newPlot(id, traces, {
+        ...layoutBase,
+        height: 500,
+        barmode: 'stack',
+        bargap: 0.22,
+        bargroupgap: 0.08,
+        margin: { ...layoutBase.margin, l: 82, r: 38, t: 34, b: 76 },
+        xaxis: { title: 'Graduation year', automargin: true, dtick: 5 },
+        yaxis: { title: 'Share of alumni', ticksuffix: '%', range: [0, 100], automargin: true },
         legend: { orientation: 'h', y: 1.18, x: 0, itemwidth: 30 },
       }, plotConfig).then(plot => bindLegendGroupToggles(plot));
     }
