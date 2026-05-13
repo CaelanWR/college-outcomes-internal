@@ -1291,8 +1291,51 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
             con.close()
 
 
-def _overview(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
+def _overview_starting_salary(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
+    base_columns = _dataset_columns("base_fact")
+    adjusted_select = _runtime_adjusted_select(base_columns, "b")
+    starting_filters = filters.model_copy(deep=True)
+    starting_filters.horizon = "1yr"
+    where_sql, params = _where(starting_filters)
     return _single_record(
+        con,
+        f"""
+        WITH starting_slice AS (
+          SELECT
+            {adjusted_select}
+          FROM (
+            SELECT *
+            FROM read_parquet(?)
+            {where_sql}
+          ) b
+          LEFT JOIN recent_school_calibration rsc
+            ON b.unitid = rsc.unitid
+           AND b.degree = rsc.degree
+           AND b.cip4 = rsc.cip4
+          LEFT JOIN recent_global_calibration rgc
+            ON b.degree = rgc.degree
+           AND b.cip4 = rgc.cip4
+        ),
+        outcomes AS (
+          SELECT
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS starting_salary_weight,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS weighted_mean_starting_salary,
+            quantile_cont(salary, 0.5) AS median_starting_salary
+          FROM starting_slice
+        )
+        SELECT
+          ROUND(starting_salary_weight) AS starting_salary_weight,
+          CASE WHEN starting_salary_weight > ? THEN ROUND(weighted_mean_starting_salary) ELSE NULL END AS weighted_mean_starting_salary,
+          CASE WHEN starting_salary_weight > ? THEN ROUND(median_starting_salary) ELSE NULL END AS median_starting_salary
+        FROM outcomes
+        """,
+        [_base_source_for_filters(starting_filters), *params, SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT],
+    )
+
+
+def _overview(con: duckdb.DuckDBPyConnection, filters: QueryRequest | None = None) -> dict[str, Any]:
+    row = _single_record(
         con,
         """
         WITH cohort AS (
@@ -1329,6 +1372,9 @@ def _overview(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
         """,
         [SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT],
     )
+    if filters is not None:
+        row.update(_overview_starting_salary(con, filters))
+    return row
 
 
 def _salary_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
@@ -5584,7 +5630,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
             if tab in {"all", "full"} and not filters.compare_mode:
                 result.update(
                     {
-                        "overview": _overview(con),
+                        "overview": _overview(con, filters),
                         "salary_trend": _salary_trend(con, filters),
                         "salary_distribution": _salary_distribution(con),
                         "alumni_trend": _alumni_trend(con, filters),
@@ -5837,6 +5883,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                 if tab == "earnings":
                     result["salary_distribution"] = _salary_distribution(con)
                     result["salary_distributions_by_entity"] = _salary_distribution_by_entity(con, filters)
+                    result["career"] = {"earnings": _career_earnings(con, filters)}
                 if tab == "career":
                     result["career"] = _career(con, filters)
                 if tab == "coverage":
@@ -5844,12 +5891,13 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                 return result
 
             if tab == "overview":
-                result["overview"] = _overview(con)
+                result["overview"] = _overview(con, filters)
                 if view_mode == "snapshot":
                     result["top_majors"] = _top_majors(con, filters)
                     result["employers"] = _employers(con, filters)
                     result["geography"] = _geography(con, filters)
                 else:
+                    result["career"] = {"earnings": _career_earnings(con, filters)}
                     result["salary_trend"] = _salary_trend(con, filters)
                     result["alumni_trend"] = _alumni_trend(con, filters)
                     result["current_student_trend"] = _current_student_trend(con, filters)
@@ -5859,6 +5907,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
             if tab == "earnings":
                 result["top_majors"] = _top_majors(con, filters)
                 result["salary_distribution"] = _salary_distribution(con)
+                result["career"] = {"earnings": _career_earnings(con, filters)}
                 if view_mode == "overtime":
                     result["salary_trend"] = _salary_trend(con, filters)
                     result["salary_trend_by_school"] = _salary_trend_by_school(con, filters)
@@ -5901,11 +5950,11 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                 return result
 
             if tab == "coverage":
-                result["overview"] = _overview(con)
+                result["overview"] = _overview(con, filters)
                 result["coverage"] = _coverage(con, filters)
                 return result
 
-            result["overview"] = _overview(con)
+            result["overview"] = _overview(con, filters)
             return result
         finally:
             con.close()
