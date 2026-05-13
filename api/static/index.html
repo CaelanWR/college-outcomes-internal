@@ -3467,8 +3467,9 @@
           </div>
         `;
       }
-      const useShare = cleanRows.some(row => row.share_pct !== null && row.share_pct !== undefined);
-      const barValue = row => useShare ? Number(row.share_pct || 0) : Number(row.n || 0);
+      const total = cleanRows.reduce((sum, row) => sum + Number(row.n || 0), 0) || 0;
+      const hasShare = cleanRows.some(row => row.share_pct !== null && row.share_pct !== undefined);
+      const barValue = row => hasShare ? Number(row.share_pct || 0) : (total ? 100 * Number(row.n || 0) / total : 0);
       const maxValue = Math.max(1, ...cleanRows.map(row => barValue(row)));
       const rowHtml = cleanRows.map(row => {
         const value = barValue(row);
@@ -3476,8 +3477,8 @@
         const label = String(row.label || '');
         const active = activeLabel && label === activeLabel;
         const attr = clickAttr ? ` ${clickAttr}="${escapeHtml(label)}"` : '';
-        const valueLabel = useShare ? pct(row.share_pct) : people(row.n);
-        const titleText = useShare ? `${valueLabel} (${people(row.n)} alumni)` : `${people(row.n)} alumni`;
+        const valueLabel = pct(value);
+        const titleText = valueLabel;
         return `
           <button class="detail-row ${active ? 'active' : ''}" type="button"${attr} title="${escapeHtml(titleText)}">
             <span class="detail-row-label">
@@ -3575,7 +3576,6 @@
       const headers = [
         { label: compareEntityLabel(), value: row => row.entity_title || row.title || row.code || '' },
         { label: options.shareLabel || 'Share', className: 'num', value: row => row.share_pct === null || row.share_pct === undefined ? '—' : pct(row.share_pct) },
-        { label: 'People', className: 'num', value: row => row.n === null || row.n === undefined ? '—' : people(row.n) },
       ];
       if (options.showPay !== false) {
         headers.push({
@@ -3608,7 +3608,6 @@
       const headers = [
         { label: title, value: row => row.label || '' },
         { label: 'Share', className: 'num', value: row => row.share_pct === null || row.share_pct === undefined ? '—' : pct(row.share_pct) },
-        { label: 'People', className: 'num', value: row => row.n === null || row.n === undefined ? '—' : people(row.n) },
       ];
       const panels = modalCompareEntities().map(entity => detailTableHtml(
         entity.title,
@@ -3667,7 +3666,6 @@
           { label: compareEntityLabel(), value: row => row.title || row.code || '' },
           { label: 'Role', value: row => row.label || '' },
           { label: 'Within employer', className: 'num', value: row => row.share_pct === null || row.share_pct === undefined ? '—' : pct(row.share_pct) },
-          { label: 'People', className: 'num', value: row => row.n === null || row.n === undefined ? '—' : people(row.n) },
           {
             label: 'Avg pay',
             className: 'num',
@@ -4755,13 +4753,15 @@
     }
 
     function overviewMetrics(o) {
-      const currentTotal = currentStudentTotal();
-      const span = currentTotal ? 4 : 6;
+      const hasLaterDegree = o.later_degree_pct !== null && o.later_degree_pct !== undefined;
+      const span = hasLaterDegree ? 4 : 6;
       const rows = [
         metric('Weighted Median Salary', money(o.median_salary), span),
-        metric('Alumni', num(o.alumni), span),
       ];
-      if (currentTotal) rows.push(metric('Current Students', num(currentTotal), span, 'current-students'));
+      if (hasLaterDegree) {
+        rows.push(metric('Later Degree Rate', pct(o.later_degree_pct), span));
+        rows.push(metric('No Further Ed Observed', pct(Math.max(0, 100 - Number(o.later_degree_pct || 0))), span));
+      }
       return rows;
     }
 
@@ -4903,7 +4903,7 @@
 
       if (state.viewMode === 'snapshot') {
         $('content').innerHTML = [
-          card(`Alumni by ${entity}`, 'compare-alumni', 7, true, { topControl: state.selectionMode === 'major_compare' }),
+          card(`Alumni Share by ${entity}`, 'compare-alumni', 7, true, { topControl: state.selectionMode === 'major_compare' }),
           card(`${entity} Comparison Table`, 'compare-table', 5, true),
         ].join('');
         drawCompareAlumni('compare-alumni');
@@ -5305,8 +5305,13 @@
         $('content').innerHTML = cards.join('');
         drawSalaryDistribution('salary-distribution');
         if (!hasMajor) drawMajorSalary('top-major-salary');
-        $('salary-table').innerHTML = table(['Major', 'Alumni', 'Earnings records', 'Median salary', 'Mean salary'], state.data.top_majors || [], row => [
-          row.title, num(row.alumni), num(row.salary_weight), money(row.median_salary), money(row.weighted_mean_salary)
+        const alumniBase = Number(state.data.overview?.alumni || 0);
+        $('salary-table').innerHTML = table(['Major', 'Share of alumni', 'Salary coverage', 'Median salary', 'Mean salary'], state.data.top_majors || [], row => [
+          row.title,
+          alumniBase > 0 ? pct(100 * Number(row.alumni || 0) / alumniBase) : '—',
+          row.alumni ? pct(100 * Number(row.salary_weight || 0) / Number(row.alumni || 0)) : '—',
+          money(row.median_salary),
+          money(row.weighted_mean_salary)
         ]);
       } else {
         const cards = [
@@ -5481,7 +5486,7 @@
           customdata: slice.map(row => [row.n_alumni, row.salary_obs, row.p25_salary, row.p75_salary]),
           line: { color: COLORS[0], width: 4 },
           marker: { size: 7, color: COLORS[0] },
-          hovertemplate: 'Year %{x}<br>Median %{y:$,.0f}<br>P25 %{customdata[2]:$,.0f}<br>P75 %{customdata[3]:$,.0f}<br>%{customdata[1]:,.0f} earnings records<extra></extra>',
+          hovertemplate: 'Year %{x}<br>Median %{y:$,.0f}<br>P25 %{customdata[2]:$,.0f}<br>P75 %{customdata[3]:$,.0f}<extra></extra>',
         });
       } else {
         seriesNames.forEach((series, i) => {
@@ -5495,7 +5500,7 @@
             customdata: slice.map(row => [series, row.n_alumni, row.salary_obs]),
             line: { color: COLORS[i % COLORS.length], width: 3 },
             marker: { size: 6, color: COLORS[i % COLORS.length] },
-            hovertemplate: '%{customdata[0]}<br>Year %{x}<br>Median %{y:$,.0f}<br>%{customdata[2]:,.0f} earnings records<extra></extra>',
+            hovertemplate: '%{customdata[0]}<br>Year %{x}<br>Median %{y:$,.0f}<extra></extra>',
           });
         });
       }
@@ -5533,7 +5538,7 @@
           y: years.map(year => Number(byYear.get(year)?.share_pct || 0)),
           marker: { color: COLORS[i % COLORS.length] },
           customdata: years.map(year => [careerStageLabel(band), byYear.get(year)?.n_alumni || 0, byYear.get(year)?.mean_salary || null]),
-          hovertemplate: '%{customdata[0]}<br>%{x} years after graduation<br>%{y:.1f}%<br>%{customdata[1]:,.0f} alumni<extra></extra>',
+          hovertemplate: '%{customdata[0]}<br>%{x} years after graduation<br>%{y:.1f}%<extra></extra>',
         };
       });
       Plotly.newPlot(id, traces, {
@@ -5574,7 +5579,7 @@
           customdata: slice.map(row => [series, row.n_alumni, stageForScore(row.avg_seniority), row.raw_avg_seniority]),
           line: { color: COLORS[i % COLORS.length], width: 3.5 },
           marker: { color: COLORS[i % COLORS.length], size: 6 },
-          hovertemplate: '%{customdata[0]}<br>%{x} years after graduation<br>%{customdata[2]} average stage<br>%{customdata[1]:,.0f} alumni<extra></extra>',
+          hovertemplate: '%{customdata[0]}<br>%{x} years after graduation<br>%{customdata[2]} average stage<extra></extra>',
         };
       });
       const legendTraces = seriesNames.map((series, i) => legendDotTrace(series, COLORS[i % COLORS.length], `${id}-seniority-${i}`));
@@ -5623,7 +5628,7 @@
           colorbar: { title: 'Career stage', thickness: 10 },
         },
         customdata: rows.map(row => [row.employer, row.n_starters, row.senior_plus_5yr_pct]),
-        hovertemplate: '%{customdata[0]}<br>5-yr retention %{x:.1f}%<br>5-yr pay %{y:$,.0f}<br>%{customdata[1]:,.0f} starters<br>Leadership share %{customdata[2]:.1f}%<extra></extra>',
+        hovertemplate: '%{customdata[0]}<br>5-yr retention %{x:.1f}%<br>5-yr pay %{y:$,.0f}<br>Leadership share %{customdata[2]:.1f}%<extra></extra>',
       }], {
         ...layoutBase,
         xaxis: { title: 'Still at first employer after 5 years', ticksuffix: '%', automargin: true, rangemode: 'tozero' },
@@ -5662,7 +5667,7 @@
           customdata: slice.map(row => [employer, row.n_alumni, row.mean_salary]),
           line: { color: COLORS[i % COLORS.length], width: 3.2 },
           marker: { color: COLORS[i % COLORS.length], size: 6 },
-          hovertemplate: '%{customdata[0]}<br>%{x} years after graduation<br>%{y:.2f}% of alumni<br>%{customdata[1]:,.0f} alumni<extra></extra>',
+          hovertemplate: '%{customdata[0]}<br>%{x} years after graduation<br>%{y:.2f}% of alumni<extra></extra>',
         };
       });
       const legendTraces = employers.map((employer, i) => legendDotTrace(employer, COLORS[i % COLORS.length], `${id}-employer-${i}`));
@@ -5702,7 +5707,6 @@
                 <div class="career-model-step"><span>10 years</span>${escapeHtml(careerStep(row.employer_10yr, row.role_10yr))}</div>
               </div>
               <div class="career-model-stats">
-                <div><strong>${num(row.n_alumni)}</strong><span>Alumni</span></div>
                 <div><strong>${money(row.avg_salary_5yr)}</strong><span>5-yr pay</span></div>
                 <div><strong>${row.avg_seniority_10yr ?? '—'}</strong><span>10-yr stage</span></div>
               </div>
@@ -5775,7 +5779,7 @@
         cliponaxis: false,
         marker: { color: rows.map((_, i) => COLORS[i % COLORS.length]) },
         customdata: rows.map(row => [row.series, row.n_interns, row.n_alumni, row.internship_positions, row.avg_internships_per_intern]),
-        hovertemplate: '%{customdata[0]}<br>%{x:.1f}% internship rate<br>%{customdata[1]:,.0f} interns<br>%{customdata[2]:,.0f} alumni<extra></extra>',
+        hovertemplate: '%{customdata[0]}<br>%{x:.1f}% internship rate<extra></extra>',
       }], {
         ...horizontalBarLayout(id, rows.map(row => ({ label: row.series })), '%', { rightMargin: 92, leftMargin: 190 }),
         xaxis: { ticksuffix: '%', rangemode: 'tozero', automargin: true, title: 'Share with internship signal' },
@@ -5821,7 +5825,7 @@
         colorscale: [[0, THEME.bg], [0.5, '#9AD3F9'], [1, THEME.navy]],
         hoverongaps: false,
         customdata,
-        hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>%{z:.1f}% of internship positions<br>%{customdata[2]:,.0f} positions<extra></extra>',
+        hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>%{z:.1f}% of internship positions<extra></extra>',
       }], {
         ...layoutBase,
         height: Math.max(340, 150 + employers.length * 34),
@@ -5841,7 +5845,7 @@
       const industries = (internships.industries || []).slice(0, limit);
       const conversions = (internships.conversions || []).slice(0, limit);
       if (!summary.n_interns && !employers.length && !roles.length && !industries.length && !conversions.length) return noData(id);
-      const listHtml = (title, rows, formatter = row => `${num(row.n)} · ${pct(row.share_pct)}`) => `
+      const listHtml = (title, rows, formatter = row => pct(row.share_pct)) => `
         <div class="internship-list">
           <h4>${escapeHtml(title)}</h4>
           ${(rows || []).map(row => `
@@ -5852,19 +5856,13 @@
           `).join('') || '<div class="empty">No data</div>'}
         </div>
       `;
-      const conversionFormatter = row => `<strong>${num(row.converted_to_job)}</strong> jobs · ${pct(row.conversion_rate_pct)}`;
+      const conversionFormatter = row => pct(row.conversion_rate_pct);
       $(id).innerHTML = `
         <div class="internship-panel ${conversions.length ? 'with-conversions' : ''}">
           <div class="internship-hero">
             <strong>${pct(summary.internship_rate_pct)}</strong>
             <span>Internship Rate (${escapeHtml(summary.rate_window ? `classes of ${summary.rate_window}` : 'recent classes')})</span>
             <small>Profile positions classified as internships before or near graduation.</small>
-            <div class="internship-hero-metrics">
-              <div><b>${num(summary.internship_positions)}</b><em>Positions</em></div>
-              <div><b>${num(summary.n_interns)}</b><em>Interns</em></div>
-              <div><b>${summary.avg_internships_per_intern ?? '—'}</b><em>Avg / intern</em></div>
-              <div><b>${num(summary.n_alumni)}</b><em>Alumni base</em></div>
-            </div>
           </div>
           ${conversions.length ? listHtml('Became postgrad jobs', conversions, conversionFormatter) : ''}
           ${listHtml('Top employers', employers)}
@@ -5972,8 +5970,8 @@
         drawDemoStackedSnapshot('gender-bars', state.data.demographics?.gender || [], 'Gender', 260);
         drawDemoStackedSnapshot('race-bars', state.data.demographics?.race_ethnicity || [], 'Race/Ethnicity', 260);
         const rows = [...(state.data.demographics?.gender || []), ...(state.data.demographics?.race_ethnicity || [])];
-        $('demo-table').innerHTML = table(['Group', 'Alumni', 'Share', 'Mean salary'], rows, row => [
-          row.label, num(row.n), pct(row.share_pct), money(row.weighted_mean_salary)
+        $('demo-table').innerHTML = table(['Group', 'Share', 'Mean salary'], rows, row => [
+          row.label, pct(row.share_pct), money(row.weighted_mean_salary)
         ]);
       } else {
         $('content').innerHTML = [
@@ -6002,6 +6000,16 @@
       const programTitle = selectedSchool
         ? `Top Programs at ${escapeHtml(shortPostgradSchool(selectedSchool))}`
         : `Top Programs for ${escapeHtml(detailLabel)}`;
+      const ensurePostgradShare = rows => {
+        const total = (rows || []).reduce((sum, row) => sum + Number(row.n || 0), 0) || 0;
+        return (rows || []).map(row => ({
+          ...row,
+          derived_share_pct: total ? 100 * Number(row.n || 0) / total : null,
+        }));
+      };
+      const postgradShareMetric = rows => rows.some(row => row.share_pct !== null && row.share_pct !== undefined)
+        ? 'share_pct'
+        : 'derived_share_pct';
       if (state.viewMode === 'snapshot') {
         const cards = [
           card('Further Education Paths', 'postgrad-flow', showPrograms ? 4 : 6, true, { topControl: true }),
@@ -6026,17 +6034,15 @@
         }
         $('content').innerHTML = cards.join('');
         drawPostgradFlows('postgrad-flow');
-        const schoolRows = state.data.postgrad?.schools || [];
-        const schoolMetric = schoolRows.some(row => row.share_pct !== null && row.share_pct !== undefined) ? 'share_pct' : 'n';
-        const schoolHover = schoolMetric === 'share_pct'
-          ? '%{customdata[0]}<br>%{customdata[1]:.1f}%<br>%{customdata[2]:,.0f} alumni<extra></extra>'
-          : undefined;
+        const schoolRows = ensurePostgradShare(state.data.postgrad?.schools || []);
+        const schoolMetric = postgradShareMetric(schoolRows);
         drawSimpleBars('postgrad-schools', schoolRows, schoolMetric, COLORS[0], {
-          compressed: true,
+          compressed: false,
           noWrap: true,
           labelTransform: shortPostgradSchool,
-          valueFormatter: value => schoolMetric === 'share_pct' ? pct(value) : people(value),
-          hovertemplate: schoolHover,
+          valueFormatter: value => pct(value),
+          hovertemplate: '%{customdata[0]}<br>%{customdata[1]:.1f}%<extra></extra>',
+          axisSuffix: '%',
           layoutOptions: { height: showPrograms ? 280 : undefined, leftMargin: showPrograms ? 240 : undefined, rightMargin: 92, yAutoMargin: false },
           activeLabel: selectedSchool,
           onClick: label => {
@@ -6046,17 +6052,15 @@
           },
         });
         if (showPrograms) {
-          const programRows = state.data.postgrad?.programs || [];
-          const programMetric = programRows.some(row => row.share_pct !== null && row.share_pct !== undefined) ? 'share_pct' : 'n';
-          const programHover = programMetric === 'share_pct'
-            ? '%{customdata[0]}<br>%{customdata[1]:.1f}%<br>%{customdata[2]:,.0f} alumni<extra></extra>'
-            : undefined;
+          const programRows = ensurePostgradShare(state.data.postgrad?.programs || []);
+          const programMetric = postgradShareMetric(programRows);
           drawSimpleBars('postgrad-programs', programRows, programMetric, COLORS[1], {
-            compressed: true,
+            compressed: false,
             noWrap: true,
             labelTransform: shortPostgradProgram,
-            valueFormatter: value => programMetric === 'share_pct' ? pct(value) : people(value),
-            hovertemplate: programHover,
+            valueFormatter: value => pct(value),
+            hovertemplate: '%{customdata[0]}<br>%{customdata[1]:.1f}%<extra></extra>',
+            axisSuffix: '%',
             layoutOptions: { height: 280, leftMargin: 240, rightMargin: 92, yAutoMargin: false },
             activeLabel: selectedProgram,
             onClick: label => {
@@ -6083,11 +6087,16 @@
             refresh();
           },
         });
-        drawSimpleBars('postgrad-schools', state.data.postgrad?.schools || [], 'n', COLORS[0], {
-          compressed: true,
+        const overtimeSchoolRows = ensurePostgradShare(state.data.postgrad?.schools || []);
+        const overtimeSchoolMetric = postgradShareMetric(overtimeSchoolRows);
+        drawSimpleBars('postgrad-schools', overtimeSchoolRows, overtimeSchoolMetric, COLORS[0], {
+          compressed: false,
           noWrap: true,
           labelTransform: shortPostgradSchool,
           layoutOptions: { leftMargin: 230, rightMargin: 86, yAutoMargin: false },
+          valueFormatter: value => pct(value),
+          hovertemplate: '%{customdata[0]}<br>%{customdata[1]:.1f}%<extra></extra>',
+          axisSuffix: '%',
           activeLabel: selectedSchool,
           onClick: label => {
             state.selectedPostgradSchool = state.selectedPostgradSchool === label ? null : label;
@@ -6662,7 +6671,7 @@
               const row = lookup.get(`${entity.code}||${year}||${label}`) || {};
               return [entity.title, label, Number(row.n || 0)];
             }),
-            hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>Class of %{x}<br>%{y:.1f}%<br>%{customdata[2]:,.0f} alumni<extra></extra>',
+            hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>Class of %{x}<br>%{y:.1f}%<extra></extra>',
           });
         });
       });
@@ -6837,18 +6846,20 @@
     function drawSchoolAlumniComparison(id) {
       const rows = (state.data.school_comparison || []).filter(r => r.alumni).sort((a, b) => a.alumni - b.alumni);
       if (!rows.length) return noData(id);
+      const totalAlumni = rows.reduce((sum, row) => sum + Number(row.alumni || 0), 0) || 1;
+      const shareOfCompared = row => 100 * Number(row.alumni || 0) / totalAlumni;
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
         y: rows.map(r => wrapAxisLabel(shortSchool(r.school_name))),
-        x: rows.map(r => r.alumni),
-        text: rows.map(r => num(r.alumni)),
+        x: rows.map(shareOfCompared),
+        text: rows.map(r => pct(shareOfCompared(r))),
         textposition: 'outside',
         cliponaxis: false,
         customdata: rows.map(r => shortSchool(r.school_name)),
         marker: { color: COLORS[1] },
-        hovertemplate: '%{customdata}<br>%{x:,.0f} alumni<extra></extra>',
-      }], horizontalBarLayout(id, rows), plotConfig);
+        hovertemplate: '%{customdata}<br>%{x:.1f}% of compared alumni<extra></extra>',
+      }], horizontalBarLayout(id, rows, '%'), plotConfig);
     }
 
     function drawSchoolFurtherEdComparison(id) {
@@ -6870,10 +6881,8 @@
 
     function drawComparisonTable(id) {
       const rows = state.data.school_comparison || [];
-      $(id).innerHTML = table(['School', 'Alumni', 'Employers', 'Median salary', 'Mean salary', 'Later ed'], rows, row => [
+      $(id).innerHTML = table(['School', 'Median salary', 'Mean salary', 'Later ed'], rows, row => [
         shortSchool(row.school_name),
-        num(row.alumni),
-        num(row.unique_employers),
         money(row.median_salary),
         money(row.weighted_mean_salary),
         pct(row.later_degree_pct),
@@ -6918,8 +6927,8 @@
         return [row.label || label, schoolName(school), Number(row.n || 0), row.share_pct ?? null, row.median_salary ?? row.weighted_mean_salary ?? null, school.code];
       }));
       const hovertemplate = isMoney
-        ? `%{customdata[0]}<br>%{customdata[1]}<br>${options.hoverLabel || 'Median earnings'}: %{z:$,.0f}<br>Share: %{customdata[3]:.1f}%<br>People: %{customdata[2]:,.0f}<extra></extra>`
-        : `%{customdata[0]}<br>%{customdata[1]}<br>${options.hoverLabel || 'Share'}: %{z:.1f}%<br>People: %{customdata[2]:,.0f}<extra></extra>`;
+        ? `%{customdata[0]}<br>%{customdata[1]}<br>${options.hoverLabel || 'Median earnings'}: %{z:$,.0f}<br>Share: %{customdata[3]:.1f}%<extra></extra>`
+        : `%{customdata[0]}<br>%{customdata[1]}<br>${options.hoverLabel || 'Share'}: %{z:.1f}%<extra></extra>`;
       Plotly.newPlot(id, [{
         type: 'heatmap',
         x: schools.map(row => legendLabel(shortSchool(schoolName(row)), 18)),
@@ -6988,7 +6997,7 @@
         name: legendLabel(label, 20),
         marker: { color: COLORS[idx % COLORS.length] },
         customdata: schools.map(row => [label, schoolName(row), Number(lookup.get(`${row.code}||${label}`)?.n || 0)]),
-        hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>%{y:.1f}%<br>%{customdata[2]:,.0f} alumni<extra></extra>',
+        hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>%{y:.1f}%<extra></extra>',
       }));
       Plotly.newPlot(id, traces, {
         ...layoutBase,
@@ -7074,7 +7083,7 @@
         cliponaxis: false,
         customdata: rows.map(row => [majorName(row), row.alumni]),
         marker: { color: COLORS[1] },
-        hovertemplate: '%{customdata[0]}<br>%{x:.1f}% of alumni<br>%{customdata[1]:,.0f} alumni<extra></extra>',
+        hovertemplate: '%{customdata[0]}<br>%{x:.1f}% of alumni<extra></extra>',
       }];
       if (totalCurrentStudents > 0) {
         traces.push({
@@ -7088,7 +7097,7 @@
           cliponaxis: false,
           customdata: rows.map(row => [majorName(row), row.current_students]),
           marker: { color: COLORS[2], opacity: 0.72 },
-          hovertemplate: '%{customdata[0]}<br>%{x:.1f}% of current students<br>%{customdata[1]:,.0f} current students<extra></extra>',
+          hovertemplate: '%{customdata[0]}<br>%{x:.1f}% of current students<extra></extra>',
         });
       }
       const layout = horizontalBarLayout(id, rows.map(row => ({ label: majorName(row) })), '%', { rightMargin: 132 });
@@ -7252,7 +7261,7 @@
           opacity: 0.82,
           line: { color: 'white', width: 1.5 },
         },
-        hovertemplate: `%{customdata[0]}<br>${salaryHorizon}: %{x:$,.0f}<br>Later education: %{y:.1f}%<br>Alumni: %{customdata[1]:,.0f}<extra></extra>`,
+        hovertemplate: `%{customdata[0]}<br>${salaryHorizon}: %{x:$,.0f}<br>Later education: %{y:.1f}%<extra></extra>`,
       }], {
         ...layoutBase,
         height: 430,
@@ -7297,7 +7306,7 @@
           [1, THEME.navy],
         ],
         colorbar: { title: '%', thickness: 12 },
-        hovertemplate: `%{customdata[0]}<br>%{customdata[1]}<br>${options.hoverLabel || 'Share'}: %{z:.1f}%<br>People: %{customdata[2]:,.0f}<extra></extra>`,
+        hovertemplate: `%{customdata[0]}<br>%{customdata[1]}<br>${options.hoverLabel || 'Share'}: %{z:.1f}%<extra></extra>`,
       }], {
         ...layoutBase,
         height: Math.max(390, Math.min(660, 210 + labels.length * 34)),
@@ -7342,7 +7351,7 @@
         cliponaxis: false,
         customdata: topRows.map(row => [majorName(row), row.label, row.n]),
         marker: { color: COLORS[3] },
-        hovertemplate: `%{customdata[0]}<br>%{customdata[1]}<br>%{x:.1f}%<br>%{customdata[2]:,.0f} people<extra></extra>`,
+        hovertemplate: `%{customdata[0]}<br>%{customdata[1]}<br>%{x:.1f}%<extra></extra>`,
       }], horizontalBarLayout(id, topRows.map(row => ({ label: majorName(row) })), '%', { rightMargin: 150 }), plotConfig);
     }
 
@@ -7431,7 +7440,7 @@
         cliponaxis: false,
         customdata: distinctive.map(row => [row.title, row.label, row.share_pct, row.baseline_share_pct, row.n, row.lift_pp, row.distinctiveness_score]),
         marker: { color: COLORS[3] },
-        hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>This major: %{customdata[2]:.1f}%<br>All majors: %{customdata[3]:.1f}%<br>Gap: %{customdata[5]:+.1f} pp<br>%{customdata[4]:,.0f} alumni<extra></extra>',
+        hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>This major: %{customdata[2]:.1f}%<br>All majors: %{customdata[3]:.1f}%<br>Gap: %{customdata[5]:+.1f} pp<extra></extra>',
       }], {
         ...layout,
         xaxis: {
@@ -7469,7 +7478,7 @@
         cliponaxis: false,
         customdata: distinctive.map(row => [row.title, row.label, row.share_pct, row.baseline_share_pct, row.n, row.lift_pp]),
         marker: { color: COLORS[3] },
-        hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>This school: %{customdata[2]:.1f}%<br>Peer avg: %{customdata[3]:.1f}%<br>Gap: %{customdata[5]:+.1f} pp<br>%{customdata[4]:,.0f} alumni<extra></extra>',
+        hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>This school: %{customdata[2]:.1f}%<br>Peer avg: %{customdata[3]:.1f}%<br>Gap: %{customdata[5]:+.1f} pp<extra></extra>',
       }], {
         ...layout,
         xaxis: {
@@ -7520,7 +7529,7 @@
           cliponaxis: false,
           marker: { color: COLORS[0] },
           customdata: cleanRows.map((row, idx) => [rowLabels[idx], row.top_label, row.top_n, row.hhi, row.unique_labels]),
-          hovertemplate: `%{customdata[0]}<br>Top ${entityLower}: %{customdata[1]}<br>%{x:.1f}% | %{customdata[2]:,.0f} people<br>Concentration score: %{customdata[3]:,.0f}<br>Unique ${entityPlural}: %{customdata[4]:,.0f}<extra></extra>`,
+          hovertemplate: `%{customdata[0]}<br>Top ${entityLower}: %{customdata[1]}<br>%{x:.1f}%<br>Concentration score: %{customdata[3]:,.0f}<extra></extra>`,
         },
       ], {
         ...layout,
@@ -7556,18 +7565,20 @@
         .sort((a, b) => Number(a.alumni || 0) - Number(b.alumni || 0))
         .slice(-topNFor(id));
       if (!rows.length) return noData(id);
+      const totalAlumni = rows.reduce((sum, row) => sum + Number(row.alumni || 0), 0) || 1;
+      const shareOfCompared = row => 100 * Number(row.alumni || 0) / totalAlumni;
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
         y: rows.map(row => wrapAxisLabel(majorName(row), 24)),
-        x: rows.map(row => row.alumni),
-        text: rows.map(row => num(row.alumni)),
+        x: rows.map(shareOfCompared),
+        text: rows.map(row => pct(shareOfCompared(row))),
         textposition: 'outside',
         cliponaxis: false,
-        customdata: rows.map(row => [majorName(row), row.alumni, row.unique_employers]),
+        customdata: rows.map(row => [majorName(row), shareOfCompared(row), row.unique_employers]),
         marker: { color: COLORS[0] },
-        hovertemplate: '%{customdata[0]}<br>%{customdata[1]:,.0f} matched alumni<br>%{customdata[2]:,.0f} employers<extra></extra>',
-      }], horizontalBarLayout(id, rows.map(row => ({ label: majorName(row) }))), plotConfig);
+        hovertemplate: '%{customdata[0]}<br>%{customdata[1]:.1f}% of compared alumni<extra></extra>',
+      }], horizontalBarLayout(id, rows.map(row => ({ label: majorName(row) })), '%'), plotConfig);
     }
 
     function drawMajorDemographicStacked(id, rows) {
@@ -7583,7 +7594,7 @@
         name: legendLabel(label, 20),
         marker: { color: COLORS[idx % COLORS.length] },
         customdata: majors.map(row => [label, majorName(row), Number(lookup.get(`${row.code}||${label}`)?.n || 0)]),
-        hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>%{y:.1f}%<br>%{customdata[2]:,.0f} alumni<extra></extra>',
+        hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>%{y:.1f}%<extra></extra>',
       }));
       Plotly.newPlot(id, traces, {
         ...layoutBase,
@@ -7598,10 +7609,11 @@
 
     function drawMajorCompareTable(id) {
       const rows = (state.data.major_comparison || []).slice().sort((a, b) => Number(b.alumni || 0) - Number(a.alumni || 0));
-      $(id).innerHTML = table(['Major', 'Alumni', 'Employers', 'Median salary', 'Mean salary', 'Later ed'], rows, row => [
+      const totalAlumni = rows.reduce((sum, row) => sum + Number(row.alumni || 0), 0) || 1;
+      $(id).innerHTML = table(['Major', 'Share of alumni', 'Salary coverage', 'Median salary', 'Mean salary', 'Later ed'], rows, row => [
         majorName(row),
-        num(row.alumni),
-        num(row.unique_employers),
+        pct(100 * Number(row.alumni || 0) / totalAlumni),
+        pct(Number(row.salary_weight || 0) && Number(row.alumni || 0) ? 100 * Number(row.salary_weight || 0) / Number(row.alumni || 0) : null),
         money(row.median_salary),
         money(row.weighted_mean_salary),
         pct(row.later_degree_pct),
@@ -7667,7 +7679,7 @@
             marker: { color, size: 7 },
             showlegend: false,
             customdata: historic.map(row => [major.title, row.alumni]),
-            hovertemplate: '%{customdata[0]}<br>Class of %{x}<br>%{y:.1f}% of alumni<br>%{customdata[1]:,.0f} alumni<extra></extra>',
+            hovertemplate: '%{customdata[0]}<br>Class of %{x}<br>%{y:.1f}% of alumni<extra></extra>',
           } : null,
           current.length ? {
             type: 'scatter',
@@ -7684,7 +7696,7 @@
             },
             showlegend: false,
             customdata: bridge.map(row => [major.title, row.current_students ?? row.alumni, row.current_students === undefined ? 'alumni' : 'current students']),
-            hovertemplate: '%{customdata[0]}<br>Class of %{x}<br>%{y:.1f}% of %{customdata[2]}<br>%{customdata[1]:,.0f} %{customdata[2]}<extra></extra>',
+            hovertemplate: '%{customdata[0]}<br>Class of %{x}<br>%{y:.1f}% of %{customdata[2]}<extra></extra>',
           } : null,
           legendDotTrace(major.title, color, legendgroup),
         ].filter(Boolean);
@@ -7751,18 +7763,21 @@
     function drawTopMajorsVolume(id) {
       const rows = (state.data.top_majors || []).filter(r => r.alumni).slice(0, topNFor(id)).reverse();
       if (!rows.length) return noData(id);
+      const alumniBase = Number(state.data.overview?.alumni || 0);
+      const shares = rows.map(r => alumniBase > 0 ? 100 * Number(r.alumni || 0) / alumniBase : null);
+      const useShare = shares.every(value => value !== null && Number.isFinite(value));
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
         y: wrappedLabels(rows, 'title'),
-        x: rows.map(r => r.alumni),
-        text: rows.map(r => num(r.alumni)),
+        x: useShare ? shares : rows.map(r => r.alumni),
+        text: rows.map((r, i) => useShare ? pct(shares[i]) : num(r.alumni)),
         textposition: 'outside',
         cliponaxis: false,
-        customdata: rows.map(r => r.title),
+        customdata: rows.map((r, i) => [r.title, shares[i]]),
         marker: { color: COLORS[3] },
-        hovertemplate: '%{customdata}<br>%{x:,.0f} alumni<extra></extra>',
-      }], horizontalBarLayout(id, rows), plotConfig);
+        hovertemplate: useShare ? '%{customdata[0]}<br>%{customdata[1]:.1f}% of alumni<extra></extra>' : '%{customdata[0]}<br>%{x:,.0f} alumni<extra></extra>',
+      }], horizontalBarLayout(id, rows, useShare ? '%' : ''), plotConfig);
     }
 
     function medianNumber(values) {
@@ -7856,26 +7871,27 @@
           <div class="salary-stat"><strong>${money(summary.p25)}</strong><span>P25</span></div>
           <div class="salary-stat"><strong>${money(summary.median)}</strong><span>Median</span></div>
           <div class="salary-stat"><strong>${money(summary.p75)}</strong><span>P75</span></div>
-          <div class="salary-stat"><strong>${num(summary.salary_weight)}</strong><span>Earnings records</span></div>
+          <div class="salary-stat"><strong>${money(summary.p90)}</strong><span>P90</span></div>
         </div>
         <div id="${plotId}" class="distribution-curve"></div>
       `;
       const points = salaryDistributionPoints(rows, 'n');
+      const totalWeight = points.reduce((sum, row) => sum + Number(row.rawY || 0), 0) || 1;
       Plotly.newPlot(plotId, [{
         type: 'scatter',
         mode: 'lines',
         x: points.map(r => r.x),
-        y: points.map(r => r.y),
+        y: points.map(r => 100 * Number(r.y || 0) / totalWeight),
         fill: 'tozeroy',
         line: { color: COLORS[0], width: 4, shape: 'linear' },
         fillcolor: 'rgba(47, 128, 237, 0.16)',
         customdata: points.map(r => [r.start, r.end, r.rawN]),
-        hovertemplate: `Salary %{customdata[0]:$,.0f}-%{customdata[1]:$,.0f}<br>${horizonLabel}<br>%{y:,.0f} earnings records<extra></extra>`,
+        hovertemplate: `Salary %{customdata[0]:$,.0f}-%{customdata[1]:$,.0f}<br>${horizonLabel}<br>%{y:.1f}% of salary records<extra></extra>`,
       }], {
         ...layoutBase,
         margin: { ...layoutBase.margin, l: 50, r: 20, t: 8, b: 58 },
         xaxis: { title: `Salary (${horizonLabel})`, tickprefix: '$', tickformat: '~s', automargin: true, range: salaryDistributionRange(points) },
-        yaxis: { title: '', showticklabels: false, zeroline: false, automargin: true, rangemode: 'tozero' },
+        yaxis: { title: '', showticklabels: false, ticksuffix: '%', zeroline: false, automargin: true, rangemode: 'tozero' },
       }, plotConfig);
     }
 
@@ -7923,7 +7939,7 @@
             summary.median,
             summary.p75,
           ]),
-          hovertemplate: '<b>%{customdata[0]}</b><br>Salary %{customdata[1]:$,.0f}-%{customdata[2]:$,.0f}<br>%{y:.1f}% of earnings records<extra></extra>',
+          hovertemplate: '<b>%{customdata[0]}</b><br>Salary %{customdata[1]:$,.0f}-%{customdata[2]:$,.0f}<br>%{y:.1f}% of salary records<extra></extra>',
         };
       });
       const legendTraces = codes.map((code, i) => legendDotTrace(labelFor.get(code) || code, COLORS[i % COLORS.length], `${id}-dist-${i}`));
@@ -7932,7 +7948,7 @@
         height: 470,
         margin: { ...layoutBase.margin, l: 74, r: 32, t: 18, b: 62 },
         xaxis: { title: `Salary (${horizonLabel})`, tickprefix: '$', tickformat: '~s', automargin: true, range: globalSpec ? [globalSpec.start, globalSpec.end] : undefined },
-        yaxis: { title: 'Share of earnings records', ticksuffix: '%', automargin: true, rangemode: 'tozero' },
+        yaxis: { title: 'Share of salary records', ticksuffix: '%', automargin: true, rangemode: 'tozero' },
         legend: { orientation: 'h', y: 1.16, x: 0, itemwidth: 30 },
       }, plotConfig).then(plot => bindLegendGroupToggles(plot));
     }
@@ -7940,19 +7956,19 @@
     function drawEmployerBars(id, clickable = false) {
       const rows = (state.data.employers?.top || []).slice(0, topNFor(id)).reverse();
       if (!rows.length) return noData(id);
-      const peopleValues = rows.map(row => wholePeople(row.n) ?? 0);
+      const shareValues = rows.map(row => Number(row.share_pct || 0));
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
         y: wrappedLabels(rows, 'employer'),
-        x: peopleValues,
-        text: rows.map(r => `${people(r.n)} (${pct(r.share_pct)})`),
+        x: shareValues,
+        text: rows.map(r => pct(r.share_pct)),
         textposition: 'outside',
         cliponaxis: false,
-        customdata: rows.map((r, index) => [r.employer, peopleValues[index]]),
+        customdata: rows.map(r => [r.employer, r.share_pct]),
         marker: { color: COLORS[0] },
-        hovertemplate: '%{customdata[0]}<br>%{customdata[1]:,.0f} alumni<extra></extra>',
-      }], horizontalBarLayout(id, rows, '', {
+        hovertemplate: '%{customdata[0]}<br>%{customdata[1]:.1f}% of alumni<extra></extra>',
+      }], horizontalBarLayout(id, rows, '%', {
         leftMargin: compactWindow() ? 210 : 280,
         rightMargin: compactWindow() ? 58 : 140,
         yAutoMargin: false,
@@ -7989,19 +8005,19 @@
           renderEmployers();
         });
       }
-      const peopleValues = rows.map(row => wholePeople(row.n) ?? 0);
+      const shareValues = rows.map(row => Number(row.share_pct || 0));
       Plotly.newPlot(plotId, [{
         type: 'bar',
         orientation: 'h',
         y: rows.map(r => wrapAxisLabel(r.role)),
-        x: peopleValues,
-        text: rows.map(r => `${people(r.n)} (${pct(r.share_pct)})`),
+        x: shareValues,
+        text: rows.map(r => pct(r.share_pct)),
         textposition: 'outside',
         cliponaxis: false,
-        customdata: rows.map((r, index) => [r.role, peopleValues[index]]),
+        customdata: rows.map(r => [r.role, r.share_pct]),
         marker: { color: drilling ? COLORS[4] : COLORS[2] },
-        hovertemplate: '%{customdata[0]}<br>%{customdata[1]:,.0f} alumni<extra></extra>',
-      }], horizontalBarLayout(id, rows.map(r => ({ label: r.role })), '', {
+        hovertemplate: '%{customdata[0]}<br>%{customdata[1]:.1f}% within employer<extra></extra>',
+      }], horizontalBarLayout(id, rows.map(r => ({ label: r.role })), '%', {
         leftMargin: compactWindow() ? 210 : 280,
         rightMargin: compactWindow() ? 58 : 140,
         yAutoMargin: false,
@@ -8079,7 +8095,7 @@
           row.median_salary === null || row.median_salary === undefined ? 'Mean pay unavailable' : `Mean pay: ${money(row.median_salary)}`,
           row.drillable ? 'Click to drill' : '',
         ]),
-        hovertemplate: '<b>%{label}</b><br>%{value:,.0f} alumni<br>%{customdata[0]:.1f}% of total<br>%{customdata[2]}<extra></extra>',
+        hovertemplate: '<b>%{label}</b><br>%{customdata[1]:.1f}% of visible group<br>%{customdata[0]:.1f}% of total<br>%{customdata[2]}<extra></extra>',
         pathbar: { visible: false },
         tiling: { packing: 'squarify', squarifyratio: 1.1 },
       }], {
@@ -8197,10 +8213,11 @@
       const xValues = options.compressed
         ? rawValues.map(value => Math.sqrt(Math.max(0, value)))
         : rawValues;
-      const layout = horizontalBarLayout(id, cleanRows, '', options.layoutOptions || {});
+      const layout = horizontalBarLayout(id, cleanRows, options.axisPrefix || '', options.layoutOptions || {});
       const xaxis = options.compressed
         ? { ...layout.xaxis, showticklabels: false, showgrid: false, title: '', zeroline: false }
         : layout.xaxis;
+      if (options.axisSuffix && !options.compressed) xaxis.ticksuffix = options.axisSuffix;
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
