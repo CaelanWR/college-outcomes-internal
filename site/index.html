@@ -707,6 +707,33 @@
 
     .chart.tall { min-height: 430px; }
 
+    .chart-local-loader {
+      min-height: 318px;
+      display: grid;
+      place-items: center;
+      gap: 12px;
+      color: var(--muted);
+      font-weight: 900;
+      text-align: center;
+    }
+
+    .chart-local-pie {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at center, #fff 0 34%, transparent 35%),
+        conic-gradient(from 30deg, var(--green) 0 32%, var(--blue) 32% 68%, rgba(38,59,91,0.18) 68% 100%);
+      box-shadow: 0 10px 24px rgba(45,66,106,0.12), inset 0 0 0 1px rgba(255,255,255,0.9);
+      animation: chart-local-pie-spin 1.05s cubic-bezier(0.55, 0, 0.2, 1) infinite;
+    }
+
+    @keyframes chart-local-pie-spin {
+      0% { transform: rotate(0deg); }
+      58% { transform: rotate(305deg); }
+      100% { transform: rotate(360deg); }
+    }
+
     .salary-summary {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3275,6 +3302,21 @@
       $('drilldown-modal').classList.add('open');
     }
 
+    function chartLoadingHtml(message = 'Loading chart detail...') {
+      return `
+        <div class="chart-local-loader" role="status" aria-live="polite">
+          <span class="chart-local-pie" aria-hidden="true"></span>
+          <span>${escapeHtml(message)}</span>
+        </div>
+      `;
+    }
+
+    function setChartLoading(id, message = 'Loading chart detail...') {
+      const node = $(id);
+      if (!node) return;
+      node.innerHTML = chartLoadingHtml(message);
+    }
+
     function drilldownBars(title, rows, color, clickAttr, activeLabel = '') {
       const cleanRows = (rows || []).filter(row => row.label).slice(0, 10);
       if (!cleanRows.length) {
@@ -3464,7 +3506,7 @@
       setDrilldownModal(
         `Employer detail: ${employer}`,
         `${compareEntityLabel(true)} comparison · loading roles and pay`,
-        `<div class="detail-grid single">${table}<div class="detail-panel"><div class="empty">Loading roles and pay...</div></div></div>`
+        `<div class="detail-grid single">${table}<div class="detail-panel">${chartLoadingHtml('Loading roles and pay...')}</div></div>`
       );
       try {
         const advanced = activeAdvancedControls();
@@ -4874,6 +4916,7 @@
       $('content').innerHTML = [
         card('City Share by School', 'school-geo-share-heatmap', 6, true, { topControl: true }),
         card(`City Earnings by School (${salaryHorizon})`, 'school-geo-salary-heatmap', 6, true, { topControl: true, horizonControl: true }),
+        card('Distinctive City by School', 'school-geo-distinctive', 12, true),
       ].join('');
       drawSchoolComparisonHeatmap('school-geo-share-heatmap', state.data.school_geography_comparison || [], {
         yTitle: 'City',
@@ -4888,6 +4931,7 @@
         labelTransform: shortLocationLabel,
         hoverLabel: 'Median earnings',
       });
+      drawSchoolCompareDistinctiveCity('school-geo-distinctive', state.data.school_geography_comparison || []);
     }
 
     function renderSchoolCompareRoles() {
@@ -5030,6 +5074,41 @@
         });
         drawEmployerRoles('emp-roles', true);
         drawEmployerBars('emp-top', true);
+      }
+    }
+
+    async function loadEmployerChartDetail({ employer, role = null, chartId = 'emp-roles' }) {
+      if (!employer || !state.apiUrl) return;
+      const previousEmployer = state.selectedEmployer;
+      const previousRole = state.selectedEmployerRole;
+      state.selectedEmployer = employer;
+      state.selectedEmployerRole = role;
+      setChartLoading(chartId, role ? 'Loading detailed roles...' : 'Loading top roles...');
+      try {
+        const filters = dashboardFiltersForCurrentView({
+          active_tab: 'employers',
+          view_mode: state.viewMode || 'snapshot',
+          selected_employer: employer,
+          selected_employer_role: role,
+          top_n: REQUEST_TOP_N,
+        });
+        const data = await fetchDashboard(filters);
+        state.data = {
+          ...state.data,
+          ...data,
+          employers: data.employers || state.data.employers,
+          employer_trend: data.employer_trend || state.data.employer_trend,
+          meta: data.meta || state.data.meta,
+        };
+        renderEmployers();
+        setStatus('ok', `${state.data.meta?.data_version || 'Connected'} | employer detail loaded`);
+      } catch (error) {
+        state.selectedEmployer = previousEmployer;
+        state.selectedEmployerRole = previousRole;
+        renderEmployers();
+        setStatus('bad', 'Employer detail failed');
+        const node = $(chartId);
+        if (node) node.innerHTML = `<div class="empty">Could not load employer detail.<br>${escapeHtml(error.message)}</div>`;
       }
     }
 
@@ -7053,6 +7132,65 @@
       }, plotConfig);
     }
 
+    function drawSchoolCompareDistinctiveCity(id, rows) {
+      const cleanRows = (rows || []).filter(row => row.code && row.label && row.share_pct !== null && row.share_pct !== undefined);
+      const schools = schoolRowsForChart(id, cleanRows);
+      if (schools.length < 2) return noData(id);
+      const schoolCodes = schools.map(row => String(row.code));
+      const lookup = new Map(cleanRows.map(row => [`${row.code}||${row.label}`, row]));
+      const labels = [...new Set(cleanRows
+        .filter(row => schoolCodes.includes(String(row.code)))
+        .map(row => row.label)
+        .filter(Boolean))];
+      const distinctive = schools.map(school => {
+        const code = String(school.code);
+        const peers = schoolCodes.filter(peerCode => peerCode !== code);
+        const candidates = labels.map(label => {
+          const row = lookup.get(`${code}||${label}`) || {};
+          const share = Number(row.share_pct || 0);
+          const peerAvg = peers.length
+            ? peers.reduce((sum, peerCode) => sum + Number(lookup.get(`${peerCode}||${label}`)?.share_pct || 0), 0) / peers.length
+            : 0;
+          return {
+            code,
+            title: shortSchool(schoolName(school)),
+            label,
+            share_pct: share,
+            baseline_share_pct: peerAvg,
+            lift_pp: share - peerAvg,
+            n: Number(row.n || 0),
+          };
+        })
+          .filter(row => row.share_pct > 0 && row.lift_pp > 0)
+          .sort((a, b) => Number(b.lift_pp || 0) - Number(a.lift_pp || 0) || Number(b.share_pct || 0) - Number(a.share_pct || 0));
+        return candidates[0] || null;
+      })
+        .filter(Boolean)
+        .sort((a, b) => Number(a.lift_pp || 0) - Number(b.lift_pp || 0));
+      if (!distinctive.length) return noData(id);
+      const maxLift = Math.max(1, ...distinctive.map(row => Math.max(0, Number(row.lift_pp || 0))));
+      const layout = horizontalBarLayout(id, distinctive.map(row => ({ label: row.title })), '%', { rightMargin: 178 });
+      Plotly.newPlot(id, [{
+        type: 'bar',
+        orientation: 'h',
+        y: distinctive.map(row => wrapAxisLabel(row.title, 24)),
+        x: distinctive.map(row => Math.max(0, row.lift_pp)),
+        text: distinctive.map(row => `+${Number(row.lift_pp || 0).toFixed(1)} pp | ${shortLocationLabel(row.label)}`),
+        textposition: 'outside',
+        cliponaxis: false,
+        customdata: distinctive.map(row => [row.title, row.label, row.share_pct, row.baseline_share_pct, row.n, row.lift_pp]),
+        marker: { color: COLORS[3] },
+        hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>This school: %{customdata[2]:.1f}%<br>Peer avg: %{customdata[3]:.1f}%<br>Gap: %{customdata[5]:+.1f} pp<br>%{customdata[4]:,.0f} alumni<extra></extra>',
+      }], {
+        ...layout,
+        xaxis: {
+          ...layout.xaxis,
+          title: 'Share above selected-school average',
+          range: [0, maxLift * 1.24],
+        },
+      }, plotConfig);
+    }
+
     function drawMajorConcentration(id, rows, entityLabel, rowLabel = majorName) {
       const cleanRows = (rows || [])
         .filter(row => row.code && row.top1_share_pct !== null && row.top1_share_pct !== undefined)
@@ -7534,9 +7672,11 @@
         plot.on('plotly_click', event => {
           const point = event.points?.[0];
           if (!point) return;
-          state.selectedEmployer = point.customdata?.[0] || point.customdata || point.y;
-          state.selectedEmployerRole = null;
-          refresh();
+          loadEmployerChartDetail({
+            employer: point.customdata?.[0] || point.customdata || point.y,
+            role: null,
+            chartId: 'emp-roles',
+          });
         });
       });
     }
@@ -7553,7 +7693,11 @@
       if (drilling) {
         $(`${id}-back`).addEventListener('click', () => {
           state.selectedEmployerRole = null;
-          refresh();
+          if (state.data.employers) {
+            state.data.employers.selected_role = null;
+            state.data.employers.subroles = [];
+          }
+          renderEmployers();
         });
       }
       const peopleValues = rows.map(row => wholePeople(row.n) ?? 0);
@@ -7577,8 +7721,11 @@
         plot.on('plotly_click', event => {
           const point = event.points?.[0];
           if (!point) return;
-          state.selectedEmployerRole = point.customdata?.[0] || point.customdata || point.y;
-          refresh();
+          loadEmployerChartDetail({
+            employer: employerData.selected_employer,
+            role: point.customdata?.[0] || point.customdata || point.y,
+            chartId: id,
+          });
         });
       });
     }
