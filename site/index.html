@@ -7144,6 +7144,64 @@
       }], horizontalBarLayout(id, topRows.map(row => ({ label: majorName(row) })), '%', { rightMargin: 150 }), plotConfig);
     }
 
+    function locationDistinctivenessScore(row) {
+      const share = Math.max(0, Number(row.share_pct || 0));
+      const baseline = Math.max(0, Number(row.baseline_share_pct || 0));
+      const lift = Number(row.lift_pp || 0);
+      if (!(share > 0) || !(lift > 0)) return 0;
+      const baselineFloor = 1.25;
+      const relativeLift = share / Math.max(baseline, baselineFloor);
+      const commonCityPenalty = Math.sqrt(Math.max(baseline, baselineFloor));
+      const support = Math.max(0, Number(row.n || 0));
+      const supportFactor = support ? Math.min(1, Math.sqrt(support / 10)) : 0.75;
+      return (lift * Math.log1p(relativeLift) * supportFactor) / commonCityPenalty;
+    }
+
+    function chooseDistinctiveLocations(entityRows, labels, lookup, options = {}) {
+      const codeFor = options.codeFor || (row => String(row.code));
+      const titleFor = options.titleFor || (row => row.title || row.label || codeFor(row));
+      const codes = entityRows.map(row => codeFor(row));
+      const maxRepeats = entityRows.length >= 5 ? 2 : 1;
+      const candidateLists = entityRows.map(entity => {
+        const code = codeFor(entity);
+        const peers = codes.filter(peerCode => peerCode !== code);
+        const candidates = labels.map(label => {
+          const row = lookup.get(`${code}||${label}`) || {};
+          const share = Number(row.share_pct || 0);
+          const peerAvg = peers.length
+            ? peers.reduce((sum, peerCode) => sum + Number(lookup.get(`${peerCode}||${label}`)?.share_pct || 0), 0) / peers.length
+            : 0;
+          const baseline = row.baseline_share_pct !== null && row.baseline_share_pct !== undefined
+            ? Number(row.baseline_share_pct || 0)
+            : peerAvg;
+          const candidate = {
+            code,
+            title: titleFor(entity),
+            label,
+            share_pct: share,
+            baseline_share_pct: baseline,
+            lift_pp: share - baseline,
+            n: Number(row.n || 0),
+          };
+          return { ...candidate, distinctiveness_score: locationDistinctivenessScore(candidate) };
+        })
+          .filter(row => row.share_pct >= 0.75 && row.lift_pp > 0 && row.distinctiveness_score > 0)
+          .sort((a, b) => Number(b.distinctiveness_score || 0) - Number(a.distinctiveness_score || 0)
+            || Number(b.lift_pp || 0) - Number(a.lift_pp || 0)
+            || Number(b.share_pct || 0) - Number(a.share_pct || 0));
+        return { entity, candidates };
+      })
+        .filter(item => item.candidates.length)
+        .sort((a, b) => Number(b.candidates[0]?.distinctiveness_score || 0) - Number(a.candidates[0]?.distinctiveness_score || 0));
+
+      const usedLabels = new Map();
+      return candidateLists.map(item => {
+        const pick = item.candidates.find(row => (usedLabels.get(row.label) || 0) < maxRepeats) || item.candidates[0];
+        usedLabels.set(pick.label, (usedLabels.get(pick.label) || 0) + 1);
+        return pick;
+      });
+    }
+
     function drawMajorCompareDistinctiveCity(id, rows) {
       const cleanRows = (rows || []).filter(row => row.code && row.label && row.share_pct !== null && row.share_pct !== undefined);
       const majors = majorRowsForChart(id, cleanRows);
@@ -7154,33 +7212,9 @@
         .filter(row => majorCodes.includes(String(row.code)))
         .map(row => row.label)
         .filter(Boolean))];
-      const distinctive = majors.map(major => {
-        const code = String(major.code);
-        const peers = majorCodes.filter(peerCode => peerCode !== code);
-        const candidates = labels.map(label => {
-          const row = lookup.get(`${code}||${label}`) || {};
-          const share = Number(row.share_pct || 0);
-          const peerAvg = peers.length
-            ? peers.reduce((sum, peerCode) => sum + Number(lookup.get(`${peerCode}||${label}`)?.share_pct || 0), 0) / peers.length
-            : 0;
-          const baseline = row.baseline_share_pct !== null && row.baseline_share_pct !== undefined
-            ? Number(row.baseline_share_pct || 0)
-            : peerAvg;
-          return {
-            code,
-            title: majorName(major),
-            label,
-            share_pct: share,
-            baseline_share_pct: baseline,
-            lift_pp: share - baseline,
-            n: Number(row.n || 0),
-          };
-        })
-          .filter(row => row.share_pct > 0 && row.lift_pp > 0)
-          .sort((a, b) => Number(b.lift_pp || 0) - Number(a.lift_pp || 0) || Number(b.share_pct || 0) - Number(a.share_pct || 0));
-        return candidates[0] || null;
+      const distinctive = chooseDistinctiveLocations(majors, labels, lookup, {
+        titleFor: major => majorName(major),
       })
-        .filter(Boolean)
         .sort((a, b) => Number(a.lift_pp || 0) - Number(b.lift_pp || 0));
       if (!distinctive.length) return noData(id);
       const maxLift = Math.max(1, ...distinctive.map(row => Math.max(0, Number(row.lift_pp || 0))));
@@ -7193,7 +7227,7 @@
         text: distinctive.map(row => `+${Number(row.lift_pp || 0).toFixed(1)} pp | ${shortLocationLabel(row.label)}`),
         textposition: 'outside',
         cliponaxis: false,
-        customdata: distinctive.map(row => [row.title, row.label, row.share_pct, row.baseline_share_pct, row.n, row.lift_pp]),
+        customdata: distinctive.map(row => [row.title, row.label, row.share_pct, row.baseline_share_pct, row.n, row.lift_pp, row.distinctiveness_score]),
         marker: { color: COLORS[3] },
         hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>This major: %{customdata[2]:.1f}%<br>All majors: %{customdata[3]:.1f}%<br>Gap: %{customdata[5]:+.1f} pp<br>%{customdata[4]:,.0f} alumni<extra></extra>',
       }], {
@@ -7216,30 +7250,9 @@
         .filter(row => schoolCodes.includes(String(row.code)))
         .map(row => row.label)
         .filter(Boolean))];
-      const distinctive = schools.map(school => {
-        const code = String(school.code);
-        const peers = schoolCodes.filter(peerCode => peerCode !== code);
-        const candidates = labels.map(label => {
-          const row = lookup.get(`${code}||${label}`) || {};
-          const share = Number(row.share_pct || 0);
-          const peerAvg = peers.length
-            ? peers.reduce((sum, peerCode) => sum + Number(lookup.get(`${peerCode}||${label}`)?.share_pct || 0), 0) / peers.length
-            : 0;
-          return {
-            code,
-            title: shortSchool(schoolName(school)),
-            label,
-            share_pct: share,
-            baseline_share_pct: peerAvg,
-            lift_pp: share - peerAvg,
-            n: Number(row.n || 0),
-          };
-        })
-          .filter(row => row.share_pct > 0 && row.lift_pp > 0)
-          .sort((a, b) => Number(b.lift_pp || 0) - Number(a.lift_pp || 0) || Number(b.share_pct || 0) - Number(a.share_pct || 0));
-        return candidates[0] || null;
+      const distinctive = chooseDistinctiveLocations(schools, labels, lookup, {
+        titleFor: school => shortSchool(schoolName(school)),
       })
-        .filter(Boolean)
         .sort((a, b) => Number(a.lift_pp || 0) - Number(b.lift_pp || 0));
       if (!distinctive.length) return noData(id);
       const maxLift = Math.max(1, ...distinctive.map(row => Math.max(0, Number(row.lift_pp || 0))));
