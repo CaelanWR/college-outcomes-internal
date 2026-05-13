@@ -4857,8 +4857,23 @@
     }
 
     function overviewMetrics(o) {
+      const careerRows = state.data.career?.earnings || [];
+      const selectedCareerRows = careerRows.filter(row => (row.series || 'Selected slice') === 'Selected slice');
+      const careerMedianAt = year => {
+        const row = selectedCareerRows.find(item => Number(item.years_since_grad) === year);
+        return row?.median_salary ?? null;
+      };
+      if (selectedCareerRows.length) {
+        return [
+          metric('Median Starting Salary', money(o.median_starting_salary ?? careerMedianAt(1) ?? o.median_salary), 4),
+          metric('Median Salary at 5 Years', money(careerMedianAt(5)), 4),
+          metric('Median Salary at 10 Years', money(careerMedianAt(10)), 4),
+        ];
+      }
       return [
-        metric('Median Starting Salary', money(o.median_starting_salary ?? o.median_salary), 6),
+        metric('Median Starting Salary', money(o.median_starting_salary ?? o.median_salary), 4),
+        metric('Career Employers', num(o.unique_employers), 4),
+        metric('Career Cities', num(o.unique_locations), 4),
       ];
     }
 
