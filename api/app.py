@@ -2667,6 +2667,80 @@ def _major_employer_comparison(con: duckdb.DuckDBPyConnection, filters: QueryReq
     )
 
 
+def _employer_detail_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, list[dict[str, Any]]]:
+    employer = (filters.selected_employer or "").strip()
+    if not employer:
+        return {"roles": []}
+    limit = min(max(_safe_limit(filters.top_n), 8), 25)
+    same_school_filter = _same_school_employer_filter(filters)
+    entity_code_sql, entity_title_sql, entity_filter_sql = _entity_compare_fields(filters)
+    role_label_sql = "COALESCE(role_k50_v3, role_k10_v3, 'Unknown role')"
+    roles = _records_from_query(
+        con,
+        f"""
+        WITH eligible AS (
+          SELECT
+            {entity_code_sql} AS code,
+            {entity_title_sql} AS title,
+            {role_label_sql} AS label,
+            final_weight,
+            salary
+          FROM slice
+          WHERE employer = ?
+            {entity_filter_sql}
+            {same_school_filter}
+            AND role_k50_v3 IS NOT NULL
+            AND role_k50_v3 <> ''
+            AND NOT (degree = 'Bachelors' AND horizon = '1yr' AND role_k50_v3 = 'Corporate Attorney')
+        ),
+        top_labels AS (
+          SELECT label, SUM(final_weight) AS total_n
+          FROM eligible
+          WHERE label IS NOT NULL
+            AND label <> ''
+            AND LOWER(TRIM(label)) NOT IN ('empty', 'unknown', 'other')
+          GROUP BY label
+          ORDER BY total_n DESC
+          LIMIT {limit}
+        ),
+        denom AS (
+          SELECT code, SUM(final_weight) AS total_n
+          FROM eligible
+          GROUP BY code
+        ),
+        grouped AS (
+          SELECT
+            e.code,
+            MAX(e.title) AS title,
+            e.label,
+            SUM(e.final_weight) AS n,
+            SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight ELSE 0 END) AS salary_weight,
+            SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight * e.salary ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight ELSE 0 END), 0) AS weighted_mean_salary,
+            quantile_cont(e.salary, 0.5) AS median_salary
+          FROM eligible e
+          JOIN top_labels t USING (label)
+          GROUP BY e.code, e.label
+        )
+        SELECT
+          g.code,
+          g.title,
+          g.label,
+          ROUND(g.n) AS n,
+          ROUND(100.0 * g.n / NULLIF(d.total_n, 0), 2) AS share_pct,
+          ROUND(g.salary_weight) AS salary_weight,
+          CASE WHEN g.salary_weight > ? THEN ROUND(g.weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
+          CASE WHEN g.salary_weight > ? THEN ROUND(g.median_salary) ELSE NULL END AS median_salary
+        FROM grouped g
+        JOIN denom d USING (code)
+        WHERE g.n > 0
+        ORDER BY g.title, g.n DESC
+        """,
+        [employer, SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT],
+    )
+    return {"roles": roles}
+
+
 def _major_geography_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
     cip_col = _cip_col(filters)
     limit = min(_safe_limit(filters.top_n), 12)
@@ -5346,6 +5420,8 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                         result["salary_distribution"] = _salary_distribution(con)
                         result["salary_distributions_by_entity"] = _salary_distribution_by_entity(con, filters)
                         result["major_employer_comparison"] = _major_employer_comparison(con, filters)
+                        if filters.selected_employer:
+                            result["employer_detail_comparison"] = _employer_detail_comparison(con, filters)
                         result["major_geography_comparison"] = _major_geography_comparison(con, filters)
                         result["major_role_comparison"] = _major_role_comparison(con, filters)
                         result["major_demographic_comparison"] = _major_demographic_comparison(con, filters)
@@ -5382,6 +5458,8 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                             )
                         else:
                             result["major_employer_comparison"] = _major_employer_comparison(con, filters)
+                            if filters.selected_employer:
+                                result["employer_detail_comparison"] = _employer_detail_comparison(con, filters)
                             result["major_concentration"] = _major_concentration(con, filters)
                     if tab == "geography":
                         if view_mode == "overtime":
@@ -5449,6 +5527,8 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                         result["salary_distribution"] = _salary_distribution(con)
                         result["salary_distributions_by_entity"] = _salary_distribution_by_entity(con, filters)
                         result["school_employer_comparison"] = _school_employer_comparison(con, filters)
+                        if filters.selected_employer:
+                            result["employer_detail_comparison"] = _employer_detail_comparison(con, filters)
                         result["school_geography_comparison"] = _school_geography_comparison(con, filters)
                         result["school_role_comparison"] = _school_role_comparison(con, filters)
                         result["school_demographic_comparison"] = _school_demographic_comparison(con, filters)
@@ -5482,6 +5562,8 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                             )
                         else:
                             result["school_employer_comparison"] = _school_employer_comparison(con, filters)
+                            if filters.selected_employer:
+                                result["employer_detail_comparison"] = _employer_detail_comparison(con, filters)
                             result["school_concentration"] = _school_concentration(con, filters)
                     if tab == "geography":
                         if view_mode == "overtime":

@@ -1329,6 +1329,50 @@
       letter-spacing: 0.01em;
     }
 
+    .detail-table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255,255,255,0.84);
+    }
+
+    .detail-table {
+      border-collapse: collapse;
+      min-width: 100%;
+      width: 100%;
+    }
+
+    .detail-table th,
+    .detail-table td {
+      border-bottom: 1px solid rgba(166, 179, 198, 0.28);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+
+    .detail-table th {
+      color: var(--muted);
+      font-size: 0.76rem;
+      font-weight: 950;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .detail-table tr:last-child td { border-bottom: 0; }
+
+    .detail-table td:first-child,
+    .detail-table td:nth-child(2) {
+      color: var(--navy);
+      font-weight: 900;
+      white-space: normal;
+    }
+
+    .detail-table .num {
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+
     .detail-list {
       display: grid;
       gap: 10px;
@@ -3289,6 +3333,168 @@
       `;
     }
 
+    function modalCompareEntities() {
+      if (state.selectionMode === 'major_compare') {
+        return (state.data.major_comparison || [])
+          .filter(row => row.code)
+          .map(row => ({ code: String(row.code), title: majorName(row) }));
+      }
+      return (state.data.school_comparison || [])
+        .filter(row => row.unitid || row.code)
+        .map(row => ({
+          code: String(row.unitid || row.code),
+          title: shortSchool(row.school_name || row.title || row.code),
+        }));
+    }
+
+    function compareRowsForLabel(rows, label) {
+      const lookup = new Map((rows || [])
+        .filter(row => row.code && row.label)
+        .map(row => [`${String(row.code)}||${String(row.label)}`, row]));
+      return modalCompareEntities().map(entity => ({
+        ...entity,
+        ...(lookup.get(`${entity.code}||${String(label)}`) || {}),
+        entity_title: entity.title,
+      }));
+    }
+
+    function detailTableHtml(title, headers, rows, emptyText = 'No detail available for this slice.') {
+      const bodyRows = (rows || []).filter(Boolean);
+      if (!bodyRows.length) {
+        return `
+          <div class="detail-panel">
+            <h3>${escapeHtml(title)}</h3>
+            <div class="empty">${escapeHtml(emptyText)}</div>
+          </div>
+        `;
+      }
+      return `
+        <div class="detail-panel">
+          <h3>${escapeHtml(title)}</h3>
+          <div class="detail-table-wrap">
+            <table class="detail-table">
+              <thead><tr>${headers.map(header => `<th class="${header.className || ''}">${escapeHtml(header.label)}</th>`).join('')}</tr></thead>
+              <tbody>
+                ${bodyRows.map(row => `
+                  <tr>
+                    ${headers.map(header => `<td class="${header.className || ''}">${escapeHtml(header.value(row))}</td>`).join('')}
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    function compareShareTable(title, rows, label, options = {}) {
+      const comparisonRows = compareRowsForLabel(rows, label);
+      const payLabel = options.payLabel || 'Avg pay';
+      const headers = [
+        { label: compareEntityLabel(), value: row => row.entity_title || row.title || row.code || '' },
+        { label: options.shareLabel || 'Share', className: 'num', value: row => row.share_pct === null || row.share_pct === undefined ? '—' : pct(row.share_pct) },
+        { label: 'People', className: 'num', value: row => row.n === null || row.n === undefined ? '—' : people(row.n) },
+      ];
+      if (options.showPay !== false) {
+        headers.push({
+          label: payLabel,
+          className: 'num',
+          value: row => {
+            const value = row.median_salary ?? row.weighted_mean_salary;
+            return value === null || value === undefined ? '—' : money(value);
+          },
+        });
+      }
+      return detailTableHtml(title, headers, comparisonRows);
+    }
+
+    function comparePostgradRows() {
+      return state.selectionMode === 'major_compare'
+        ? (state.data.major_postgrad_comparison || [])
+        : (state.data.school_postgrad_comparison || []);
+    }
+
+    function compareEmployerRows() {
+      return state.selectionMode === 'major_compare'
+        ? (state.data.major_employer_comparison || [])
+        : (state.data.school_employer_comparison || []);
+    }
+
+    function compareRoleRows(kind) {
+      const payload = state.selectionMode === 'major_compare'
+        ? state.data.major_role_comparison
+        : state.data.school_role_comparison;
+      return kind === 'industry' ? (payload?.industries || []) : (payload?.roles || []);
+    }
+
+    function employerRolePayTable(rows, employerLabel) {
+      const topRows = (rows || [])
+        .filter(row => row.label)
+        .sort((a, b) => {
+          const entityDelta = String(a.title || '').localeCompare(String(b.title || ''));
+          return entityDelta || Number(b.n || 0) - Number(a.n || 0);
+        })
+        .slice(0, 40);
+      return detailTableHtml(
+        `Top roles and pay at ${employerLabel}`,
+        [
+          { label: compareEntityLabel(), value: row => row.title || row.code || '' },
+          { label: 'Role', value: row => row.label || '' },
+          { label: 'Within employer', className: 'num', value: row => row.share_pct === null || row.share_pct === undefined ? '—' : pct(row.share_pct) },
+          { label: 'People', className: 'num', value: row => row.n === null || row.n === undefined ? '—' : people(row.n) },
+          {
+            label: 'Avg pay',
+            className: 'num',
+            value: row => {
+              const value = row.median_salary ?? row.weighted_mean_salary;
+              return value === null || value === undefined ? '—' : money(value);
+            },
+          },
+        ],
+        topRows
+      );
+    }
+
+    async function openEmployerComparisonDrilldown(context) {
+      const employer = context?.label;
+      if (!employer) return;
+      const table = compareShareTable(`Share at ${employer}`, compareEmployerRows(), employer, {
+        shareLabel: 'Employer share',
+      });
+      setDrilldownModal(
+        `Employer detail: ${employer}`,
+        `${compareEntityLabel(true)} comparison · loading roles and pay`,
+        `<div class="detail-grid single">${table}<div class="detail-panel"><div class="empty">Loading roles and pay...</div></div></div>`
+      );
+      try {
+        const advanced = activeAdvancedControls();
+        const filters = dashboardFiltersForCurrentView({
+          active_tab: 'employers',
+          view_mode: 'snapshot',
+          compare_mode: true,
+          compare_dimension: state.selectionMode === 'major_compare' ? 'major' : 'school',
+          schools: getSelectedSchools(advanced),
+          majors: getSelectedMajors(advanced),
+          selected_employer: employer,
+          selected_employer_role: null,
+          top_n: REQUEST_TOP_N,
+        });
+        const data = await fetchDashboard(filters);
+        const roleRows = data.employer_detail_comparison?.roles || [];
+        setDrilldownModal(
+          `Employer detail: ${employer}`,
+          `${compareEntityLabel(true)} comparison · click another employer cell to switch`,
+          `<div class="detail-grid single">${table}${employerRolePayTable(roleRows, employer)}</div>`
+        );
+      } catch (error) {
+        setDrilldownModal(
+          `Employer detail: ${employer}`,
+          `${compareEntityLabel(true)} comparison`,
+          `<div class="detail-grid single">${table}<div class="detail-panel"><div class="empty">Could not load role detail.<br>${escapeHtml(error.message)}</div></div></div>`
+        );
+      }
+    }
+
     async function openPostgradDrilldown(context) {
       const degree = context?.degree || context?.label;
       if (!degree || degree === 'No further education') {
@@ -3313,10 +3519,16 @@
         : nextContext.selectedProgram
           ? `Filtered to ${nextContext.selectedProgram}`
           : 'Click a row to go one level deeper.';
+      const compareTable = state.selectionMode === 'compare' || state.selectionMode === 'major_compare'
+        ? compareShareTable(`Path share for ${degree}`, comparePostgradRows(), degree, {
+          shareLabel: 'Path share',
+          showPay: false,
+        })
+        : '';
       setDrilldownModal(
         `${degree} paths`,
         `${nextContext.title} · ${suffix}`,
-        '<div class="empty">Loading deeper detail...</div>'
+        `${compareTable ? `<div class="detail-grid single">${compareTable}</div>` : ''}<div class="empty">Loading deeper detail...</div>`
       );
       try {
         const advanced = activeAdvancedControls();
@@ -3337,13 +3549,13 @@
         setDrilldownModal(
           `${degree} paths`,
           `${nextContext.title} · ${suffix}`,
-          renderPostgradDrilldownBody(data.postgrad || {}, nextContext)
+          `${compareTable ? `<div class="detail-grid single">${compareTable}</div><br>` : ''}${renderPostgradDrilldownBody(data.postgrad || {}, nextContext)}`
         );
       } catch (error) {
         setDrilldownModal(
           `${degree} paths`,
           nextContext.title,
-          `<div class="empty">Could not load detail.<br>${escapeHtml(error.message)}</div>`
+          `${compareTable ? `<div class="detail-grid single">${compareTable}</div><br>` : ''}<div class="empty">Could not load detail.<br>${escapeHtml(error.message)}</div>`
         );
       }
     }
@@ -3358,8 +3570,15 @@
         .sort((a, b) => Number(b.n || 0) - Number(a.n || 0))
         .slice(0, topNFor(context.chartId || 'drilldown'));
       const kindTitle = context.kind === 'industry' ? 'Sub-industries' : 'Detailed roles';
+      const compareTable = compareShareTable(
+        `${context.kind === 'industry' ? 'Industry' : 'Role'} share for ${context.label}`,
+        compareRoleRows(context.kind),
+        context.label,
+        { shareLabel: `${context.kind === 'industry' ? 'Industry' : 'Role'} share` }
+      );
       const body = `
         <div class="detail-grid single">
+          ${compareTable}
           ${drilldownBars(`${kindTitle} within ${context.label}`, rows, context.kind === 'industry' ? COLORS[1] : COLORS[3], null)}
         </div>
         <div class="detail-hint">Shares are within ${escapeHtml(context.label)} for ${escapeHtml(context.title)}.</div>
@@ -4442,6 +4661,7 @@
           yTitle: 'Employer',
           labelTransform: label => legendLabel(label, 34),
           hoverLabel: 'Employer share',
+          onClick: point => openEmployerComparisonDrilldown(point),
         });
         drawMajorCompareEmployerReach('major-employer-reach');
         drawMajorConcentration('major-employer-concentration', concentration.employers || [], 'Employer');
@@ -4633,6 +4853,7 @@
         yTitle: 'Employer',
         labelTransform: label => legendLabel(label, 34),
         hoverLabel: 'Employer share',
+        onClick: point => openEmployerComparisonDrilldown(point),
       });
       drawSchoolEmployerReach('school-employer-reach');
       drawMajorConcentration('school-employer-concentration', concentration.employers || [], 'Employer', row => shortSchool(row.title || row.code));
