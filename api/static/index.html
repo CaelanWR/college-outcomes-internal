@@ -4115,7 +4115,7 @@
         const concentration = state.data.major_concentration || {};
         $('content').innerHTML = [
           card('City Share by Major', 'major-geo-heatmap', 8, true, { topControl: true }),
-          card('Distinctive City by Major', 'major-geo-concentration', 4, true),
+          card('Distinctive City vs All Majors', 'major-geo-concentration', 4, true),
           card('City Concentration by Major', 'major-city-concentration', 12, true),
         ].join('');
         drawMajorComparisonHeatmap('major-geo-heatmap', state.data.major_geography_comparison || [], {
@@ -6280,17 +6280,20 @@
           const peerAvg = peers.length
             ? peers.reduce((sum, peerCode) => sum + Number(lookup.get(`${peerCode}||${label}`)?.share_pct || 0), 0) / peers.length
             : 0;
+          const baseline = row.baseline_share_pct !== null && row.baseline_share_pct !== undefined
+            ? Number(row.baseline_share_pct || 0)
+            : peerAvg;
           return {
             code,
             title: majorName(major),
             label,
             share_pct: share,
-            peer_share_pct: peerAvg,
-            lift_pp: share - peerAvg,
+            baseline_share_pct: baseline,
+            lift_pp: share - baseline,
             n: Number(row.n || 0),
           };
         })
-          .filter(row => row.share_pct > 0)
+          .filter(row => row.share_pct > 0 && row.lift_pp > 0)
           .sort((a, b) => Number(b.lift_pp || 0) - Number(a.lift_pp || 0) || Number(b.share_pct || 0) - Number(a.share_pct || 0));
         return candidates[0] || null;
       })
@@ -6307,14 +6310,14 @@
         text: distinctive.map(row => `+${Number(row.lift_pp || 0).toFixed(1)} pp | ${shortLocationLabel(row.label)}`),
         textposition: 'outside',
         cliponaxis: false,
-        customdata: distinctive.map(row => [row.title, row.label, row.share_pct, row.peer_share_pct, row.n, row.lift_pp]),
+        customdata: distinctive.map(row => [row.title, row.label, row.share_pct, row.baseline_share_pct, row.n, row.lift_pp]),
         marker: { color: COLORS[3] },
-        hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>This major: %{customdata[2]:.1f}%<br>Peer average: %{customdata[3]:.1f}%<br>Gap: %{customdata[5]:+.1f} pp<br>%{customdata[4]:,.0f} alumni<extra></extra>',
+        hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>This major: %{customdata[2]:.1f}%<br>All majors: %{customdata[3]:.1f}%<br>Gap: %{customdata[5]:+.1f} pp<br>%{customdata[4]:,.0f} alumni<extra></extra>',
       }], {
         ...layout,
         xaxis: {
           ...layout.xaxis,
-          title: 'Share above peer average',
+          title: 'Share above all-major baseline',
           range: [0, maxLift * 1.24],
         },
       }, plotConfig);

@@ -2630,6 +2630,32 @@ def _major_geography_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRe
     cip_col = _cip_col(filters)
     limit = min(_safe_limit(filters.top_n), 12)
     location_expr = _location_label_expr()
+    baseline_filters = filters.model_copy(deep=True)
+    baseline_filters.majors = []
+    baseline_where_sql, baseline_params = _where(baseline_filters)
+    baseline_source = _base_source_for_filters(baseline_filters)
+    base_columns = _dataset_columns("base_fact")
+    adjusted_select = _runtime_adjusted_select(base_columns, "b")
+    con.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE major_geo_baseline_slice AS
+        SELECT
+          {adjusted_select}
+        FROM (
+          SELECT *
+          FROM read_parquet(?)
+          {baseline_where_sql}
+        ) b
+        LEFT JOIN recent_school_calibration rsc
+          ON b.unitid = rsc.unitid
+         AND b.degree = rsc.degree
+         AND b.cip4 = rsc.cip4
+        LEFT JOIN recent_global_calibration rgc
+          ON b.degree = rgc.degree
+         AND b.cip4 = rgc.cip4
+        """,
+        [baseline_source, *baseline_params],
+    )
     return _records_from_query(
         con,
         f"""
@@ -2645,6 +2671,14 @@ def _major_geography_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRe
             AND COALESCE(location, city) IS NOT NULL
             AND LOWER(COALESCE(location, city)) NOT IN ('empty', 'unknown')
         ),
+        baseline_eligible AS (
+          SELECT
+            {location_expr} AS label,
+            final_weight
+          FROM major_geo_baseline_slice
+          WHERE COALESCE(location, city) IS NOT NULL
+            AND LOWER(COALESCE(location, city)) NOT IN ('empty', 'unknown')
+        ),
         top_labels AS (
           SELECT label, SUM(final_weight) AS total_n
           FROM eligible
@@ -2657,6 +2691,17 @@ def _major_geography_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRe
           SELECT code, SUM(final_weight) AS total_n
           FROM eligible
           GROUP BY code
+        ),
+        baseline_denom AS (
+          SELECT SUM(final_weight) AS total_n
+          FROM baseline_eligible
+        ),
+        baseline AS (
+          SELECT
+            label,
+            SUM(final_weight) AS n
+          FROM baseline_eligible
+          GROUP BY label
         ),
         grouped AS (
           SELECT
@@ -2677,9 +2722,11 @@ def _major_geography_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRe
           g.label,
           ROUND(g.n, 2) AS n,
           ROUND(100.0 * g.n / NULLIF(d.total_n, 0), 2) AS share_pct,
+          ROUND(100.0 * COALESCE(b.n, 0) / NULLIF((SELECT total_n FROM baseline_denom), 0), 2) AS baseline_share_pct,
           CASE WHEN g.salary_weight > ? THEN ROUND(g.weighted_mean_salary) ELSE NULL END AS weighted_mean_salary
         FROM grouped g
         JOIN denom d USING (code)
+        LEFT JOIN baseline b USING (label)
         WHERE g.n > ?
         ORDER BY g.label, g.title
         """,
