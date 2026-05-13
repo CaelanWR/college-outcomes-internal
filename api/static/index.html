@@ -276,9 +276,67 @@
       animation: loading-pie-orbit 3.6s linear infinite;
     }
 
+    .loading-data-dot {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      z-index: 3;
+      width: var(--dot-size, 9px);
+      height: var(--dot-size, 9px);
+      border-radius: 50%;
+      background: var(--dot-color, var(--green));
+      box-shadow: 0 0 0 4px rgba(255,255,255,0.22), 0 0 20px var(--dot-glow, rgba(72,235,143,0.62));
+      opacity: 0;
+      transform: translate(var(--from-x), var(--from-y)) scale(0.55);
+      animation: loading-data-flow 2.35s cubic-bezier(0.44, 0, 0.18, 1) infinite;
+      animation-delay: var(--delay, 0s);
+      will-change: transform, opacity;
+    }
+
+    .loading-data-dot:nth-child(1) {
+      --from-x: -156px; --from-y: -76px; --mid-x: -70px; --mid-y: -34px; --to-x: -22px; --to-y: -14px;
+      --dot-color: #48EB8F; --dot-glow: rgba(72,235,143,0.66); --delay: 0s;
+    }
+
+    .loading-data-dot:nth-child(2) {
+      --from-x: 142px; --from-y: -84px; --mid-x: 68px; --mid-y: -36px; --to-x: 21px; --to-y: -18px;
+      --dot-color: #72AFF4; --dot-glow: rgba(114,175,244,0.62); --delay: 0.18s; --dot-size: 8px;
+    }
+
+    .loading-data-dot:nth-child(3) {
+      --from-x: -170px; --from-y: 14px; --mid-x: -88px; --mid-y: 8px; --to-x: -30px; --to-y: 8px;
+      --dot-color: #2D426A; --dot-glow: rgba(45,66,106,0.48); --delay: 0.36s; --dot-size: 10px;
+    }
+
+    .loading-data-dot:nth-child(4) {
+      --from-x: 166px; --from-y: 22px; --mid-x: 84px; --mid-y: 8px; --to-x: 31px; --to-y: 10px;
+      --dot-color: #48EB8F; --dot-glow: rgba(72,235,143,0.66); --delay: 0.54s;
+    }
+
+    .loading-data-dot:nth-child(5) {
+      --from-x: -112px; --from-y: 132px; --mid-x: -48px; --mid-y: 58px; --to-x: -16px; --to-y: 28px;
+      --dot-color: #72AFF4; --dot-glow: rgba(114,175,244,0.62); --delay: 0.72s; --dot-size: 8px;
+    }
+
+    .loading-data-dot:nth-child(6) {
+      --from-x: 116px; --from-y: 124px; --mid-x: 52px; --mid-y: 58px; --to-x: 18px; --to-y: 28px;
+      --dot-color: #48EB8F; --dot-glow: rgba(72,235,143,0.66); --delay: 0.9s; --dot-size: 10px;
+    }
+
+    .loading-data-dot:nth-child(7) {
+      --from-x: -38px; --from-y: -162px; --mid-x: -18px; --mid-y: -76px; --to-x: -6px; --to-y: -30px;
+      --dot-color: #F8FBFF; --dot-glow: rgba(255,255,255,0.58); --delay: 1.08s; --dot-size: 7px;
+    }
+
+    .loading-data-dot:nth-child(8) {
+      --from-x: 44px; --from-y: -158px; --mid-x: 22px; --mid-y: -76px; --to-x: 8px; --to-y: -31px;
+      --dot-color: #2D426A; --dot-glow: rgba(45,66,106,0.52); --delay: 1.26s; --dot-size: 7px;
+    }
+
     .loading-pie {
       position: absolute;
       inset: 0;
+      z-index: 2;
       border-radius: 50%;
       background:
         conic-gradient(
@@ -291,7 +349,7 @@
           rgba(255,255,255,0.16) 310deg 360deg
         );
       box-shadow: 0 0 0 12px rgba(255,255,255,0.16), 0 0 0 24px rgba(72,235,143,0.08);
-      animation: loading-pie-spin 2.15s cubic-bezier(0.56, 0, 0.21, 1) infinite;
+      animation: loading-pie-spin 2.35s cubic-bezier(0.56, 0, 0.21, 1) infinite;
     }
 
     .loading-pie::before {
@@ -317,8 +375,9 @@
     .loading-pie-marker {
       position: absolute;
       inset: -7px;
+      z-index: 4;
       border-radius: 50%;
-      animation: loading-pie-marker-spin 2.15s cubic-bezier(0.56, 0, 0.21, 1) infinite;
+      animation: loading-pie-marker-spin 2.35s cubic-bezier(0.56, 0, 0.21, 1) infinite;
     }
 
     .loading-pie-marker::after {
@@ -335,7 +394,7 @@
 
     .loading-pie-core {
       position: relative;
-      z-index: 1;
+      z-index: 5;
       width: 68px;
       height: 68px;
       border-radius: 50%;
@@ -391,10 +450,22 @@
     .loading-pulse i:nth-child(3) { animation-delay: 0.32s; }
 
     @keyframes loading-pie-spin {
-      0% { transform: rotate(-18deg) scale(0.94); }
-      42% { transform: rotate(192deg) scale(1.04); }
-      68% { transform: rotate(252deg) scale(0.98); }
-      100% { transform: rotate(342deg) scale(0.94); }
+      0% {
+        transform: rotate(-18deg) scale(0.94);
+        background: conic-gradient(from -22deg, var(--green) 0deg 84deg, #72aff4 84deg 158deg, #ffffff 158deg 174deg, #87d6ad 174deg 236deg, #2d426a 236deg 310deg, rgba(255,255,255,0.16) 310deg 360deg);
+      }
+      34% {
+        transform: rotate(128deg) scale(1.04);
+        background: conic-gradient(from -22deg, var(--green) 0deg 132deg, #72aff4 132deg 198deg, #ffffff 198deg 214deg, #87d6ad 214deg 258deg, #2d426a 258deg 328deg, rgba(255,255,255,0.16) 328deg 360deg);
+      }
+      68% {
+        transform: rotate(252deg) scale(0.98);
+        background: conic-gradient(from -22deg, var(--green) 0deg 58deg, #72aff4 58deg 172deg, #ffffff 172deg 190deg, #87d6ad 190deg 288deg, #2d426a 288deg 338deg, rgba(255,255,255,0.16) 338deg 360deg);
+      }
+      100% {
+        transform: rotate(342deg) scale(0.94);
+        background: conic-gradient(from -22deg, var(--green) 0deg 84deg, #72aff4 84deg 158deg, #ffffff 158deg 174deg, #87d6ad 174deg 236deg, #2d426a 236deg 310deg, rgba(255,255,255,0.16) 310deg 360deg);
+      }
     }
 
     @keyframes loading-pie-marker-spin {
@@ -402,6 +473,29 @@
       42% { transform: rotate(220deg); }
       68% { transform: rotate(292deg); }
       100% { transform: rotate(360deg); }
+    }
+
+    @keyframes loading-data-flow {
+      0% {
+        opacity: 0;
+        transform: translate(var(--from-x), var(--from-y)) scale(0.45);
+      }
+      12% {
+        opacity: 1;
+        transform: translate(var(--from-x), var(--from-y)) scale(0.7);
+      }
+      52% {
+        opacity: 0.96;
+        transform: translate(var(--mid-x), var(--mid-y)) scale(1);
+      }
+      78% {
+        opacity: 1;
+        transform: translate(var(--to-x), var(--to-y)) scale(0.7);
+      }
+      100% {
+        opacity: 0;
+        transform: translate(0, 0) scale(0.18);
+      }
     }
 
     @keyframes loading-pie-orbit {
@@ -423,6 +517,7 @@
       .loading-pie::after,
       .loading-pie-wrap::before,
       .loading-pie-marker,
+      .loading-data-dot,
       .loading-pulse i {
         animation: none;
       }
@@ -2346,6 +2441,14 @@
     <div class="loading-card">
       <div class="loading-chart" aria-hidden="true">
         <div class="loading-pie-wrap">
+          <span class="loading-data-dot"></span>
+          <span class="loading-data-dot"></span>
+          <span class="loading-data-dot"></span>
+          <span class="loading-data-dot"></span>
+          <span class="loading-data-dot"></span>
+          <span class="loading-data-dot"></span>
+          <span class="loading-data-dot"></span>
+          <span class="loading-data-dot"></span>
           <span class="loading-pie"></span>
           <span class="loading-pie-marker"></span>
           <span class="loading-pie-core"><img src="./favicon.svg" alt="" /></span>
