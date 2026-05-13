@@ -25,7 +25,7 @@ POST /api/dashboard
     "race_ethnicity": null
   },
   "postgrad": {
-    "later_degree_type": "LAW",
+    "later_degree_type": "Plus-One Masters",
     "no_further_education": null
   },
   "include_current_students": false,
@@ -34,6 +34,8 @@ POST /api/dashboard
   "top_n": 12
 }
 ```
+
+`Plus-One Masters` is a derived later-degree label for bachelor alumni who complete a master’s at the same school within one year of the bachelor graduation date.
 
 ## Dashboard Response
 

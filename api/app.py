@@ -78,6 +78,7 @@ DEGREE_ALIASES = {
 VISIBLE_DEGREE_ORDER = [
     "Associates",
     "Bachelors",
+    "Plus-One Masters",
     "Masters",
     "MBA",
     "LAW",
@@ -3251,7 +3252,7 @@ def _postgrad_detail_degree_label(degree_type: str | None) -> str | None:
 
 
 def _postgrad_show_program_detail(degree_type: str | None) -> bool:
-    return degree_type in {"Masters", "PhD", "Research Doctorate"}
+    return degree_type in {"Masters", "Plus-One Masters", "PhD", "Research Doctorate"}
 
 
 def _postgrad_detail_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:

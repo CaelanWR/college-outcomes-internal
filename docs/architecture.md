@@ -39,10 +39,13 @@ later_degree_type
 later_school
 later_program
 no_further_education_flag
+plus_one_masters_flag
 position_weight
 ipeds_calibration_weight
 final_weight
 ```
+
+`Plus-One Masters` is assigned when a bachelor alum has a later `Master` education row at the same `unitid` with an end date within 366 days of bachelor graduation.
 
 ### 2. Pre-Aggregated Facts
 
@@ -96,4 +99,3 @@ Partial-year earnings
 ```
 
 Charts should visually distinguish early/partial horizons with a dotted line, lighter opacity, or explicit badge.
-

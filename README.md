@@ -72,6 +72,6 @@ OUT_DIR/platform_parquet/aggregate_facts/
 OUT_DIR/platform_parquet/platform_manifest.json
 ```
 
-The base fact is partitioned by `unitid`, `degree`, `grad_year`, and `horizon`, and includes hashed `person_key`, demographics, postgrad filters, employer flags, position weights, calibration weights, and `final_weight`.
+The base fact is partitioned by `unitid`, `degree`, `grad_year`, and `horizon`, and includes hashed `person_key`, demographics, postgrad filters, plus-one master’s detection, employer flags, position weights, calibration weights, and `final_weight`.
 
 The `early_2025` horizon is included as a partial earnings view. Do not label it as a complete 1-year outcome.

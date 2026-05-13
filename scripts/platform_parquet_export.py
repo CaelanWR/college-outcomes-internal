@@ -21,7 +21,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 
-PLATFORM_EXPORT_VERSION = "2026-05-11-nace70-plus-elite-recent-cohort-calibration-v2"
+PLATFORM_EXPORT_VERSION = "2026-05-13-nace70-plus-elite-plus-one-masters-v1"
 PLATFORM_SUPPRESSION_THRESHOLD = 25
 PLATFORM_ROWS_PER_PART = 5000
 
@@ -42,7 +42,7 @@ def _normalize_platform_df(df: pd.DataFrame) -> pd.DataFrame:
     for col in ["unitid", "degree", "horizon"]:
         if col in df.columns:
             df[col] = df[col].fillna("Unknown").astype(str)
-    for col in ["grad_year", "horizon_years", "partial_horizon_flag", "no_further_education_flag"]:
+    for col in ["grad_year", "horizon_years", "partial_horizon_flag", "no_further_education_flag", "plus_one_masters_flag"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
 
@@ -171,6 +171,29 @@ def _copy_aggregate_facts(out_dir: Path, aggregate_dir: Path) -> dict:
         info = _write_df_parquet_parts(df, target)
         written[fact_name] = {"path": str(target.relative_to(aggregate_dir.parent)), **info}
     return written
+
+
+def plus_one_masters_flag_sql(later_alias: str, origin_alias: str) -> str:
+    """Bachelor-to-master continuation at the same school within one academic year."""
+    return f"""
+        CASE
+            WHEN {origin_alias}.degree = 'Bachelors'
+             AND {later_alias}.degree = 'Master'
+             AND CAST({later_alias}.unitid AS VARCHAR) = CAST({origin_alias}.unitid AS VARCHAR)
+             AND DATEDIFF('day', {origin_alias}.grad_date, {later_alias}.enddate) BETWEEN 1 AND 366
+            THEN 1
+            ELSE 0
+        END
+    """
+
+
+def postgrad_degree_with_plus_one_sql(later_alias: str, origin_alias: str) -> str:
+    return f"""
+        CASE
+            WHEN {plus_one_masters_flag_sql(later_alias, origin_alias)} = 1 THEN 'Plus-One Masters'
+            ELSE {postgrad_degree_label_sql(later_alias)}
+        END
+    """
 
 
 def _platform_base_sql() -> str:
@@ -434,12 +457,13 @@ later_edu AS (
         o.degree,
         o.grad_year,
         o.cip4,
-        {postgrad_degree_label_sql('e2')} AS later_degree_type,
+        {postgrad_degree_with_plus_one_sql('e2', 'o')} AS later_degree_type,
         e2.ipeds_name AS later_school,
         {assigned_cip4_sql('e2')} AS later_cip4,
         {assigned_cip_title_sql('e2')} AS later_program,
         YEAR(e2.enddate) AS later_grad_year,
         DATEDIFF('day', o.grad_date, e2.enddate) / 365.25 AS years_to_later_degree,
+        {plus_one_masters_flag_sql('e2', 'o')} AS plus_one_masters_flag,
         ROW_NUMBER() OVER (
             PARTITION BY o.user_id, o.unitid, o.degree, o.grad_year, o.cip4
             ORDER BY e2.enddate ASC
@@ -522,6 +546,7 @@ enriched AS (
         le.later_program,
         le.later_grad_year,
         le.years_to_later_degree,
+        COALESCE(le.plus_one_masters_flag, 0) AS plus_one_masters_flag,
         CASE WHEN le.user_id IS NULL THEN 1 ELSE 0 END AS no_further_education_flag
     FROM outcomes o
     LEFT JOIN demo d
@@ -814,12 +839,13 @@ later_edu AS (
         o.degree,
         o.grad_year,
         o.cip4,
-        {postgrad_degree_label_sql('e2')} AS later_degree_type,
+        {postgrad_degree_with_plus_one_sql('e2', 'o')} AS later_degree_type,
         e2.ipeds_name AS later_school,
         {assigned_cip4_sql('e2')} AS later_cip4,
         {assigned_cip_title_sql('e2')} AS later_program,
         YEAR(e2.enddate) AS later_grad_year,
         DATEDIFF('day', o.grad_date, e2.enddate) / 365.25 AS years_to_later_degree,
+        {plus_one_masters_flag_sql('e2', 'o')} AS plus_one_masters_flag,
         ROW_NUMBER() OVER (
             PARTITION BY o.user_id, o.unitid, o.degree, o.grad_year, o.cip4
             ORDER BY e2.enddate ASC
@@ -1035,6 +1061,7 @@ enriched AS (
         le.later_program,
         le.later_grad_year,
         le.years_to_later_degree,
+        COALESCE(le.plus_one_masters_flag, 0) AS plus_one_masters_flag,
         CASE WHEN le.user_id IS NULL THEN 1 ELSE 0 END AS no_further_education_flag
     FROM annual a
     LEFT JOIN demo d
@@ -1115,6 +1142,7 @@ positions_raw AS (
         le.later_program,
         le.later_grad_year,
         le.years_to_later_degree,
+        COALESCE(le.plus_one_masters_flag, 0) AS plus_one_masters_flag,
         CASE WHEN le.user_id IS NULL THEN 1 ELSE 0 END AS no_further_education_flag,
         CASE
             WHEN LOWER(COALESCE(p.ultimate_parent_company_name, '')) = 'government of the united states of america'

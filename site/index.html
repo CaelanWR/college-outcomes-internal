@@ -3899,7 +3899,7 @@
         items.push('Demographics use Revelio profile-level predicted gender and race/ethnicity fields. Unknown or empty values are dropped, so displayed shares are normalized across known values.');
       }
       if (/\bfurther education|postgrad|degree|law|mba|phd|masters|doctorate/.test(text)) {
-        items.push('Further education is inferred from later education records after the selected degree. Degree labels use IPEDS-aware categories such as Masters, MBA, LAW, MD, Research Doctorate, and Professional Doctorate.');
+        items.push('Further education is inferred from later education records after the selected degree. Plus-One Masters means a bachelor graduate completed a master’s at the same school within one year. Other degree labels use IPEDS-aware categories such as Masters, MBA, LAW, MD, Research Doctorate, and Professional Doctorate.');
       }
       if (/\bcoverage|ipeds/.test(text)) {
         items.push('Coverage compares weighted Revelio education completions with IPEDS completions for the same school, degree, major, and graduation-year slice where IPEDS is available.');
