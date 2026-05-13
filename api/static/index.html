@@ -182,17 +182,27 @@
       place-items: center;
       padding: 24px;
       pointer-events: none;
+      isolation: isolate;
+    }
+
+    .refresh-state::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: 0;
       background:
         radial-gradient(circle at 50% 42%, rgba(72,235,143,0.11), transparent 22%),
         radial-gradient(circle at 50% 42%, rgba(45,66,106,0.08), transparent 34%),
         rgba(246,248,251,0.38);
-      backdrop-filter: blur(2px);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
     }
 
     .refresh-state.is-visible { display: grid; }
 
     .loading-card {
       position: relative;
+      z-index: 1;
       width: min(520px, calc(100vw - 48px));
       padding: 20px 22px 18px;
       border: 1px solid rgba(72,235,143,0.28);
@@ -204,6 +214,10 @@
       color: #fff;
       box-shadow: 0 28px 70px rgba(20,44,65,0.28), inset 0 -3px 0 rgba(72,235,143,0.25);
       overflow: hidden;
+      transform: translateZ(0);
+      backface-visibility: hidden;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: geometricPrecision;
     }
 
     .loading-card::after {
