@@ -21,7 +21,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 
-PLATFORM_EXPORT_VERSION = "2026-05-13-nace70-plus-elite-plus-one-feeders-v1"
+PLATFORM_EXPORT_VERSION = "2026-05-13-nace70-plus-elite-plus-one-feeders-grad-lift-v1"
 PLATFORM_SUPPRESSION_THRESHOLD = 25
 PLATFORM_ROWS_PER_PART = 5000
 
@@ -48,7 +48,11 @@ def _normalize_platform_df(df: pd.DataFrame) -> pd.DataFrame:
         "partial_horizon_flag",
         "no_further_education_flag",
         "plus_one_masters_flag",
+        "grad_plus_one_masters_flag",
         "feeder_grad_year",
+        "missing_grad_start_flag",
+        "years_after_degree",
+        "pre_year_bucket",
     ]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
@@ -812,6 +816,35 @@ WHERE grad_year BETWEEN 2026 AND 2029
 
 WORK_MAX_YEARS_OUT = 15
 WORK_TOP_N_PER_GROUP = 50
+GRAD_TRANSITION_WINDOWS = [1, 3, 5, 10]
+GRAD_BENCHMARK_MIN_WEIGHT = 50
+GRAD_DEGREE_VALUES = [
+    "Masters",
+    "MBA",
+    "LAW",
+    "MD",
+    "PhD",
+    "Research Doctorate",
+    "Professional Doctorate",
+    "Other Doctorate",
+    "Doctorate",
+]
+
+
+def _sql_literal_list(values: list[str]) -> str:
+    return "(" + ",".join("'" + value.replace("'", "''") + "'" for value in values) + ")"
+
+
+def _seniority_group_sql(expr: str) -> str:
+    return f"""
+        CASE
+            WHEN {expr} IS NULL THEN 'Unknown'
+            WHEN {expr} < 2 THEN 'Entry'
+            WHEN {expr} < 4 THEN 'Associate'
+            WHEN {expr} < 6 THEN 'Management'
+            ELSE 'Senior Leadership'
+        END
+    """
 
 
 def _work_cpi_sql() -> str:
@@ -1250,6 +1283,524 @@ FROM positions
 """
 
 
+def _graduate_degree_match_sql(left_col: str, right_col: str) -> str:
+    research_values = _sql_literal_list(["Research Doctorate", "PhD", "Doctorate", "Other Doctorate"])
+    return f"""
+        (
+            {left_col} = {right_col}
+            OR ({left_col} IN {research_values} AND {right_col} IN {research_values})
+        )
+    """
+
+
+def _grad_transition_base_sql() -> str:
+    grad_windows = ", ".join(f"({window})" for window in GRAD_TRANSITION_WINDOWS)
+    grad_degree_values = _sql_literal_list(GRAD_DEGREE_VALUES)
+    raw_grad_degree_filter = "(e.degree IN ('Master', 'MBA') OR e.degree LIKE 'Doctor%')"
+    graduate_degree_match = _graduate_degree_match_sql("g.degree", "ge.degree")
+    return f"""
+CREATE OR REPLACE TABLE {SCRATCH}.SCHOOL_OUTCOMES_GRAD_TRANSITION_BASE AS
+WITH cpi_u AS (
+    {_work_cpi_sql()}
+),
+{_recent_calibration_ctes_sql()},
+grad_edu_labeled AS (
+    SELECT
+        e.user_id,
+        CAST(e.unitid AS VARCHAR) AS unitid,
+        {postgrad_degree_label_sql('e')} AS degree,
+        {assigned_cip4_sql('e')} AS cip4,
+        {assigned_cip_title_sql('e')} AS major_title,
+        YEAR(e.enddate) AS grad_year,
+        e.startdate AS grad_start_date,
+        e.enddate AS grad_date
+    FROM {EDUCATION_CIP} e
+    WHERE e.unitid IN ({UNITID_SQL})
+      AND e.enddate IS NOT NULL
+      AND YEAR(e.enddate) BETWEEN 2005 AND 2025
+      AND {raw_grad_degree_filter}
+),
+grad_edu AS (
+    SELECT * EXCLUDE (grad_edu_rank)
+    FROM (
+        SELECT
+            *,
+            ROW_NUMBER() OVER (
+                PARTITION BY user_id, unitid, degree, COALESCE(cip4, ''), grad_year
+                ORDER BY grad_start_date DESC NULLS LAST, grad_date DESC
+            ) AS grad_edu_rank
+        FROM grad_edu_labeled
+    )
+    WHERE grad_edu_rank = 1
+),
+grads AS (
+    SELECT
+        g.user_id,
+        SHA2(TO_VARCHAR(g.user_id), 256) AS person_key,
+        CAST(g.unitid AS VARCHAR) AS unitid,
+        g.ipeds_name AS school_name,
+        g.degree,
+        g.cip2,
+        g.cip4,
+        g.cip6,
+        g.cip_title AS major_title,
+        g.cohort_year AS grad_year,
+        g.cohort_band,
+        g.grad_date,
+        ge.grad_start_date,
+        CASE WHEN ge.grad_start_date IS NULL THEN 1 ELSE 0 END AS missing_grad_start_flag,
+        CASE
+            WHEN COALESCE(ge.grad_start_date, DATEADD('year', -2, g.grad_date)) >= g.grad_date
+            THEN DATEADD('year', -1, g.grad_date)
+            ELSE COALESCE(ge.grad_start_date, DATEADD('year', -2, g.grad_date))
+        END AS pre_anchor_date,
+        CASE
+            WHEN g.cohort_year >= 2023 AND g.calibration_ipeds_completions IS NULL
+            THEN COALESCE(rsc.ipeds_calibration_weight, rgc.ipeds_calibration_weight, g.ipeds_calibration_weight, 1.0)
+            ELSE COALESCE(g.ipeds_calibration_weight, 1.0)
+        END AS education_weight
+    FROM {SCRATCH}.SCHOOL_GRADS_CALIBRATED g
+    LEFT JOIN grad_edu ge
+      ON g.user_id = ge.user_id
+     AND CAST(g.unitid AS VARCHAR) = ge.unitid
+     AND g.cohort_year = ge.grad_year
+     AND COALESCE(g.cip4, '') = COALESCE(ge.cip4, '')
+     AND {graduate_degree_match}
+    LEFT JOIN recent_school_cip4_calibration rsc
+      ON CAST(g.unitid AS VARCHAR) = rsc.unitid
+     AND g.degree = rsc.degree
+     AND g.cip4 = rsc.cip4
+    LEFT JOIN recent_global_cip4_calibration rgc
+      ON g.degree = rgc.degree
+     AND g.cip4 = rgc.cip4
+    WHERE g.degree IN {grad_degree_values}
+),
+feeder_bachelor AS (
+    SELECT *
+    FROM (
+        SELECT
+            g.user_id,
+            g.unitid,
+            g.degree,
+            g.grad_year,
+            g.cip4,
+            CAST(e0.unitid AS VARCHAR) AS feeder_unitid,
+            e0.ipeds_name AS feeder_school,
+            {assigned_cip4_sql('e0')} AS feeder_cip4,
+            {assigned_cip_title_sql('e0')} AS feeder_program,
+            e0.enddate AS feeder_grad_date,
+            YEAR(e0.enddate) AS feeder_grad_year,
+            DATEDIFF('day', e0.enddate, g.grad_date) / 365.25 AS years_since_feeder_degree,
+            ROW_NUMBER() OVER (
+                PARTITION BY g.user_id, g.unitid, g.degree, g.grad_year, COALESCE(g.cip4, '')
+                ORDER BY e0.enddate DESC
+            ) AS feeder_rank
+        FROM grads g
+        JOIN {EDUCATION_CIP} e0
+          ON g.user_id = e0.user_id
+         AND e0.degree = 'Bachelor'
+         AND e0.enddate < g.grad_date
+    )
+    WHERE feeder_rank = 1
+),
+grads_enriched AS (
+    SELECT
+        g.*,
+        f.feeder_unitid,
+        f.feeder_school,
+        f.feeder_cip4,
+        f.feeder_program,
+        f.feeder_grad_date,
+        f.feeder_grad_year,
+        f.years_since_feeder_degree,
+        CASE
+            WHEN g.degree = 'Masters'
+             AND f.feeder_unitid = g.unitid
+             AND DATEDIFF('day', f.feeder_grad_date, g.grad_date) BETWEEN 1 AND 366
+            THEN 1 ELSE 0
+        END AS grad_plus_one_masters_flag,
+        CASE
+            WHEN f.feeder_grad_date IS NOT NULL
+            THEN CAST(LEAST(12, GREATEST(0, FLOOR(DATEDIFF('day', f.feeder_grad_date, g.pre_anchor_date) / 365.25))) AS INTEGER)
+            ELSE -1
+        END AS pre_year_bucket
+    FROM grads g
+    LEFT JOIN feeder_bachelor f
+      ON g.user_id = f.user_id
+     AND g.unitid = f.unitid
+     AND g.degree = f.degree
+     AND g.grad_year = f.grad_year
+     AND COALESCE(g.cip4, '') = COALESCE(f.cip4, '')
+),
+pre_candidates AS (
+    SELECT
+        g.*,
+        CASE
+            WHEN LOWER(COALESCE(p.ultimate_parent_company_name, '')) = 'government of the united states of america'
+                 AND NULLIF(p.company_name, '') IS NOT NULL
+            THEN p.company_name
+            ELSE COALESCE(NULLIF(p.ultimate_parent_company_name, ''), NULLIF(p.company_name, ''), 'Unknown')
+        END AS pre_employer,
+        COALESCE(NULLIF(p.role_k50_v3, ''), 'Unknown') AS pre_role,
+        COALESCE(NULLIF(p.role_k150_v3, ''), 'Unknown') AS pre_role_detail,
+        COALESCE(NULLIF(p.rics_k50, ''), 'Unknown') AS pre_industry,
+        COALESCE(NULLIF(p.rics_k200, ''), 'Unknown') AS pre_industry_detail,
+        COALESCE(NULLIF(p.metro_area, ''), NULLIF(p.state, ''), NULLIF(p.country, ''), 'Unknown') AS pre_location,
+        p.seniority AS pre_seniority,
+        {_seniority_group_sql('p.seniority')} AS pre_seniority_group,
+        p.salary AS pre_salary_nominal,
+        CASE
+            WHEN p.salary IS NOT NULL AND cpi.cpi_u_avg IS NOT NULL
+            THEN ROUND(p.salary * {SALARY_REAL_BASE_CPI} / cpi.cpi_u_avg, 0)
+            ELSE NULL
+        END AS pre_salary,
+        p.startdate AS pre_position_start,
+        p.enddate AS pre_position_end,
+        GREATEST(0.0, {position_weight_sql('p')}) AS pre_position_weight,
+        ROW_NUMBER() OVER (
+            PARTITION BY g.user_id, g.unitid, g.degree, g.grad_year, COALESCE(g.cip4, '')
+            ORDER BY
+                COALESCE(p.enddate, g.pre_anchor_date) DESC NULLS LAST,
+                p.startdate DESC NULLS LAST,
+                p.salary DESC NULLS LAST
+        ) AS pre_rank
+    FROM grads_enriched g
+    JOIN {POSITION_TABLE} p
+      ON g.user_id = p.user_id
+     AND p.startdate < g.pre_anchor_date
+     AND COALESCE(p.enddate, g.pre_anchor_date) >= DATEADD('year', -3, g.pre_anchor_date)
+     AND DATEDIFF('day', p.startdate, LEAST(COALESCE(p.enddate, g.pre_anchor_date), g.pre_anchor_date)) >= 60
+    LEFT JOIN cpi_u cpi
+      ON LEAST(YEAR(g.pre_anchor_date), 2025) = cpi.cpi_year
+),
+pre_jobs AS (
+    SELECT * EXCLUDE (pre_rank)
+    FROM pre_candidates
+    WHERE pre_rank = 1
+),
+windows AS (
+    SELECT column1 AS years_after_degree
+    FROM VALUES {grad_windows}
+),
+post_candidates AS (
+    SELECT
+        pr.*,
+        w.years_after_degree,
+        DATEADD('year', w.years_after_degree, pr.grad_date) AS target_date,
+        CASE
+            WHEN LOWER(COALESCE(p.ultimate_parent_company_name, '')) = 'government of the united states of america'
+                 AND NULLIF(p.company_name, '') IS NOT NULL
+            THEN p.company_name
+            ELSE COALESCE(NULLIF(p.ultimate_parent_company_name, ''), NULLIF(p.company_name, ''), 'Unknown')
+        END AS post_employer,
+        COALESCE(NULLIF(p.role_k50_v3, ''), 'Unknown') AS post_role,
+        COALESCE(NULLIF(p.role_k150_v3, ''), 'Unknown') AS post_role_detail,
+        COALESCE(NULLIF(p.rics_k50, ''), 'Unknown') AS post_industry,
+        COALESCE(NULLIF(p.rics_k200, ''), 'Unknown') AS post_industry_detail,
+        COALESCE(NULLIF(p.metro_area, ''), NULLIF(p.state, ''), NULLIF(p.country, ''), 'Unknown') AS post_location,
+        p.seniority AS post_seniority,
+        {_seniority_group_sql('p.seniority')} AS post_seniority_group,
+        p.salary AS post_salary_nominal,
+        CASE
+            WHEN p.salary IS NOT NULL AND cpi.cpi_u_avg IS NOT NULL
+            THEN ROUND(p.salary * {SALARY_REAL_BASE_CPI} / cpi.cpi_u_avg, 0)
+            ELSE NULL
+        END AS post_salary,
+        p.startdate AS post_position_start,
+        p.enddate AS post_position_end,
+        GREATEST(0.0, {position_weight_sql('p')}) AS post_position_weight,
+        ROW_NUMBER() OVER (
+            PARTITION BY pr.user_id, pr.unitid, pr.degree, pr.grad_year, COALESCE(pr.cip4, ''), w.years_after_degree
+            ORDER BY
+                p.salary DESC NULLS LAST,
+                p.startdate DESC NULLS LAST,
+                p.enddate DESC NULLS LAST
+        ) AS post_rank
+    FROM pre_jobs pr
+    JOIN windows w
+      ON DATEADD('year', w.years_after_degree, pr.grad_date) <= CURRENT_DATE()
+    JOIN {POSITION_TABLE} p
+      ON pr.user_id = p.user_id
+     AND p.startdate <= DATEADD('year', w.years_after_degree, pr.grad_date)
+     AND (p.enddate >= DATEADD('year', w.years_after_degree, pr.grad_date) OR p.enddate IS NULL)
+     AND COALESCE(p.enddate, CURRENT_DATE()) >= pr.grad_date
+    LEFT JOIN cpi_u cpi
+      ON LEAST(YEAR(DATEADD('year', w.years_after_degree, pr.grad_date)), 2025) = cpi.cpi_year
+)
+SELECT
+    * EXCLUDE (post_rank),
+    COALESCE(education_weight, 1.0) * SQRT(GREATEST(0.0, COALESCE(pre_position_weight, 1.0)) * GREATEST(0.0, COALESCE(post_position_weight, 1.0))) AS transition_weight,
+    CASE WHEN pre_role <> post_role AND pre_role <> 'Unknown' AND post_role <> 'Unknown' THEN 1 ELSE 0 END AS role_changed_flag,
+    CASE WHEN pre_industry <> post_industry AND pre_industry <> 'Unknown' AND post_industry <> 'Unknown' THEN 1 ELSE 0 END AS industry_changed_flag,
+    CASE WHEN pre_employer <> post_employer AND pre_employer <> 'Unknown' AND post_employer <> 'Unknown' THEN 1 ELSE 0 END AS employer_changed_flag
+FROM post_candidates
+WHERE post_rank = 1
+"""
+
+
+def _grad_transition_benchmark_sql() -> str:
+    grad_windows = ", ".join(f"({window})" for window in GRAD_TRANSITION_WINDOWS)
+    return f"""
+CREATE OR REPLACE TABLE {SCRATCH}.SCHOOL_OUTCOMES_GRAD_TRANSITION_BENCHMARK AS
+WITH windows AS (
+    SELECT column1 AS years_after_degree
+    FROM VALUES {grad_windows}
+),
+pairs AS (
+    SELECT
+        COALESCE(NULLIF(a0.role_k50_v3, ''), 'Unknown') AS pre_role,
+        COALESCE(NULLIF(a0.industry_k50, ''), 'Unknown') AS pre_industry,
+        {_seniority_group_sql('a0.seniority')} AS pre_seniority_group,
+        CAST(LEAST(12, GREATEST(0, a0.years_since_grad)) AS INTEGER) AS pre_year_bucket,
+        w.years_after_degree,
+        a0.salary AS pre_salary,
+        a1.salary AS post_salary,
+        a0.seniority AS pre_seniority,
+        a1.seniority AS post_seniority,
+        SQRT(GREATEST(0.0, COALESCE(a0.final_weight, 1.0)) * GREATEST(0.0, COALESCE(a1.final_weight, 1.0))) AS pair_weight
+    FROM {SCRATCH}.SCHOOL_OUTCOMES_WORK_ANNUAL_BASE a0
+    JOIN windows w
+      ON a0.years_since_grad + w.years_after_degree <= {WORK_MAX_YEARS_OUT}
+    JOIN {SCRATCH}.SCHOOL_OUTCOMES_WORK_ANNUAL_BASE a1
+      ON a0.user_id = a1.user_id
+     AND a0.unitid = a1.unitid
+     AND a0.degree = a1.degree
+     AND COALESCE(a0.cip4, '') = COALESCE(a1.cip4, '')
+     AND a0.grad_year = a1.grad_year
+     AND a1.years_since_grad = a0.years_since_grad + w.years_after_degree
+    WHERE a0.degree = 'Bachelors'
+      AND COALESCE(a0.no_further_education_flag, 0) = 1
+      AND COALESCE(a1.no_further_education_flag, 0) = 1
+      AND a0.salary IS NOT NULL
+      AND a1.salary IS NOT NULL
+      AND a0.salary > 0
+      AND a0.years_since_grad BETWEEN 0 AND 12
+),
+benchmarks AS (
+    SELECT 'role_industry_seniority_year' AS benchmark_tier, pre_role, pre_industry, pre_seniority_group, pre_year_bucket, years_after_degree, pre_salary, post_salary, pre_seniority, post_seniority, pair_weight FROM pairs
+    UNION ALL
+    SELECT 'role_industry_seniority' AS benchmark_tier, pre_role, pre_industry, pre_seniority_group, -1 AS pre_year_bucket, years_after_degree, pre_salary, post_salary, pre_seniority, post_seniority, pair_weight FROM pairs
+    UNION ALL
+    SELECT 'role_seniority' AS benchmark_tier, pre_role, 'All' AS pre_industry, pre_seniority_group, -1 AS pre_year_bucket, years_after_degree, pre_salary, post_salary, pre_seniority, post_seniority, pair_weight FROM pairs
+    UNION ALL
+    SELECT 'industry_seniority' AS benchmark_tier, 'All' AS pre_role, pre_industry, pre_seniority_group, -1 AS pre_year_bucket, years_after_degree, pre_salary, post_salary, pre_seniority, post_seniority, pair_weight FROM pairs
+    UNION ALL
+    SELECT 'seniority' AS benchmark_tier, 'All' AS pre_role, 'All' AS pre_industry, pre_seniority_group, -1 AS pre_year_bucket, years_after_degree, pre_salary, post_salary, pre_seniority, post_seniority, pair_weight FROM pairs
+    UNION ALL
+    SELECT 'overall' AS benchmark_tier, 'All' AS pre_role, 'All' AS pre_industry, 'All' AS pre_seniority_group, -1 AS pre_year_bucket, years_after_degree, pre_salary, post_salary, pre_seniority, post_seniority, pair_weight FROM pairs
+)
+SELECT
+    benchmark_tier,
+    pre_role,
+    pre_industry,
+    pre_seniority_group,
+    pre_year_bucket,
+    years_after_degree,
+    ROUND(SUM(pair_weight), 0) AS n_benchmark,
+    COUNT(*) AS raw_n,
+    ROUND(SUM((post_salary / NULLIF(pre_salary, 0)) * pair_weight) / NULLIF(SUM(pair_weight), 0), 4) AS expected_salary_ratio,
+    ROUND(100 * (SUM((post_salary / NULLIF(pre_salary, 0)) * pair_weight) / NULLIF(SUM(pair_weight), 0) - 1), 2) AS expected_salary_growth_pct,
+    ROUND(SUM((post_seniority - pre_seniority) * pair_weight) / NULLIF(SUM(CASE WHEN post_seniority IS NOT NULL AND pre_seniority IS NOT NULL THEN pair_weight ELSE 0 END), 0), 2) AS expected_seniority_delta
+FROM benchmarks
+GROUP BY benchmark_tier, pre_role, pre_industry, pre_seniority_group, pre_year_bucket, years_after_degree
+"""
+
+
+def _grad_transition_stacked_source_sql() -> str:
+    columns = """
+        person_key, unitid, school_name, degree, cip2, cip4, major_title,
+        grad_year, cohort_band, years_after_degree, grad_plus_one_masters_flag,
+        missing_grad_start_flag, feeder_unitid, feeder_school, feeder_cip4, feeder_program,
+        feeder_grad_year, years_since_feeder_degree, pre_year_bucket,
+        pre_employer, post_employer, pre_role, post_role, pre_role_detail, post_role_detail,
+        pre_industry, post_industry, pre_industry_detail, post_industry_detail,
+        pre_location, post_location, pre_seniority_group, post_seniority_group,
+        pre_salary, post_salary, pre_seniority, post_seniority,
+        transition_weight, role_changed_flag, industry_changed_flag, employer_changed_flag
+    """
+    return f"""
+    SELECT
+        'CIP4' AS cip_level,
+        {columns}
+    FROM {SCRATCH}.SCHOOL_OUTCOMES_GRAD_TRANSITION_BASE
+    WHERE cip4 IS NOT NULL
+    UNION ALL
+    SELECT
+        'ALL' AS cip_level,
+        person_key, unitid, school_name, degree, cip2, 'ALL' AS cip4, 'All majors' AS major_title,
+        grad_year, cohort_band, years_after_degree, grad_plus_one_masters_flag,
+        missing_grad_start_flag, feeder_unitid, feeder_school, feeder_cip4, feeder_program,
+        feeder_grad_year, years_since_feeder_degree, pre_year_bucket,
+        pre_employer, post_employer, pre_role, post_role, pre_role_detail, post_role_detail,
+        pre_industry, post_industry, pre_industry_detail, post_industry_detail,
+        pre_location, post_location, pre_seniority_group, post_seniority_group,
+        pre_salary, post_salary, pre_seniority, post_seniority,
+        transition_weight, role_changed_flag, industry_changed_flag, employer_changed_flag
+    FROM {SCRATCH}.SCHOOL_OUTCOMES_GRAD_TRANSITION_BASE
+    """
+
+
+def _grad_value_summary_query() -> str:
+    min_benchmark = GRAD_BENCHMARK_MIN_WEIGHT
+    return f"""
+WITH stacked AS (
+    {_grad_transition_stacked_source_sql()}
+), benchmarked AS (
+    SELECT
+        s.*,
+        COALESCE(b1.expected_salary_ratio, b2.expected_salary_ratio, b3.expected_salary_ratio, b4.expected_salary_ratio, b5.expected_salary_ratio, b6.expected_salary_ratio) AS expected_salary_ratio,
+        COALESCE(b1.expected_salary_growth_pct, b2.expected_salary_growth_pct, b3.expected_salary_growth_pct, b4.expected_salary_growth_pct, b5.expected_salary_growth_pct, b6.expected_salary_growth_pct) AS expected_salary_growth_pct,
+        COALESCE(b1.expected_seniority_delta, b2.expected_seniority_delta, b3.expected_seniority_delta, b4.expected_seniority_delta, b5.expected_seniority_delta, b6.expected_seniority_delta) AS expected_seniority_delta,
+        COALESCE(b1.benchmark_tier, b2.benchmark_tier, b3.benchmark_tier, b4.benchmark_tier, b5.benchmark_tier, b6.benchmark_tier) AS benchmark_tier
+    FROM stacked s
+    LEFT JOIN {SCRATCH}.SCHOOL_OUTCOMES_GRAD_TRANSITION_BENCHMARK b1
+      ON b1.benchmark_tier = 'role_industry_seniority_year'
+     AND b1.pre_role = s.pre_role
+     AND b1.pre_industry = s.pre_industry
+     AND b1.pre_seniority_group = s.pre_seniority_group
+     AND b1.pre_year_bucket = s.pre_year_bucket
+     AND b1.years_after_degree = s.years_after_degree
+     AND b1.n_benchmark >= {min_benchmark}
+    LEFT JOIN {SCRATCH}.SCHOOL_OUTCOMES_GRAD_TRANSITION_BENCHMARK b2
+      ON b2.benchmark_tier = 'role_industry_seniority'
+     AND b2.pre_role = s.pre_role
+     AND b2.pre_industry = s.pre_industry
+     AND b2.pre_seniority_group = s.pre_seniority_group
+     AND b2.pre_year_bucket = -1
+     AND b2.years_after_degree = s.years_after_degree
+     AND b2.n_benchmark >= {min_benchmark}
+    LEFT JOIN {SCRATCH}.SCHOOL_OUTCOMES_GRAD_TRANSITION_BENCHMARK b3
+      ON b3.benchmark_tier = 'role_seniority'
+     AND b3.pre_role = s.pre_role
+     AND b3.pre_industry = 'All'
+     AND b3.pre_seniority_group = s.pre_seniority_group
+     AND b3.pre_year_bucket = -1
+     AND b3.years_after_degree = s.years_after_degree
+     AND b3.n_benchmark >= {min_benchmark}
+    LEFT JOIN {SCRATCH}.SCHOOL_OUTCOMES_GRAD_TRANSITION_BENCHMARK b4
+      ON b4.benchmark_tier = 'industry_seniority'
+     AND b4.pre_role = 'All'
+     AND b4.pre_industry = s.pre_industry
+     AND b4.pre_seniority_group = s.pre_seniority_group
+     AND b4.pre_year_bucket = -1
+     AND b4.years_after_degree = s.years_after_degree
+     AND b4.n_benchmark >= {min_benchmark}
+    LEFT JOIN {SCRATCH}.SCHOOL_OUTCOMES_GRAD_TRANSITION_BENCHMARK b5
+      ON b5.benchmark_tier = 'seniority'
+     AND b5.pre_role = 'All'
+     AND b5.pre_industry = 'All'
+     AND b5.pre_seniority_group = s.pre_seniority_group
+     AND b5.pre_year_bucket = -1
+     AND b5.years_after_degree = s.years_after_degree
+     AND b5.n_benchmark >= {min_benchmark}
+    LEFT JOIN {SCRATCH}.SCHOOL_OUTCOMES_GRAD_TRANSITION_BENCHMARK b6
+      ON b6.benchmark_tier = 'overall'
+     AND b6.pre_role = 'All'
+     AND b6.pre_industry = 'All'
+     AND b6.pre_seniority_group = 'All'
+     AND b6.pre_year_bucket = -1
+     AND b6.years_after_degree = s.years_after_degree
+     AND b6.n_benchmark >= {min_benchmark}
+), grouped AS (
+    SELECT
+        unitid, school_name, degree, cip_level, cip4, major_title,
+        grad_year, cohort_band, years_after_degree, grad_plus_one_masters_flag,
+        ROUND(SUM(transition_weight), 0) AS n_alumni,
+        COUNT(*) AS raw_n,
+        ROUND(SUM(CASE WHEN pre_salary IS NOT NULL THEN pre_salary * transition_weight ELSE 0 END) /
+              NULLIF(SUM(CASE WHEN pre_salary IS NOT NULL THEN transition_weight ELSE 0 END), 0), 0) AS avg_salary_before,
+        ROUND(SUM(CASE WHEN post_salary IS NOT NULL THEN post_salary * transition_weight ELSE 0 END) /
+              NULLIF(SUM(CASE WHEN post_salary IS NOT NULL THEN transition_weight ELSE 0 END), 0), 0) AS avg_salary_after,
+        ROUND(SUM(CASE WHEN pre_salary IS NOT NULL AND expected_salary_ratio IS NOT NULL THEN pre_salary * expected_salary_ratio * transition_weight ELSE 0 END) /
+              NULLIF(SUM(CASE WHEN pre_salary IS NOT NULL AND expected_salary_ratio IS NOT NULL THEN transition_weight ELSE 0 END), 0), 0) AS expected_salary_after,
+        ROUND(SUM(CASE WHEN pre_seniority IS NOT NULL THEN pre_seniority * transition_weight ELSE 0 END) /
+              NULLIF(SUM(CASE WHEN pre_seniority IS NOT NULL THEN transition_weight ELSE 0 END), 0), 2) AS avg_seniority_before,
+        ROUND(SUM(CASE WHEN post_seniority IS NOT NULL THEN post_seniority * transition_weight ELSE 0 END) /
+              NULLIF(SUM(CASE WHEN post_seniority IS NOT NULL THEN transition_weight ELSE 0 END), 0), 2) AS avg_seniority_after,
+        ROUND(SUM(CASE WHEN expected_seniority_delta IS NOT NULL THEN expected_seniority_delta * transition_weight ELSE 0 END) /
+              NULLIF(SUM(CASE WHEN expected_seniority_delta IS NOT NULL THEN transition_weight ELSE 0 END), 0), 2) AS expected_seniority_delta,
+        ROUND(100 * SUM(role_changed_flag * transition_weight) / NULLIF(SUM(transition_weight), 0), 2) AS role_change_pct,
+        ROUND(100 * SUM(industry_changed_flag * transition_weight) / NULLIF(SUM(transition_weight), 0), 2) AS industry_change_pct,
+        ROUND(100 * SUM(employer_changed_flag * transition_weight) / NULLIF(SUM(transition_weight), 0), 2) AS employer_change_pct,
+        ROUND(100 * SUM(missing_grad_start_flag * transition_weight) / NULLIF(SUM(transition_weight), 0), 2) AS missing_grad_start_pct,
+        ANY_VALUE(benchmark_tier) AS primary_benchmark_tier
+    FROM benchmarked
+    GROUP BY unitid, school_name, degree, cip_level, cip4, major_title,
+        grad_year, cohort_band, years_after_degree, grad_plus_one_masters_flag
+)
+SELECT
+    *,
+    ROUND(100 * (avg_salary_after / NULLIF(avg_salary_before, 0) - 1), 2) AS observed_salary_growth_pct,
+    ROUND(100 * (expected_salary_after / NULLIF(avg_salary_before, 0) - 1), 2) AS expected_salary_growth_pct,
+    ROUND(avg_salary_after - expected_salary_after, 0) AS salary_lift_dollars,
+    ROUND(100 * (avg_salary_after / NULLIF(expected_salary_after, 0) - 1), 2) AS salary_lift_pct,
+    ROUND(avg_seniority_after - avg_seniority_before, 2) AS observed_seniority_delta,
+    ROUND((avg_seniority_after - avg_seniority_before) - expected_seniority_delta, 2) AS seniority_lift
+FROM grouped
+"""
+
+
+def _grad_transition_category_query(category: str) -> str:
+    if category == "role":
+        pre_col = "pre_role"
+        post_col = "post_role"
+    elif category == "industry":
+        pre_col = "pre_industry"
+        post_col = "post_industry"
+    else:
+        raise ValueError("category must be role or industry")
+    return f"""
+WITH stacked AS (
+    {_grad_transition_stacked_source_sql()}
+), grouped AS (
+    SELECT
+        unitid, school_name, degree, cip_level, cip4, major_title,
+        grad_year, cohort_band, years_after_degree, grad_plus_one_masters_flag,
+        {pre_col} AS pre_{category},
+        {post_col} AS post_{category},
+        ROUND(SUM(transition_weight), 0) AS n_alumni,
+        COUNT(*) AS raw_n,
+        ROUND(SUM(CASE WHEN pre_salary IS NOT NULL THEN pre_salary * transition_weight ELSE 0 END) /
+              NULLIF(SUM(CASE WHEN pre_salary IS NOT NULL THEN transition_weight ELSE 0 END), 0), 0) AS avg_salary_before,
+        ROUND(SUM(CASE WHEN post_salary IS NOT NULL THEN post_salary * transition_weight ELSE 0 END) /
+              NULLIF(SUM(CASE WHEN post_salary IS NOT NULL THEN transition_weight ELSE 0 END), 0), 0) AS avg_salary_after,
+        ROUND(SUM(CASE WHEN pre_seniority IS NOT NULL THEN pre_seniority * transition_weight ELSE 0 END) /
+              NULLIF(SUM(CASE WHEN pre_seniority IS NOT NULL THEN transition_weight ELSE 0 END), 0), 2) AS avg_seniority_before,
+        ROUND(SUM(CASE WHEN post_seniority IS NOT NULL THEN post_seniority * transition_weight ELSE 0 END) /
+              NULLIF(SUM(CASE WHEN post_seniority IS NOT NULL THEN transition_weight ELSE 0 END), 0), 2) AS avg_seniority_after
+    FROM stacked
+    WHERE {pre_col} <> 'Unknown'
+      AND {post_col} <> 'Unknown'
+    GROUP BY unitid, school_name, degree, cip_level, cip4, major_title,
+        grad_year, cohort_band, years_after_degree, grad_plus_one_masters_flag, {pre_col}, {post_col}
+), totals AS (
+    SELECT unitid, degree, cip_level, cip4, grad_year, years_after_degree, grad_plus_one_masters_flag, SUM(n_alumni) AS total_n
+    FROM grouped
+    GROUP BY unitid, degree, cip_level, cip4, grad_year, years_after_degree, grad_plus_one_masters_flag
+), ranked AS (
+    SELECT
+        g.*,
+        ROUND(100 * g.n_alumni / NULLIF(t.total_n, 0), 2) AS share_pct,
+        ROW_NUMBER() OVER (
+            PARTITION BY g.unitid, g.degree, g.cip_level, g.cip4, g.grad_year, g.years_after_degree, g.grad_plus_one_masters_flag
+            ORDER BY g.n_alumni DESC, pre_{category}, post_{category}
+        ) AS transition_rank
+    FROM grouped g
+    JOIN totals t
+      ON g.unitid = t.unitid
+     AND g.degree = t.degree
+     AND g.cip_level = t.cip_level
+     AND g.cip4 = t.cip4
+     AND g.grad_year = t.grad_year
+     AND g.years_after_degree = t.years_after_degree
+     AND g.grad_plus_one_masters_flag = t.grad_plus_one_masters_flag
+)
+SELECT *
+FROM ranked
+WHERE transition_rank <= {WORK_TOP_N_PER_GROUP}
+"""
+
+
 def _work_stacked_source_sql(source_table: str, extra_cols: str = "") -> str:
     extra = f", {extra_cols}" if extra_cols else ""
     return f"""
@@ -1576,6 +2127,10 @@ def _write_work_history_facts(platform_dir: Path) -> dict:
         cur.execute(_work_annual_base_sql())
         print("Creating post-graduation position base in Snowflake...")
         cur.execute(_work_position_base_sql())
+        print("Creating graduate transition base in Snowflake...")
+        cur.execute(_grad_transition_base_sql())
+        print("Creating graduate transition benchmark in Snowflake...")
+        cur.execute(_grad_transition_benchmark_sql())
     finally:
         cur.close()
         conn.close()
@@ -1589,6 +2144,10 @@ def _write_work_history_facts(platform_dir: Path) -> dict:
         "annual_geography": _work_category_query("annual_geography", "location", "location"),
         "mobility": _work_mobility_query(),
         "employer_tenure": _work_employer_tenure_query(),
+        "grad_value_summary": _grad_value_summary_query(),
+        "grad_role_transitions": _grad_transition_category_query("role"),
+        "grad_industry_transitions": _grad_transition_category_query("industry"),
+        "grad_value_benchmarks": f"SELECT * FROM {SCRATCH}.SCHOOL_OUTCOMES_GRAD_TRANSITION_BENCHMARK",
     }
 
     written = {}
@@ -1669,7 +2228,9 @@ def run_platform_parquet_export(platform_out_dir: Path | None = None) -> dict:
         "work_history": {
             "max_years_out": WORK_MAX_YEARS_OUT,
             "top_n_per_group": WORK_TOP_N_PER_GROUP,
-            "notes": "Annual career snapshots and tenure/mobility aggregates. No raw user_id or raw position-level timeline is exported.",
+            "grad_transition_windows": GRAD_TRANSITION_WINDOWS,
+            "grad_benchmark_min_weight": GRAD_BENCHMARK_MIN_WEIGHT,
+            "notes": "Annual career snapshots, tenure/mobility aggregates, and graduate before/after transition facts. Graduate lift is benchmarked against comparable bachelor-only career growth. No raw user_id or raw position-level timeline is exported.",
         },
         "references": reference_facts,
         "primary_filters": [
@@ -1690,6 +2251,13 @@ def run_platform_parquet_export(platform_out_dir: Path | None = None) -> dict:
             "role_k50_v3",
             "role_k150_v3",
             "industry_k50",
+            "years_after_degree",
+            "grad_plus_one_masters_flag",
+            "feeder_unitid",
+            "pre_role",
+            "post_role",
+            "pre_industry",
+            "post_industry",
         ],
         "partial_horizons": ["early_2025"],
         "privacy": {
