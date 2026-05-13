@@ -4604,9 +4604,11 @@
         });
         return;
       }
+      const concentration = state.data.school_concentration || {};
       $('content').innerHTML = [
         card('Top Employers by School', 'school-employer-heatmap', 8, true, { topControl: true }),
         card('Employer Breadth by School', 'school-employer-reach', 4, true),
+        card('Employer Concentration by School', 'school-employer-concentration', 12, true),
       ].join('');
       drawSchoolComparisonHeatmap('school-employer-heatmap', state.data.school_employer_comparison || [], {
         yTitle: 'Employer',
@@ -4614,6 +4616,7 @@
         hoverLabel: 'Employer share',
       });
       drawSchoolEmployerReach('school-employer-reach');
+      drawMajorConcentration('school-employer-concentration', concentration.employers || [], 'Employer', row => shortSchool(row.title || row.code));
     }
 
     function renderSchoolCompareGeography() {
@@ -6810,7 +6813,7 @@
       }, plotConfig);
     }
 
-    function drawMajorConcentration(id, rows, entityLabel) {
+    function drawMajorConcentration(id, rows, entityLabel, rowLabel = majorName) {
       const cleanRows = (rows || [])
         .filter(row => row.code && row.top1_share_pct !== null && row.top1_share_pct !== undefined)
         .sort((a, b) => Number(b.top1_share_pct || 0) - Number(a.top1_share_pct || 0))
@@ -6823,7 +6826,8 @@
         : entityLower === 'industry'
           ? 'industries'
           : `${entityLower}s`;
-      const layout = horizontalBarLayout(id, cleanRows.map(row => ({ label: majorName(row) })), '%', {
+      const rowLabels = cleanRows.map(row => rowLabel(row));
+      const layout = horizontalBarLayout(id, rowLabels.map(label => ({ label })), '%', {
         rightMargin: 190,
         height: Math.max(380, 170 + cleanRows.length * 42),
       });
@@ -6832,23 +6836,23 @@
           type: 'bar',
           orientation: 'h',
           name: `Top 3 ${entityPlural}`,
-          y: cleanRows.map(row => wrapAxisLabel(majorName(row), 28)),
+          y: rowLabels.map(label => wrapAxisLabel(label, 28)),
           x: cleanRows.map(row => row.top3_share_pct),
           marker: { color: 'rgba(72, 175, 244, 0.24)' },
-          customdata: cleanRows.map(row => [majorName(row), row.top_label, row.top3_share_pct, row.hhi, row.unique_labels]),
+          customdata: cleanRows.map((row, idx) => [rowLabels[idx], row.top_label, row.top3_share_pct, row.hhi, row.unique_labels]),
           hovertemplate: `%{customdata[0]}<br>Top 3 ${entityPlural}: %{x:.1f}%<br>Top ${entityLower}: %{customdata[1]}<br>Concentration score: %{customdata[3]:,.0f}<extra></extra>`,
         },
         {
           type: 'bar',
           orientation: 'h',
           name: `Top ${entityLower}`,
-          y: cleanRows.map(row => wrapAxisLabel(majorName(row), 28)),
+          y: rowLabels.map(label => wrapAxisLabel(label, 28)),
           x: cleanRows.map(row => row.top1_share_pct),
           text: cleanRows.map(row => `${pct(row.top1_share_pct)} | ${legendLabel(row.top_label, 22)}`),
           textposition: 'outside',
           cliponaxis: false,
           marker: { color: COLORS[0] },
-          customdata: cleanRows.map(row => [majorName(row), row.top_label, row.top_n, row.hhi, row.unique_labels]),
+          customdata: cleanRows.map((row, idx) => [rowLabels[idx], row.top_label, row.top_n, row.hhi, row.unique_labels]),
           hovertemplate: `%{customdata[0]}<br>Top ${entityLower}: %{customdata[1]}<br>%{x:.1f}% | %{customdata[2]:,.0f} people<br>Concentration score: %{customdata[3]:,.0f}<br>Unique ${entityPlural}: %{customdata[4]:,.0f}<extra></extra>`,
         },
       ], {

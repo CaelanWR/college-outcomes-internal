@@ -2959,6 +2959,102 @@ def _major_concentration(con: duckdb.DuckDBPyConnection, filters: QueryRequest) 
     }
 
 
+def _school_concentration(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, list[dict[str, Any]]]:
+    same_school_filter = _same_school_employer_filter(filters)
+    location_expr = _location_label_expr()
+
+    def group(label_sql: str, where_extra: str, min_weight: float) -> list[dict[str, Any]]:
+        return _records_from_query(
+            con,
+            f"""
+            WITH eligible AS (
+              SELECT
+                unitid AS code,
+                school_name AS title,
+                {label_sql} AS label,
+                final_weight
+              FROM slice
+              WHERE unitid IS NOT NULL
+                AND {label_sql} IS NOT NULL
+                AND TRIM({label_sql}) <> ''
+                AND LOWER(TRIM({label_sql})) NOT IN ('empty', 'unknown', 'other')
+                {where_extra}
+            ),
+            grouped AS (
+              SELECT
+                code,
+                MAX(title) AS title,
+                label,
+                SUM(final_weight) AS n
+              FROM eligible
+              GROUP BY code, label
+            ),
+            ranked AS (
+              SELECT
+                *,
+                SUM(n) OVER (PARTITION BY code) AS total_n,
+                ROW_NUMBER() OVER (PARTITION BY code ORDER BY n DESC, label) AS rn
+              FROM grouped
+            )
+            SELECT
+              code,
+              MAX(title) AS title,
+              MAX(CASE WHEN rn = 1 THEN label ELSE NULL END) AS top_label,
+              ROUND(MAX(CASE WHEN rn = 1 THEN n ELSE NULL END)) AS top_n,
+              ROUND(100.0 * SUM(CASE WHEN rn = 1 THEN n ELSE 0 END) / NULLIF(MAX(total_n), 0), 2) AS top1_share_pct,
+              ROUND(100.0 * SUM(CASE WHEN rn <= 3 THEN n ELSE 0 END) / NULLIF(MAX(total_n), 0), 2) AS top3_share_pct,
+              ROUND(SUM(POWER(100.0 * n / NULLIF(total_n, 0), 2)), 1) AS hhi,
+              COUNT(*) AS unique_labels,
+              ROUND(MAX(total_n), 2) AS n
+            FROM ranked
+            GROUP BY code
+            HAVING MAX(total_n) > ?
+            ORDER BY top1_share_pct DESC
+            """,
+            [min_weight],
+        )
+
+    return {
+        "employers": group(
+            "employer",
+            f"""
+                AND employer IS NOT NULL
+                AND employer <> ''
+                AND unknown_employer_flag = 0
+                AND named_employer_flag = 1
+                AND career_employer_flag = 1
+                {same_school_filter}
+            """,
+            EMPLOYER_ROW_MIN_WEIGHT,
+        ),
+        "industries": group(
+            "industry_k50",
+            """
+                AND industry_k50 IS NOT NULL
+                AND industry_k50 <> ''
+            """,
+            MIN_CELL_WEIGHT,
+        ),
+        "roles": group(
+            "role_k50_v3",
+            """
+                AND role_k50_v3 IS NOT NULL
+                AND role_k50_v3 <> ''
+                AND NOT (degree = 'Bachelors' AND horizon = '1yr' AND role_k50_v3 = 'Corporate Attorney')
+            """,
+            MIN_CELL_WEIGHT,
+        ),
+        "geography": group(
+            location_expr,
+            """
+                AND COALESCE(location, city) IS NOT NULL
+                AND LOWER(COALESCE(location, city)) NOT IN ('empty', 'unknown')
+            """,
+            GEOGRAPHY_ROW_MIN_WEIGHT,
+        ),
+    }
+
+
 def _major_demographic_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, list[dict[str, Any]]]:
     cip_col = _cip_col(filters)
 
@@ -5357,6 +5453,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                         result["school_role_comparison"] = _school_role_comparison(con, filters)
                         result["school_demographic_comparison"] = _school_demographic_comparison(con, filters)
                         result["school_postgrad_comparison"] = _school_postgrad_comparison(con, filters)
+                        result["school_concentration"] = _school_concentration(con, filters)
                         result["career"] = _career(con, filters)
                         result["coverage"] = _coverage(con, filters)
                         return result
@@ -5385,6 +5482,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                             )
                         else:
                             result["school_employer_comparison"] = _school_employer_comparison(con, filters)
+                            result["school_concentration"] = _school_concentration(con, filters)
                     if tab == "geography":
                         if view_mode == "overtime":
                             result["school_geography_trend_comparison"] = _entity_outcome_trend_comparison(
