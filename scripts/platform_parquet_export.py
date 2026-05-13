@@ -21,7 +21,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 
-PLATFORM_EXPORT_VERSION = "2026-05-13-nace70-plus-elite-plus-one-masters-v1"
+PLATFORM_EXPORT_VERSION = "2026-05-13-nace70-plus-elite-plus-one-feeders-v1"
 PLATFORM_SUPPRESSION_THRESHOLD = 25
 PLATFORM_ROWS_PER_PART = 5000
 
@@ -42,7 +42,14 @@ def _normalize_platform_df(df: pd.DataFrame) -> pd.DataFrame:
     for col in ["unitid", "degree", "horizon"]:
         if col in df.columns:
             df[col] = df[col].fillna("Unknown").astype(str)
-    for col in ["grad_year", "horizon_years", "partial_horizon_flag", "no_further_education_flag", "plus_one_masters_flag"]:
+    for col in [
+        "grad_year",
+        "horizon_years",
+        "partial_horizon_flag",
+        "no_further_education_flag",
+        "plus_one_masters_flag",
+        "feeder_grad_year",
+    ]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
 
@@ -194,6 +201,38 @@ def postgrad_degree_with_plus_one_sql(later_alias: str, origin_alias: str) -> st
             ELSE {postgrad_degree_label_sql(later_alias)}
         END
     """
+
+
+def feeder_bachelor_education_cte_sql(base_cte: str) -> str:
+    return f"""
+feeder_bachelor_edu AS (
+    SELECT
+        o.user_id,
+        o.unitid,
+        o.degree,
+        o.grad_year,
+        o.cip4,
+        CAST(e0.unitid AS VARCHAR) AS feeder_unitid,
+        e0.ipeds_name AS feeder_school,
+        {assigned_cip4_sql('e0')} AS feeder_cip4,
+        {assigned_cip_title_sql('e0')} AS feeder_program,
+        YEAR(e0.enddate) AS feeder_grad_year,
+        DATEDIFF('day', e0.enddate, o.grad_date) / 365.25 AS years_since_feeder_degree,
+        ROW_NUMBER() OVER (
+            PARTITION BY o.user_id, o.unitid, o.degree, o.grad_year, o.cip4
+            ORDER BY e0.enddate DESC
+        ) AS feeder_rank
+    FROM (
+        SELECT DISTINCT user_id, unitid, degree, grad_year, cip4, grad_date
+        FROM {base_cte}
+        WHERE degree <> 'Bachelors'
+    ) o
+    JOIN {EDUCATION_CIP} e0
+      ON o.user_id = e0.user_id
+     AND e0.degree = 'Bachelor'
+     AND e0.enddate < o.grad_date
+)
+"""
 
 
 def _platform_base_sql() -> str:
@@ -477,6 +516,7 @@ later_edu AS (
      AND (e2.degree IN ('Master', 'MBA') OR e2.degree LIKE 'Doctor%')
      AND e2.enddate > o.grad_date
 ),
+{feeder_bachelor_education_cte_sql('outcomes')},
 enriched AS (
     SELECT
         SHA2(TO_VARCHAR(o.user_id), 256) AS person_key,
@@ -547,6 +587,12 @@ enriched AS (
         le.later_grad_year,
         le.years_to_later_degree,
         COALESCE(le.plus_one_masters_flag, 0) AS plus_one_masters_flag,
+        fe.feeder_unitid,
+        fe.feeder_school,
+        fe.feeder_cip4,
+        fe.feeder_program,
+        fe.feeder_grad_year,
+        fe.years_since_feeder_degree,
         CASE WHEN le.user_id IS NULL THEN 1 ELSE 0 END AS no_further_education_flag
     FROM outcomes o
     LEFT JOIN demo d
@@ -558,6 +604,13 @@ enriched AS (
      AND o.grad_year = le.grad_year
      AND COALESCE(o.cip4, '') = COALESCE(le.cip4, '')
      AND le.later_rank = 1
+    LEFT JOIN feeder_bachelor_edu fe
+      ON o.user_id = fe.user_id
+     AND o.unitid = fe.unitid
+     AND o.degree = fe.degree
+     AND o.grad_year = fe.grad_year
+     AND COALESCE(o.cip4, '') = COALESCE(fe.cip4, '')
+     AND fe.feeder_rank = 1
 )
 SELECT
     *,

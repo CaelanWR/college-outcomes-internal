@@ -3998,7 +3998,7 @@
         items.push('Demographics use Revelio profile-level predicted gender and race/ethnicity fields. Unknown or empty values are dropped, so displayed shares are normalized across known values.');
       }
       if (/\bfurther education|postgrad|degree|law|mba|phd|masters|doctorate/.test(text)) {
-        items.push('Further education is inferred from later education records after the selected degree. Plus-One Masters means a bachelor graduate completed a master’s at the same school within one year. Other degree labels use IPEDS-aware categories such as Masters, MBA, LAW, MD, Research Doctorate, and Professional Doctorate.');
+        items.push('Further education is inferred from later education records after the selected degree. Plus-One Masters means a bachelor graduate completed a master’s at the same school within one year. Feeder-school views show the prior observed bachelor institution for graduate-degree slices. Other degree labels use IPEDS-aware categories such as Masters, MBA, LAW, MD, Research Doctorate, and Professional Doctorate.');
       }
       if (/\bcoverage|ipeds/.test(text)) {
         items.push('Coverage compares weighted Revelio education completions with IPEDS completions for the same school, degree, major, and graduation-year slice where IPEDS is available.');
@@ -4981,10 +4981,13 @@
           });
           return;
         }
-        $('content').innerHTML = [
+        const feederRows = state.data.school_feeder_comparison || [];
+        const cards = [
           card(`Further Education Rate by ${entity}`, 'compare-postgrad', 7, true, { topControl: state.selectionMode === 'major_compare' }),
           card('Later Degree Paths by School', 'school-postgrad-heatmap', 5, true, { topControl: true }),
-        ].join('');
+        ];
+        if (feederRows.length) cards.push(card('Undergraduate Feeder Schools by School', 'school-feeder-heatmap', 12, true, { topControl: true }));
+        $('content').innerHTML = cards.join('');
         drawCompareFurtherEd('compare-postgrad');
         drawSchoolComparisonHeatmap('school-postgrad-heatmap', state.data.school_postgrad_comparison || [], {
           yTitle: 'Path',
@@ -4997,6 +5000,13 @@
             degree: point.label,
           }),
         });
+        if (feederRows.length) {
+          drawSchoolComparisonHeatmap('school-feeder-heatmap', feederRows, {
+            yTitle: 'Feeder school',
+            labelTransform: shortPostgradSchool,
+            hoverLabel: 'Feeder share',
+          });
+        }
         return;
       }
 
@@ -5198,10 +5208,13 @@
           });
           return;
         }
-        $('content').innerHTML = [
+        const feederRows = state.data.major_feeder_comparison || [];
+        const cards = [
           card('Further Education Rate by Major', 'compare-postgrad', 5, true, { topControl: true }),
           card('Later Degree Paths by Major', 'major-postgrad-heatmap', 7, true, { topControl: true }),
-        ].join('');
+        ];
+        if (feederRows.length) cards.push(card('Undergraduate Feeder Schools by Major', 'major-feeder-heatmap', 12, true, { topControl: true }));
+        $('content').innerHTML = cards.join('');
         drawMajorCompareFurtherEd('compare-postgrad');
         drawMajorComparisonHeatmap('major-postgrad-heatmap', state.data.major_postgrad_comparison || [], {
           yTitle: 'Path',
@@ -5214,6 +5227,13 @@
             degree: point.label,
           }),
         });
+        if (feederRows.length) {
+          drawMajorComparisonHeatmap('major-feeder-heatmap', feederRows, {
+            yTitle: 'Feeder school',
+            labelTransform: shortPostgradSchool,
+            hoverLabel: 'Feeder share',
+          });
+        }
         return;
       }
 
@@ -6093,6 +6113,8 @@
       const showPrograms = Boolean(state.data.postgrad?.show_program_detail && (state.data.postgrad?.programs || []).length);
       const selectedSchool = state.data.postgrad?.selected_school || null;
       const selectedProgram = state.data.postgrad?.selected_program || null;
+      const feederRows = state.data.postgrad?.feeders?.schools || [];
+      const showFeeders = feederRows.length > 0;
       const schoolTitle = selectedProgram
         ? `Top Schools for ${escapeHtml(shortPostgradProgram(selectedProgram))}`
         : `Top Schools for ${escapeHtml(detailLabel)}`;
@@ -6131,6 +6153,9 @@
         } else {
           cards.push(card(schoolTitle, 'postgrad-schools', 6, true, { topControl: true }));
         }
+        if (showFeeders) {
+          cards.push(card('Undergraduate Feeder Schools Into This Grad Degree', 'postgrad-feeders', 12, true, { topControl: true }));
+        }
         $('content').innerHTML = cards.join('');
         drawPostgradFlows('postgrad-flow');
         const schoolRows = ensurePostgradShare(state.data.postgrad?.schools || []);
@@ -6167,6 +6192,19 @@
               state.selectedPostgradSchool = null;
               refresh();
             },
+          });
+        }
+        if (showFeeders) {
+          const feederShareRows = ensurePostgradShare(feederRows);
+          const feederMetric = postgradShareMetric(feederShareRows);
+          drawSimpleBars('postgrad-feeders', feederShareRows, feederMetric, COLORS[2], {
+            compressed: false,
+            noWrap: true,
+            labelTransform: shortPostgradSchool,
+            valueFormatter: value => pct(value),
+            hovertemplate: '%{customdata[0]}<br>%{customdata[1]:.1f}% of known feeder schools<extra></extra>',
+            axisSuffix: '%',
+            layoutOptions: { leftMargin: 290, rightMargin: 92, yAutoMargin: false },
           });
         }
       } else {

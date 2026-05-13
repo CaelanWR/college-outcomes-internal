@@ -3237,6 +3237,120 @@ def _major_postgrad_comparison(con: duckdb.DuckDBPyConnection, filters: QueryReq
     )
 
 
+def _feeder_columns_available() -> bool:
+    return "feeder_school" in _dataset_columns("base_fact")
+
+
+def _feeder_schools(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
+    if not _feeder_columns_available():
+        return {"available": False, "schools": [], "programs": []}
+
+    limit = _safe_limit(filters.top_n)
+
+    def grouped(column: str) -> list[dict[str, Any]]:
+        return _records_from_query(
+            con,
+            f"""
+            WITH eligible AS (
+              SELECT {column} AS label, profile_weight
+              FROM cohort_slice
+              WHERE degree <> 'Bachelors'
+                AND {column} IS NOT NULL
+                AND {column} <> ''
+            ),
+            denom AS (
+              SELECT SUM(profile_weight) AS total_n FROM eligible
+            )
+            SELECT
+              label,
+              ROUND(SUM(profile_weight)) AS n,
+              ROUND(100.0 * SUM(profile_weight) / NULLIF((SELECT total_n FROM denom), 0), 1) AS share_pct
+            FROM eligible
+            GROUP BY label
+            HAVING SUM(profile_weight) > ?
+            ORDER BY SUM(profile_weight) DESC
+            LIMIT {limit}
+            """,
+            [MIN_CELL_WEIGHT],
+        )
+
+    return {
+        "available": True,
+        "schools": grouped("feeder_school"),
+        "programs": grouped("feeder_program"),
+    }
+
+
+def _school_feeder_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    if not _feeder_columns_available():
+        return []
+    return _school_cohort_label_comparison(
+        con,
+        "feeder_school",
+        "AND degree <> 'Bachelors' AND feeder_school IS NOT NULL AND feeder_school <> ''",
+        MIN_CELL_WEIGHT,
+        filters,
+    )
+
+
+def _major_feeder_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    if not _feeder_columns_available():
+        return []
+    cip_col = _cip_col(filters)
+    limit = min(_safe_limit(filters.top_n), 10)
+    return _records_from_query(
+        con,
+        f"""
+        WITH eligible AS (
+          SELECT
+            {cip_col} AS code,
+            COALESCE(major_title, {cip_col}) AS title,
+            feeder_school AS label,
+            profile_weight
+          FROM cohort_slice
+          WHERE {cip_col} IS NOT NULL
+            AND degree <> 'Bachelors'
+            AND feeder_school IS NOT NULL
+            AND feeder_school <> ''
+        ),
+        top_labels AS (
+          SELECT label, SUM(profile_weight) AS total_n
+          FROM eligible
+          GROUP BY label
+          HAVING SUM(profile_weight) > ?
+          ORDER BY total_n DESC
+          LIMIT {limit}
+        ),
+        denom AS (
+          SELECT code, SUM(profile_weight) AS total_n
+          FROM eligible
+          GROUP BY code
+        ),
+        grouped AS (
+          SELECT
+            e.code,
+            MAX(e.title) AS title,
+            e.label,
+            SUM(e.profile_weight) AS n
+          FROM eligible e
+          JOIN top_labels t USING (label)
+          GROUP BY e.code, e.label
+        )
+        SELECT
+          g.code,
+          g.title,
+          g.label,
+          ROUND(g.n, 2) AS n,
+          ROUND(100.0 * g.n / NULLIF(d.total_n, 0), 2) AS share_pct
+        FROM grouped g
+        JOIN denom d USING (code)
+        WHERE g.n > ?
+        ORDER BY g.label, g.title
+        """,
+        [MIN_CELL_WEIGHT, MIN_CELL_WEIGHT],
+    )
+
+
 def _postgrad_detail_degree_values(degree_type: str) -> list[str]:
     if degree_type in {"PhD", "Doctorate", "Research Doctorate", "Other Doctorate"}:
         return RESEARCH_DOCTORATE_VALUES
@@ -4499,6 +4613,7 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
         "show_program_detail": _postgrad_show_program_detail(selected),
         "schools": schools,
         "programs": programs,
+        "feeders": _feeder_schools(con, filters),
     }
 
 
@@ -5510,6 +5625,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                         result["major_role_comparison"] = _major_role_comparison(con, filters)
                         result["major_demographic_comparison"] = _major_demographic_comparison(con, filters)
                         result["major_postgrad_comparison"] = _major_postgrad_comparison(con, filters)
+                        result["major_feeder_comparison"] = _major_feeder_comparison(con, filters)
                         if filters.selected_postgrad_degree:
                             result["postgrad_detail_comparison"] = _postgrad_detail_comparison(con, filters)
                         result["major_concentration"] = _major_concentration(con, filters)
@@ -5605,6 +5721,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                             )
                         else:
                             result["major_postgrad_comparison"] = _major_postgrad_comparison(con, filters)
+                            result["major_feeder_comparison"] = _major_feeder_comparison(con, filters)
                             if filters.selected_postgrad_degree:
                                 result["postgrad_detail_comparison"] = _postgrad_detail_comparison(con, filters)
                 else:
@@ -5621,6 +5738,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                         result["school_role_comparison"] = _school_role_comparison(con, filters)
                         result["school_demographic_comparison"] = _school_demographic_comparison(con, filters)
                         result["school_postgrad_comparison"] = _school_postgrad_comparison(con, filters)
+                        result["school_feeder_comparison"] = _school_feeder_comparison(con, filters)
                         if filters.selected_postgrad_degree:
                             result["postgrad_detail_comparison"] = _postgrad_detail_comparison(con, filters)
                         result["school_concentration"] = _school_concentration(con, filters)
@@ -5711,6 +5829,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                             )
                         else:
                             result["school_postgrad_comparison"] = _school_postgrad_comparison(con, filters)
+                            result["school_feeder_comparison"] = _school_feeder_comparison(con, filters)
                             if filters.selected_postgrad_degree:
                                 result["postgrad_detail_comparison"] = _postgrad_detail_comparison(con, filters)
                 if tab == "earnings":
