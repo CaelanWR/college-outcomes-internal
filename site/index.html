@@ -2212,6 +2212,64 @@
       letter-spacing: -0.02em;
     }
 
+    .compare-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 14px;
+      min-height: auto;
+    }
+
+    .compare-stat-card {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: linear-gradient(180deg, #ffffff, #f7fafc);
+      box-shadow: 0 12px 26px rgba(45,66,106,0.05);
+      padding: 16px 16px 12px;
+      min-width: 0;
+    }
+
+    .compare-stat-card h4 {
+      margin: 0 0 12px;
+      font-size: 1rem;
+      line-height: 1.1;
+      color: var(--navy);
+      font-weight: 850;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .compare-stat-list {
+      display: grid;
+      gap: 9px;
+    }
+
+    .compare-stat-row {
+      display: grid;
+      grid-template-columns: minmax(105px, 1fr) minmax(0, 1.25fr);
+      gap: 12px;
+      align-items: baseline;
+      padding-top: 9px;
+      border-top: 1px solid rgba(22,50,74,0.08);
+    }
+
+    .compare-stat-row span {
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-size: 0.68rem;
+      font-weight: 800;
+    }
+
+    .compare-stat-row strong {
+      color: var(--navy);
+      font-size: 0.95rem;
+      line-height: 1.12;
+      font-weight: 850;
+      text-align: right;
+      overflow-wrap: anywhere;
+    }
+
     .no-data,
     .empty,
     .error {
@@ -4934,6 +4992,48 @@
       return plural ? 'Schools' : 'School';
     }
 
+    function compareStatsEntityName(row) {
+      if (state.selectionMode === 'major_compare') return majorName(row);
+      return shortSchool(row?.school_name || row?.title || row?.code || 'School');
+    }
+
+    function compareStatsText(value, maxLength = 30) {
+      const display = value === null || value === undefined || value === '' ? 'No data' : String(value);
+      return legendLabel(display, maxLength);
+    }
+
+    function compareStatsRows() {
+      const degree = $('degree-select')?.value || 'Bachelors';
+      const fourthLabel = degree === 'Bachelors' ? 'With Grad Degree' : 'Top Industry';
+      return compareRows().map(row => ({
+        title: compareStatsEntityName(row),
+        metrics: [
+          ['Avg New Grad Salary', money(row.weighted_mean_starting_salary ?? row.weighted_mean_salary)],
+          ['Top Employer', compareStatsText(row.top_employer)],
+          ['Most Common Role', compareStatsText(row.top_role)],
+          [fourthLabel, degree === 'Bachelors' ? pct(row.later_degree_pct) : compareStatsText(row.top_industry)],
+        ],
+      }));
+    }
+
+    function drawCompareOverviewStats(id) {
+      const rows = compareStatsRows();
+      if (!rows.length) return noData(id);
+      $(id).innerHTML = `<div class="compare-stat-grid">${rows.map(row => `
+        <article class="compare-stat-card">
+          <h4 title="${escapeHtml(row.title)}">${escapeHtml(compareStatsText(row.title, 34))}</h4>
+          <div class="compare-stat-list">
+            ${row.metrics.map(([label, value]) => `
+              <div class="compare-stat-row">
+                <span>${escapeHtml(label)}</span>
+                <strong title="${escapeHtml(value)}">${escapeHtml(value)}</strong>
+              </div>
+            `).join('')}
+          </div>
+        </article>
+      `).join('')}</div>`;
+    }
+
     function renderComparePage() {
       const tab = state.tab;
       const rows = compareRows();
@@ -5036,16 +5136,20 @@
 
       if (state.viewMode === 'snapshot') {
         $('content').innerHTML = [
+          card('Comparison Snapshot', 'compare-overview-stats', 12, false, { export: false }),
           card(`Alumni Share by ${entity}`, 'compare-alumni', 7, true, { topControl: state.selectionMode === 'major_compare' }),
           card(`${entity} Comparison Table`, 'compare-table', 5, true),
         ].join('');
+        drawCompareOverviewStats('compare-overview-stats');
         drawCompareAlumni('compare-alumni');
         drawCompareTable('compare-table');
       } else {
         $('content').innerHTML = [
+          card('Comparison Snapshot', 'compare-overview-stats', 12, false, { export: false }),
           card(`Alumni Trend by ${entity}`, 'compare-alumni-trend', 7, true, { topControl: state.selectionMode === 'major_compare' }),
           card(`${entity} Comparison Table`, 'compare-table', 5, true),
         ].join('');
+        drawCompareOverviewStats('compare-overview-stats');
         drawCompareAlumniTrend('compare-alumni-trend');
         drawCompareTable('compare-table');
       }
@@ -5262,16 +5366,20 @@
 
       if (state.viewMode === 'overtime') {
         $('content').innerHTML = [
+          card('Comparison Snapshot', 'compare-overview-stats', 12, false, { export: false }),
           card('Major Share Over Time', 'compare-alumni-trend', 12, true, { topControl: true }),
           card(`Salary Trend by Major (${salaryHorizon})`, 'compare-salary-trend', 12, true, { topControl: true, horizonControl: true }),
         ].join('');
+        drawCompareOverviewStats('compare-overview-stats');
         drawCompareAlumniTrend('compare-alumni-trend');
         drawCompareSalaryTrend('compare-salary-trend');
       } else {
         $('content').innerHTML = [
+          card('Comparison Snapshot', 'compare-overview-stats', 12, false, { export: false }),
           card('Major Share of Class', 'compare-alumni', 6, true, { topControl: true }),
           card(`Median Salary by Major (${salaryHorizon})`, 'compare-salary', 6, true, { topControl: true, horizonControl: true }),
         ].join('');
+        drawCompareOverviewStats('compare-overview-stats');
         drawMajorCompareAlumni('compare-alumni');
         drawMajorCompareSalary('compare-salary');
       }

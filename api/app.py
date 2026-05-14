@@ -2097,10 +2097,10 @@ def _current_student_trend_by_major(con: duckdb.DuckDBPyConnection, filters: Que
     )
 
 
-def _school_comparison(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
+def _school_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
     return _records_from_query(
         con,
-        """
+        f"""
         WITH cohort AS (
           SELECT
             unitid,
@@ -2120,6 +2120,66 @@ def _school_comparison(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
             COUNT(DISTINCT CASE WHEN employer IS NOT NULL AND employer <> '' AND unknown_employer_flag = 0 THEN employer END) AS unique_employers
           FROM slice
           GROUP BY unitid
+        ),
+        starting AS (
+          SELECT
+            unitid,
+            SUM(CASE WHEN salary IS NOT NULL THEN profile_weight ELSE 0 END) AS starting_salary_weight,
+            SUM(CASE WHEN salary IS NOT NULL THEN profile_weight * salary ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN profile_weight ELSE 0 END), 0) AS weighted_mean_starting_salary,
+            quantile_cont(salary, 0.5) AS median_starting_salary
+          FROM cohort_slice
+          GROUP BY unitid
+        ),
+        top_employers AS (
+          SELECT unitid, employer AS top_employer
+          FROM (
+            SELECT
+              unitid,
+              employer,
+              ROW_NUMBER() OVER (PARTITION BY unitid ORDER BY SUM(final_weight) DESC, employer) AS rn
+            FROM slice
+            WHERE employer IS NOT NULL
+              AND employer <> ''
+              AND unknown_employer_flag = 0
+              AND named_employer_flag = 1
+              AND career_employer_flag = 1
+              {_same_school_employer_filter(filters)}
+            GROUP BY unitid, employer
+            HAVING SUM(final_weight) > ?
+          )
+          WHERE rn = 1
+        ),
+        top_roles AS (
+          SELECT unitid, role_k50_v3 AS top_role
+          FROM (
+            SELECT
+              unitid,
+              role_k50_v3,
+              ROW_NUMBER() OVER (PARTITION BY unitid ORDER BY SUM(final_weight) DESC, role_k50_v3) AS rn
+            FROM slice
+            WHERE role_k50_v3 IS NOT NULL
+              AND role_k50_v3 <> ''
+              AND NOT (degree = 'Bachelors' AND horizon = '1yr' AND role_k50_v3 = 'Corporate Attorney')
+            GROUP BY unitid, role_k50_v3
+            HAVING SUM(final_weight) > ?
+          )
+          WHERE rn = 1
+        ),
+        top_industries AS (
+          SELECT unitid, industry_k50 AS top_industry
+          FROM (
+            SELECT
+              unitid,
+              industry_k50,
+              ROW_NUMBER() OVER (PARTITION BY unitid ORDER BY SUM(final_weight) DESC, industry_k50) AS rn
+            FROM slice
+            WHERE industry_k50 IS NOT NULL
+              AND industry_k50 <> ''
+            GROUP BY unitid, industry_k50
+            HAVING SUM(final_weight) > ?
+          )
+          WHERE rn = 1
         )
         SELECT
           c.unitid,
@@ -2128,14 +2188,33 @@ def _school_comparison(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
           ROUND(o.salary_weight) AS salary_weight,
           CASE WHEN o.salary_weight > ? THEN ROUND(o.weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
           CASE WHEN o.salary_weight > ? THEN ROUND(o.median_salary) ELSE NULL END AS median_salary,
+          ROUND(s.starting_salary_weight) AS starting_salary_weight,
+          CASE WHEN s.starting_salary_weight > ? THEN ROUND(s.weighted_mean_starting_salary) ELSE NULL END AS weighted_mean_starting_salary,
+          CASE WHEN s.starting_salary_weight > ? THEN ROUND(s.median_starting_salary) ELSE NULL END AS median_starting_salary,
           o.unique_employers,
+          te.top_employer,
+          tr.top_role,
+          ti.top_industry,
           ROUND(100.0 * c.later_degree_n / NULLIF(c.alumni, 0), 1) AS later_degree_pct
         FROM cohort c
         LEFT JOIN outcomes o USING (unitid)
+        LEFT JOIN starting s USING (unitid)
+        LEFT JOIN top_employers te USING (unitid)
+        LEFT JOIN top_roles tr USING (unitid)
+        LEFT JOIN top_industries ti USING (unitid)
         WHERE c.alumni > ?
         ORDER BY o.weighted_mean_salary DESC NULLS LAST, c.alumni DESC
         """,
-        [SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT, MIN_CELL_WEIGHT],
+        [
+            EMPLOYER_ROW_MIN_WEIGHT,
+            MIN_CELL_WEIGHT,
+            MIN_CELL_WEIGHT,
+            SALARY_MIN_WEIGHT,
+            SALARY_MIN_WEIGHT,
+            SALARY_MIN_WEIGHT,
+            SALARY_MIN_WEIGHT,
+            MIN_CELL_WEIGHT,
+        ],
     )
 
 
@@ -2689,6 +2768,70 @@ def _major_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> 
           WHERE {cip_col} IS NOT NULL
           GROUP BY {cip_col}
         ),
+        starting AS (
+          SELECT
+            {cip_col} AS code,
+            SUM(CASE WHEN salary IS NOT NULL THEN profile_weight ELSE 0 END) AS starting_salary_weight,
+            SUM(CASE WHEN salary IS NOT NULL THEN profile_weight * salary ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN profile_weight ELSE 0 END), 0) AS weighted_mean_starting_salary,
+            quantile_cont(salary, 0.5) AS median_starting_salary
+          FROM cohort_slice
+          WHERE {cip_col} IS NOT NULL
+          GROUP BY {cip_col}
+        ),
+        top_employers AS (
+          SELECT code, employer AS top_employer
+          FROM (
+            SELECT
+              {cip_col} AS code,
+              employer,
+              ROW_NUMBER() OVER (PARTITION BY {cip_col} ORDER BY SUM(final_weight) DESC, employer) AS rn
+            FROM slice
+            WHERE {cip_col} IS NOT NULL
+              AND employer IS NOT NULL
+              AND employer <> ''
+              AND unknown_employer_flag = 0
+              AND named_employer_flag = 1
+              AND career_employer_flag = 1
+              {_same_school_employer_filter(filters)}
+            GROUP BY {cip_col}, employer
+            HAVING SUM(final_weight) > ?
+          )
+          WHERE rn = 1
+        ),
+        top_roles AS (
+          SELECT code, role_k50_v3 AS top_role
+          FROM (
+            SELECT
+              {cip_col} AS code,
+              role_k50_v3,
+              ROW_NUMBER() OVER (PARTITION BY {cip_col} ORDER BY SUM(final_weight) DESC, role_k50_v3) AS rn
+            FROM slice
+            WHERE {cip_col} IS NOT NULL
+              AND role_k50_v3 IS NOT NULL
+              AND role_k50_v3 <> ''
+              AND NOT (degree = 'Bachelors' AND horizon = '1yr' AND role_k50_v3 = 'Corporate Attorney')
+            GROUP BY {cip_col}, role_k50_v3
+            HAVING SUM(final_weight) > ?
+          )
+          WHERE rn = 1
+        ),
+        top_industries AS (
+          SELECT code, industry_k50 AS top_industry
+          FROM (
+            SELECT
+              {cip_col} AS code,
+              industry_k50,
+              ROW_NUMBER() OVER (PARTITION BY {cip_col} ORDER BY SUM(final_weight) DESC, industry_k50) AS rn
+            FROM slice
+            WHERE {cip_col} IS NOT NULL
+              AND industry_k50 IS NOT NULL
+              AND industry_k50 <> ''
+            GROUP BY {cip_col}, industry_k50
+            HAVING SUM(final_weight) > ?
+          )
+          WHERE rn = 1
+        ),
         total_cohort AS (
           SELECT SUM(profile_weight) AS total_alumni
           FROM major_compare_total_cohort
@@ -2703,15 +2846,34 @@ def _major_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> 
           ROUND(o.salary_weight) AS salary_weight,
           CASE WHEN o.salary_weight > ? THEN ROUND(o.weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
           CASE WHEN o.salary_weight > ? THEN ROUND(o.median_salary) ELSE NULL END AS median_salary,
+          ROUND(s.starting_salary_weight) AS starting_salary_weight,
+          CASE WHEN s.starting_salary_weight > ? THEN ROUND(s.weighted_mean_starting_salary) ELSE NULL END AS weighted_mean_starting_salary,
+          CASE WHEN s.starting_salary_weight > ? THEN ROUND(s.median_starting_salary) ELSE NULL END AS median_starting_salary,
           o.unique_employers,
+          te.top_employer,
+          tr.top_role,
+          ti.top_industry,
           ROUND(100.0 * c.later_degree_n / NULLIF(c.alumni, 0), 1) AS later_degree_pct
         FROM cohort c
         CROSS JOIN total_cohort t
         LEFT JOIN outcomes o USING (code)
+        LEFT JOIN starting s USING (code)
+        LEFT JOIN top_employers te USING (code)
+        LEFT JOIN top_roles tr USING (code)
+        LEFT JOIN top_industries ti USING (code)
         WHERE c.alumni > ?
         ORDER BY o.weighted_mean_salary DESC NULLS LAST, c.alumni DESC
         """,
-        [SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT, MIN_CELL_WEIGHT],
+        [
+            EMPLOYER_ROW_MIN_WEIGHT,
+            MIN_CELL_WEIGHT,
+            MIN_CELL_WEIGHT,
+            SALARY_MIN_WEIGHT,
+            SALARY_MIN_WEIGHT,
+            SALARY_MIN_WEIGHT,
+            SALARY_MIN_WEIGHT,
+            MIN_CELL_WEIGHT,
+        ],
     )
 
 
@@ -5701,7 +5863,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                         "salary_trend_by_school": _salary_trend_by_school(con, filters),
                         "alumni_trend_by_school": [],
                         "current_student_trend": _current_student_trend(con, filters),
-                        "school_comparison": _school_comparison(con),
+                        "school_comparison": _school_comparison(con, filters),
                         "top_majors": _top_majors(con, filters),
                         "major_trend": _major_trend(con, filters, filters.include_current_students),
                         "employers": _employers(con, filters),
@@ -5837,7 +5999,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                             if filters.selected_postgrad_degree:
                                 result["postgrad_detail_comparison"] = _postgrad_detail_comparison(con, filters)
                 else:
-                    result["school_comparison"] = _school_comparison(con)
+                    result["school_comparison"] = _school_comparison(con, filters)
                     if tab in {"all", "full"}:
                         result["alumni_trend_by_school"] = _alumni_trend_by_school(con, filters)
                         result["salary_trend_by_school"] = _salary_trend_by_school(con, filters)
