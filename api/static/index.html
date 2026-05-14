@@ -2255,8 +2255,8 @@
 
     .compare-stat-row {
       display: grid;
-      grid-template-columns: minmax(105px, 1fr) minmax(0, 1.25fr);
-      gap: 12px;
+      grid-template-columns: minmax(86px, 0.55fr) minmax(0, 1.85fr);
+      gap: 8px;
       align-items: baseline;
       padding-top: 7px;
       border-top: 1px solid rgba(22,50,74,0.08);
@@ -2265,8 +2265,8 @@
     .compare-stat-row span {
       color: var(--muted);
       text-transform: uppercase;
-      letter-spacing: 0.04em;
-      font-size: 0.68rem;
+      letter-spacing: 0.035em;
+      font-size: 0.64rem;
       font-weight: 800;
     }
 
@@ -2276,7 +2276,8 @@
       line-height: 1.12;
       font-weight: 850;
       text-align: right;
-      overflow-wrap: anywhere;
+      overflow-wrap: normal;
+      word-break: normal;
     }
 
     .no-data,
@@ -5009,7 +5010,7 @@
 
     function compareStatsText(value, maxLength = 30) {
       const display = value === null || value === undefined || value === '' ? 'No data' : String(value);
-      return legendLabel(display, maxLength);
+      return maxLength ? legendLabel(display, maxLength) : display;
     }
 
     function compareStatsRows() {
@@ -5018,10 +5019,10 @@
       return compareRows().map(row => ({
         title: compareStatsEntityName(row),
         metrics: [
-          ['Avg New Grad Salary', money(row.weighted_mean_starting_salary ?? row.weighted_mean_salary)],
-          ['Top Employer', compareStatsText(row.top_employer)],
-          ['Most Common Role', compareStatsText(row.top_role)],
-          [fourthLabel, degree === 'Bachelors' ? pct(row.later_degree_pct) : compareStatsText(row.top_industry)],
+          ['New Grad Salary', money(row.weighted_mean_starting_salary ?? row.weighted_mean_salary)],
+          ['Top Employer', compareStatsText(row.top_employer, 0)],
+          ['Common Role', compareStatsText(row.top_role, 0)],
+          [fourthLabel, degree === 'Bachelors' ? pct(row.later_degree_pct) : compareStatsText(row.top_industry, 0)],
         ],
       }));
     }
