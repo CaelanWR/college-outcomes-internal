@@ -5149,7 +5149,7 @@
         $('content').innerHTML = [
           card('Comparison Snapshot', 'compare-overview-stats', 12, false, { export: false, compact: true }),
           card(`Career Earnings After Graduation by ${entity}`, 'compare-career-earnings', 12, true),
-          card(`Alumni Share by ${entity}`, 'compare-alumni', 7, true, { topControl: state.selectionMode === 'major_compare' }),
+          card(`Alumni Count by ${entity}`, 'compare-alumni', 7, true, { topControl: state.selectionMode === 'major_compare' }),
           card(`${entity} Comparison Table`, 'compare-table', 5, true),
         ].join('');
         drawCompareOverviewStats('compare-overview-stats');
@@ -7196,20 +7196,22 @@
     function drawSchoolAlumniComparison(id) {
       const rows = (state.data.school_comparison || []).filter(r => r.alumni).sort((a, b) => a.alumni - b.alumni);
       if (!rows.length) return noData(id);
-      const totalAlumni = rows.reduce((sum, row) => sum + Number(row.alumni || 0), 0) || 1;
-      const shareOfCompared = row => 100 * Number(row.alumni || 0) / totalAlumni;
+      const layout = horizontalBarLayout(id, rows, '');
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
         y: rows.map(r => wrapAxisLabel(shortSchool(r.school_name))),
-        x: rows.map(shareOfCompared),
-        text: rows.map(r => pct(shareOfCompared(r))),
+        x: rows.map(r => Number(r.alumni || 0)),
+        text: rows.map(r => people(r.alumni)),
         textposition: 'outside',
         cliponaxis: false,
         customdata: rows.map(r => shortSchool(r.school_name)),
         marker: { color: COLORS[1] },
-        hovertemplate: '%{customdata}<br>%{x:.1f}% of compared alumni<extra></extra>',
-      }], horizontalBarLayout(id, rows, '%'), plotConfig);
+        hovertemplate: '%{customdata}<br>%{x:,.0f} alumni<extra></extra>',
+      }], {
+        ...layout,
+        xaxis: { ...layout.xaxis, title: 'Alumni count' },
+      }, plotConfig);
     }
 
     function drawSchoolFurtherEdComparison(id) {
