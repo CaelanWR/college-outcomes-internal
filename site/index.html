@@ -5148,19 +5148,23 @@
       if (state.viewMode === 'snapshot') {
         $('content').innerHTML = [
           card('Comparison Snapshot', 'compare-overview-stats', 12, false, { export: false, compact: true }),
+          card(`Career Earnings After Graduation by ${entity}`, 'compare-career-earnings', 12, true),
           card(`Alumni Share by ${entity}`, 'compare-alumni', 7, true, { topControl: state.selectionMode === 'major_compare' }),
           card(`${entity} Comparison Table`, 'compare-table', 5, true),
         ].join('');
         drawCompareOverviewStats('compare-overview-stats');
+        drawCareerEarnings('compare-career-earnings');
         drawCompareAlumni('compare-alumni');
         drawCompareTable('compare-table');
       } else {
         $('content').innerHTML = [
           card('Comparison Snapshot', 'compare-overview-stats', 12, false, { export: false, compact: true }),
+          card(`Career Earnings After Graduation by ${entity}`, 'compare-career-earnings', 12, true),
           card(`Alumni Trend by ${entity}`, 'compare-alumni-trend', 7, true, { topControl: state.selectionMode === 'major_compare' }),
           card(`${entity} Comparison Table`, 'compare-table', 5, true),
         ].join('');
         drawCompareOverviewStats('compare-overview-stats');
+        drawCareerEarnings('compare-career-earnings');
         drawCompareAlumniTrend('compare-alumni-trend');
         drawCompareTable('compare-table');
       }
@@ -5378,19 +5382,23 @@
       if (state.viewMode === 'overtime') {
         $('content').innerHTML = [
           card('Comparison Snapshot', 'compare-overview-stats', 12, false, { export: false, compact: true }),
+          card('Career Earnings After Graduation by Major', 'compare-career-earnings', 12, true),
           card('Major Share Over Time', 'compare-alumni-trend', 12, true, { topControl: true }),
           card(`Salary Trend by Major (${salaryHorizon})`, 'compare-salary-trend', 12, true, { topControl: true, horizonControl: true }),
         ].join('');
         drawCompareOverviewStats('compare-overview-stats');
+        drawCareerEarnings('compare-career-earnings');
         drawCompareAlumniTrend('compare-alumni-trend');
         drawCompareSalaryTrend('compare-salary-trend');
       } else {
         $('content').innerHTML = [
           card('Comparison Snapshot', 'compare-overview-stats', 12, false, { export: false, compact: true }),
+          card('Career Earnings After Graduation by Major', 'compare-career-earnings', 12, true),
           card('Major Share of Class', 'compare-alumni', 6, true, { topControl: true }),
           card(`Median Salary by Major (${salaryHorizon})`, 'compare-salary', 6, true, { topControl: true, horizonControl: true }),
         ].join('');
         drawCompareOverviewStats('compare-overview-stats');
+        drawCareerEarnings('compare-career-earnings');
         drawMajorCompareAlumni('compare-alumni');
         drawMajorCompareSalary('compare-salary');
       }

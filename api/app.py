@@ -5908,6 +5908,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                         return result
                     if tab == "overview":
                         result["current_student_trend_by_major"] = _current_student_trend_by_major(con, filters)
+                        result["career"] = {"earnings": _career_earnings(con, filters)}
                     if view_mode == "overtime" and tab == "overview":
                         result["alumni_trend_by_major"] = _alumni_trend_by_major(con, filters)
                         result["salary_trend_by_major"] = _salary_trend_by_major(con, filters)
@@ -6000,6 +6001,8 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                                 result["postgrad_detail_comparison"] = _postgrad_detail_comparison(con, filters)
                 else:
                     result["school_comparison"] = _school_comparison(con, filters)
+                    if tab == "overview":
+                        result["career"] = {"earnings": _career_earnings(con, filters)}
                     if tab in {"all", "full"}:
                         result["alumni_trend_by_school"] = _alumni_trend_by_school(con, filters)
                         result["salary_trend_by_school"] = _salary_trend_by_school(con, filters)
