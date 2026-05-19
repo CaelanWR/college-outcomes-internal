@@ -12,29 +12,31 @@
   <style>
     :root {
       --ink: #2D426A;
-      --muted: #607090;
-      --label: #8fa0bc;
-      --line: #E2E8F2;
+      --muted: #667791;
+      --label: #8795A8;
+      --line: #E4EBF3;
       --panel: #ffffff;
-      --panel-soft: #F6F8FB;
-      --bg: #F6F8FB;
+      --panel-soft: #F4F8FB;
+      --bg: #F4F8FB;
       --navy: #2D426A;
-      --navy-dark: #1e2f4f;
-      --navy-mid: #3d5585;
-      --blue: #48AFF4;
-      --blue-2: #6797E0;
+      --navy-dark: #18263E;
+      --navy-mid: #405B8C;
+      --blue: #49C8FF;
+      --blue-2: #2F83D0;
       --green: #48EB8F;
-      --green-dim: #2cc470;
-      --gold: #F9B26C;
-      --rose: #E76A87;
-      --violet: #B582D9;
+      --green-dim: #00A878;
+      --cyan: #42B8DA;
+      --gold: #D7A42B;
+      --rose: #E33F46;
+      --pink: #E783C4;
+      --violet: #A77BDD;
       --tm-ink: #2D426A;
-      --tm-muted: #899499;
-      --tm-line: #E6EBF2;
-      --tm-low: #F6F8FB;
-      --tm-mid: #48AFF4;
+      --tm-muted: #7F8EA3;
+      --tm-line: #E4EBF3;
+      --tm-low: #F4F8FB;
+      --tm-mid: #49C8FF;
       --tm-high: #2D426A;
-      --tm-gray: #B9C4D3;
+      --tm-gray: #A8B5C4;
       --tm-shadow: 0 8px 24px rgba(45, 66, 106, 0.08);
       --shadow: 0 10px 30px rgba(45, 66, 106, 0.08);
       --radius: 22px;
@@ -51,9 +53,10 @@
       margin: 0;
       color: var(--ink);
       font-family: 'DM Sans', 'Source Sans 3', ui-sans-serif, system-ui, sans-serif;
-      background: radial-gradient(circle at top right, rgba(72,235,143,0.12), transparent 26%),
-        radial-gradient(circle at top left, rgba(45,66,106,0.07), transparent 28%),
-        linear-gradient(180deg, #F6F8FB 0%, #EEF4F9 100%);
+      background:
+        radial-gradient(circle at 10% 4%, rgba(73,200,255,0.13), transparent 24%),
+        radial-gradient(circle at 92% 0%, rgba(72,235,143,0.12), transparent 26%),
+        linear-gradient(180deg, #F8FAFC 0%, #EEF4F8 100%);
       min-height: 100vh;
       overflow-x: hidden;
     }
@@ -78,8 +81,9 @@
       padding: 22px 22px 20px;
       color: white;
       background:
-        radial-gradient(circle at 84% 16%, rgba(72,235,143,0.18), transparent 28%),
-        linear-gradient(135deg, var(--navy-dark) 0%, var(--navy) 62%, var(--navy-mid) 100%);
+        radial-gradient(circle at 86% 8%, rgba(73,200,255,0.20), transparent 28%),
+        radial-gradient(circle at 8% 0%, rgba(72,235,143,0.18), transparent 26%),
+        linear-gradient(135deg, var(--navy-dark) 0%, var(--navy) 68%, var(--navy-mid) 100%);
       border-bottom: 3px solid var(--green);
       box-shadow: inset 0 -1px 0 rgba(255,255,255,0.12);
     }
@@ -646,7 +650,7 @@
     }
 
     .card, .metric {
-      background: linear-gradient(180deg, rgba(255,255,255,0.99), rgba(246,248,251,0.97));
+      background: linear-gradient(180deg, rgba(255,255,255,0.995), rgba(247,250,252,0.975));
       border: 1px solid var(--line);
       border-radius: var(--radius);
       box-shadow: 0 16px 34px rgba(45,66,106,0.07);
@@ -1175,8 +1179,9 @@
       position: relative;
       overflow: hidden;
       background:
-        radial-gradient(circle at 82% 16%, rgba(72,235,143,0.18), transparent 30%),
-        linear-gradient(135deg, var(--navy-dark) 0%, var(--navy) 62%, var(--navy-mid) 100%);
+        radial-gradient(circle at 82% 12%, rgba(73,200,255,0.20), transparent 30%),
+        radial-gradient(circle at 14% 6%, rgba(72,235,143,0.16), transparent 28%),
+        linear-gradient(135deg, var(--navy-dark) 0%, var(--navy) 66%, var(--navy-mid) 100%);
       color: white;
       padding: 44px 28px 30px;
       border-bottom: 3px solid var(--green);
@@ -1222,8 +1227,9 @@
       content: '';
       position: absolute;
       inset: 0;
-      background: radial-gradient(circle at top right, rgba(72,235,143,0.15), transparent 32%),
-        radial-gradient(circle at bottom left, rgba(255,255,255,0.10), transparent 26%);
+      background:
+        radial-gradient(circle at top right, rgba(73,200,255,0.14), transparent 32%),
+        radial-gradient(circle at bottom left, rgba(72,235,143,0.11), transparent 26%);
       pointer-events: none;
     }
 
@@ -1723,7 +1729,7 @@
     }
 
     .card {
-      background: linear-gradient(180deg, rgba(255,255,255,0.99), rgba(246,248,251,0.96));
+      background: linear-gradient(180deg, rgba(255,255,255,0.99), rgba(247,250,252,0.96));
       border: 1px solid var(--line);
       border-radius: 22px;
       box-shadow: 0 12px 28px rgba(45,66,106,0.06);
@@ -1735,8 +1741,8 @@
 
     .card:hover,
     .metric:hover {
-      border-color: rgba(72,235,143,0.48);
-      box-shadow: 0 18px 38px rgba(45,66,106,0.08);
+      border-color: rgba(73,200,255,0.42);
+      box-shadow: 0 18px 38px rgba(45,66,106,0.08), inset 0 2px 0 rgba(72,235,143,0.18);
     }
 
     .card h3 {
@@ -2169,7 +2175,7 @@
     }
 
     .metric {
-      background: linear-gradient(180deg, #ffffff, #F6F8FB);
+      background: linear-gradient(180deg, #ffffff, #F7FAFC);
       border: 1px solid var(--line);
       border-radius: 20px;
       padding: 18px;
@@ -2190,7 +2196,7 @@
 
     .metric.current-students {
       border-color: rgba(72,235,143,0.48);
-      background: linear-gradient(180deg, rgba(246,255,250,0.98), rgba(232,252,241,0.92));
+      background: linear-gradient(180deg, rgba(248,255,251,0.98), rgba(233,253,243,0.92));
     }
 
     .metric.current-students strong {
@@ -2231,7 +2237,7 @@
     .compare-stat-card {
       border: 1px solid var(--line);
       border-radius: 18px;
-      background: linear-gradient(180deg, #ffffff, #f7fafc);
+      background: linear-gradient(180deg, #ffffff, #F8FBFD);
       box-shadow: 0 12px 26px rgba(45,66,106,0.05);
       padding: 13px 14px 10px;
       min-width: 0;
@@ -2618,21 +2624,21 @@
   <script src="./config.js"></script>
   <script>
     const COLORS = [
-      '#48AFF4', '#5DDA93', '#B582D9', '#F9B26C',
-      '#6797E0', '#E76A87', '#1CCEC5', '#F4D35D',
-      '#F391D4', '#9CA4B4', '#9AD3F9', '#8BDFB0'
+      '#49C8FF', '#00A878', '#E783C4', '#D7A42B',
+      '#E33F46', '#2F83D0', '#48EB8F', '#A8B5C4',
+      '#42B8DA', '#A77BDD', '#536176', '#CAD3DE'
     ];
     const THEME = {
       navy: '#2D426A',
-      navyDark: '#1e2f4f',
-      navyMid: '#3d5585',
+      navyDark: '#18263E',
+      navyMid: '#405B8C',
       green: '#48EB8F',
-      greenDim: '#2cc470',
-      muted: '#607090',
-      label: '#8fa0bc',
-      border: '#E2E8F2',
-      grid: '#EAECF0',
-      bg: '#F6F8FB'
+      greenDim: '#00A878',
+      muted: '#667791',
+      label: '#8795A8',
+      border: '#E4EBF3',
+      grid: '#EAF0F5',
+      bg: '#F4F8FB'
     };
     const storage = window.localStorage;
     const state = {
