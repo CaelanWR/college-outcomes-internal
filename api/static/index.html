@@ -6,7 +6,7 @@
   <title>College Outcomes Explorer</title>
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
   <link rel="shortcut icon" href="./favicon.svg" />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800;900&family=Lora:ital,wght@0,400;0,600;1,400&family=Source+Sans+3:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@300;400;600;700;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="preconnect" href="https://cdn.plot.ly" />
   <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
   <style>
@@ -52,7 +52,7 @@
     body {
       margin: 0;
       color: var(--ink);
-      font-family: 'DM Sans', 'Source Sans 3', ui-sans-serif, system-ui, sans-serif;
+      font-family: 'Source Sans Pro', 'Source Sans 3', ui-sans-serif, system-ui, sans-serif;
       background:
         radial-gradient(circle at 10% 4%, rgba(73,200,255,0.13), transparent 24%),
         radial-gradient(circle at 92% 0%, rgba(72,235,143,0.12), transparent 26%),
@@ -93,7 +93,7 @@
       font-size: clamp(24px, 2.2vw, 36px);
       letter-spacing: -0.02em;
       line-height: 1;
-      font-family: 'Lora', serif;
+      font-family: 'Source Sans Pro', 'Source Sans 3', ui-sans-serif, system-ui, sans-serif;
       font-weight: 600;
     }
 
@@ -419,7 +419,7 @@
 
     .loading-copy strong {
       display: block;
-      font-family: 'Lora', serif;
+      font-family: 'Source Sans Pro', 'Source Sans 3', ui-sans-serif, system-ui, sans-serif;
       font-size: clamp(1.35rem, 2.5vw, 1.75rem);
       line-height: 1;
       letter-spacing: -0.02em;
@@ -670,7 +670,7 @@
       letter-spacing: -0.03em;
       line-height: 1;
       font-weight: 900;
-      font-family: 'Lora', serif;
+      font-family: 'Source Sans Pro', 'Source Sans 3', ui-sans-serif, system-ui, sans-serif;
       color: var(--navy);
     }
 
@@ -1207,7 +1207,7 @@
       font-size: clamp(2rem, 4vw, 3rem);
       letter-spacing: -0.03em;
       margin: 0;
-      font-family: 'Lora', serif;
+      font-family: 'Source Sans Pro', 'Source Sans 3', ui-sans-serif, system-ui, sans-serif;
       font-weight: 600;
     }
 
@@ -1216,7 +1216,7 @@
       display: block;
       margin-top: 10px;
       color: var(--green);
-      font-family: 'DM Sans', 'Source Sans 3', sans-serif;
+      font-family: 'Source Sans Pro', 'Source Sans 3', ui-sans-serif, system-ui, sans-serif;
       font-size: 0.72rem;
       font-weight: 800;
       letter-spacing: 0.14em;
@@ -2190,7 +2190,7 @@
       font-size: clamp(1.45rem, 2.6vw, 2rem);
       font-weight: 800;
       letter-spacing: -0.03em;
-      font-family: 'Lora', serif;
+      font-family: 'Source Sans Pro', 'Source Sans 3', ui-sans-serif, system-ui, sans-serif;
       color: var(--navy);
     }
 
@@ -2212,7 +2212,7 @@
     }
 
     .metric.metric-text strong {
-      font-family: 'Source Sans 3', 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+      font-family: 'Source Sans Pro', 'Source Sans 3', ui-sans-serif, system-ui, sans-serif;
       font-size: clamp(1.05rem, 1.55vw, 1.35rem);
       line-height: 1.08;
       letter-spacing: -0.02em;
@@ -2705,7 +2705,7 @@
     let exportTrayNote = '';
 
     const layoutBase = {
-      font: { family: '"Source Sans 3", "DM Sans", ui-sans-serif, system-ui, sans-serif', color: THEME.navy, size: 13 },
+      font: { family: '"Source Sans Pro", "Source Sans 3", ui-sans-serif, system-ui, sans-serif', color: THEME.navy, size: 13 },
       paper_bgcolor: 'rgba(0,0,0,0)',
       plot_bgcolor: 'rgba(0,0,0,0)',
       margin: { l: 72, r: 28, t: 20, b: 62 },
@@ -2731,7 +2731,7 @@
       hoverlabel: {
         bgcolor: '#FFFFFF',
         bordercolor: THEME.navy,
-        font: { family: '"Source Sans 3", "DM Sans", ui-sans-serif, system-ui, sans-serif', color: THEME.navy, size: 13 }
+        font: { family: '"Source Sans Pro", "Source Sans 3", ui-sans-serif, system-ui, sans-serif', color: THEME.navy, size: 13 }
       },
     };
     const plotConfig = { responsive: true, displayModeBar: false };
@@ -4397,10 +4397,10 @@
       svg.setAttribute('width', String(width));
       svg.setAttribute('height', String(exportHeight));
       svg.setAttribute('viewBox', `0 0 ${width} ${exportHeight}`);
-      svg.setAttribute('style', 'background:#fff;font-family:Source Sans 3,Arial,sans-serif;');
+      svg.setAttribute('style', 'background:#fff;font-family:Source Sans Pro,Source Sans 3,Arial,sans-serif;');
       const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
       style.textContent = `
-        text { font-family: "Source Sans 3", Arial, sans-serif; }
+        text { font-family: "Source Sans Pro", "Source Sans 3", Arial, sans-serif; }
         .xtick text, .ytick text, .ztick text, .legendtext, .gtitle, .annotation-text,
         .bartext, .textpoint, .pielabel, .cbtitle, .colorbar text { fill: #2D426A; }
         .slicetext { fill: #fff; font-weight: 800; }
@@ -8460,7 +8460,7 @@
         ...layoutBase,
         paper_bgcolor: '#FFFFFF',
         plot_bgcolor: '#FFFFFF',
-        font: { family: '"Source Sans 3", ui-sans-serif, system-ui, sans-serif', color: '#2D426A', size: 13 },
+        font: { family: '"Source Sans Pro", "Source Sans 3", ui-sans-serif, system-ui, sans-serif', color: '#2D426A', size: 13 },
         width: plotWidth,
         height: plotHeight,
         margin: { l: 0, r: 0, t: 0, b: 0 },
