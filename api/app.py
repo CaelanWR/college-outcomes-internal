@@ -29,6 +29,7 @@ MIN_CELL_WEIGHT = float(os.environ.get("MIN_CELL_WEIGHT", "0"))
 SALARY_MIN_WEIGHT = float(os.environ.get("SALARY_MIN_WEIGHT", "0"))
 EMPLOYER_ROW_MIN_WEIGHT = float(os.environ.get("EMPLOYER_ROW_MIN_WEIGHT", str(MIN_CELL_WEIGHT)))
 GEOGRAPHY_ROW_MIN_WEIGHT = float(os.environ.get("GEOGRAPHY_ROW_MIN_WEIGHT", str(MIN_CELL_WEIGHT)))
+DESTINATION_HIERARCHY_MIN_WEIGHT = float(os.environ.get("DESTINATION_HIERARCHY_MIN_WEIGHT", "3"))
 SALARY_DISTRIBUTION_BUCKETS = int(os.environ.get("SALARY_DISTRIBUTION_BUCKETS", "32"))
 INTERNSHIP_RATE_START_YEAR = int(os.environ.get("OUTCOMES_INTERNSHIP_RATE_START_YEAR", "2020"))
 INTERNSHIP_RATE_END_YEAR = int(os.environ.get("OUTCOMES_INTERNSHIP_RATE_END_YEAR", "2025"))
@@ -1496,7 +1497,7 @@ def _alumni_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list
         WHERE alumni > ?
         ORDER BY grad_year
         """,
-        [MIN_CELL_WEIGHT],
+        [DESTINATION_HIERARCHY_MIN_WEIGHT],
     )
 
 
@@ -1663,7 +1664,7 @@ def _alumni_trend_by_school(con: duckdb.DuckDBPyConnection, filters: QueryReques
         WHERE alumni > ?
         ORDER BY school_name, grad_year
         """,
-        [MIN_CELL_WEIGHT],
+        [DESTINATION_HIERARCHY_MIN_WEIGHT],
     )
 
 
@@ -4212,6 +4213,97 @@ def _role_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[s
     }
 
 
+def _destination_trend_group(
+    con: duckdb.DuckDBPyConnection,
+    filters: QueryRequest,
+    label_expr: str,
+    *,
+    extra_where: str = "",
+) -> list[dict[str, Any]]:
+    limit = _safe_limit(filters.top_n)
+    return _records_from_query(
+        con,
+        f"""
+        WITH eligible AS (
+          SELECT
+            grad_year,
+            {label_expr} AS label,
+            final_weight,
+            salary
+          FROM slice
+          WHERE grad_year IS NOT NULL
+            AND {label_expr} IS NOT NULL
+            AND TRIM({label_expr}) <> ''
+            AND LOWER(TRIM({label_expr})) NOT IN ('empty', 'unknown', 'other')
+            {extra_where}
+        ),
+        top_labels AS (
+          SELECT label, SUM(final_weight) AS total_n
+          FROM eligible
+          GROUP BY label
+          HAVING SUM(final_weight) > ?
+          ORDER BY total_n DESC
+          LIMIT {limit}
+        ),
+        by_year AS (
+          SELECT
+            e.grad_year,
+            e.label,
+            SUM(e.final_weight) AS n,
+            SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight ELSE 0 END) AS salary_weight,
+            SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight * e.salary ELSE 0 END) AS salary_sum
+          FROM eligible e
+          JOIN top_labels t USING (label)
+          GROUP BY e.grad_year, e.label
+        ),
+        totals AS (
+          SELECT grad_year, SUM(final_weight) AS total_n
+          FROM eligible
+          GROUP BY grad_year
+        )
+        SELECT
+          b.grad_year,
+          b.label,
+          ROUND(b.n, 2) AS n,
+          ROUND(100.0 * b.n / NULLIF(t.total_n, 0), 2) AS share_pct,
+          b.salary_weight,
+          b.salary_sum,
+          ROUND(b.salary_sum / NULLIF(b.salary_weight, 0)) AS weighted_mean_salary
+        FROM by_year b
+        JOIN totals t USING (grad_year)
+        WHERE b.n > ?
+        ORDER BY b.label, b.grad_year
+        """,
+        [DESTINATION_HIERARCHY_MIN_WEIGHT, DESTINATION_HIERARCHY_MIN_WEIGHT],
+    )
+
+
+def _destination_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, list[dict[str, Any]]]:
+    base_columns = _dataset_columns("base_fact")
+    industry_expr = "industry_k200" if "industry_k200" in base_columns else "industry_k50"
+    same_school_filter = _same_school_employer_filter(filters)
+    return {
+        "roles": _destination_trend_group(
+            con,
+            filters,
+            "role_k50_v3",
+            extra_where="AND NOT (degree = 'Bachelors' AND horizon = '1yr' AND role_k50_v3 = 'Corporate Attorney')",
+        ),
+        "employers": _destination_trend_group(
+            con,
+            filters,
+            "employer",
+            extra_where=f"""
+              AND unknown_employer_flag = 0
+              AND named_employer_flag = 1
+              AND career_employer_flag = 1
+              {same_school_filter}
+            """,
+        ),
+        "industries": _destination_trend_group(con, filters, industry_expr),
+    }
+
+
 def _roles(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
     limit = _safe_limit(filters.top_n)
     role_rows = _records_from_query(
@@ -4269,7 +4361,6 @@ def _role_industry_hierarchy(con: duckdb.DuckDBPyConnection, filters: QueryReque
     role_detail_expr = "NULLIF(TRIM(role_k150_v3), '')" if "role_k150_v3" in base_columns else "NULL"
     industry_expr = "TRIM(industry_k200)" if "industry_k200" in base_columns else "TRIM(industry_k50)"
     industry_detail_expr = "NULLIF(TRIM(industry_k400), '')" if "industry_k400" in base_columns else "NULL"
-    max_rows = max(5000, _safe_limit(filters.top_n) * 250)
     return _records_from_query(
         con,
         f"""
@@ -4292,10 +4383,10 @@ def _role_industry_hierarchy(con: duckdb.DuckDBPyConnection, filters: QueryReque
           AND LOWER({industry_expr}) NOT IN ('empty', 'unknown', 'other')
           AND NOT (degree = 'Bachelors' AND horizon = '1yr' AND role_k50_v3 = 'Corporate Attorney')
         GROUP BY role_k50_v3, role_k150_v3, industry_k200, industry_k400
-        HAVING SUM(final_weight) > 0
+        HAVING SUM(final_weight) > ?
         ORDER BY SUM(final_weight) DESC
-        LIMIT {max_rows}
         """,
+        [DESTINATION_HIERARCHY_MIN_WEIGHT],
     )
 
 
@@ -4306,7 +4397,6 @@ def _role_employer_industry_hierarchy(con: duckdb.DuckDBPyConnection, filters: Q
     industry_expr = "TRIM(industry_k200)" if "industry_k200" in base_columns else "TRIM(industry_k50)"
     industry_detail_expr = "NULLIF(TRIM(industry_k400), '')" if "industry_k400" in base_columns else "NULL"
     same_school_filter = _same_school_employer_filter(filters)
-    max_rows = max(8000, _safe_limit(filters.top_n) * 400)
     return _records_from_query(
         con,
         f"""
@@ -4333,10 +4423,10 @@ def _role_employer_industry_hierarchy(con: duckdb.DuckDBPyConnection, filters: Q
           {same_school_filter}
           AND NOT (degree = 'Bachelors' AND horizon = '1yr' AND role_k50_v3 = 'Corporate Attorney')
         GROUP BY role_k50_v3, role_k150_v3, employer, industry_k200, industry_k400
-        HAVING SUM(final_weight) > 0
+        HAVING SUM(final_weight) > ?
         ORDER BY SUM(final_weight) DESC
-        LIMIT {max_rows}
         """,
+        [DESTINATION_HIERARCHY_MIN_WEIGHT],
     )
 
 
@@ -5920,6 +6010,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                         "geography_trend": _geography_trend(con, filters),
                         "roles": _roles(con, filters),
                         "role_trend": _role_trend(con, filters),
+                        "destination_trend": _destination_trend(con, filters),
                         "career": _career(con, filters),
                         "coverage": _coverage(con, filters),
                         "demographics": _demographics(con),
@@ -6204,7 +6295,14 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                     result["geography_trend"] = _geography_trend(con, filters)
                 return result
 
-            if tab in {"roles", "destinations"}:
+            if tab == "destinations":
+                if view_mode == "snapshot":
+                    result["roles"] = _roles(con, filters)
+                else:
+                    result["destination_trend"] = _destination_trend(con, filters)
+                return result
+
+            if tab == "roles":
                 if view_mode == "snapshot":
                     result["roles"] = _roles(con, filters)
                 else:
