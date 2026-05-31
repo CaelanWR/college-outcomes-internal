@@ -115,6 +115,117 @@ After extraction succeeds:
 
 Render also supports SCP for disk-backed paid services after SSH setup. SCP is secure too, but Magic-Wormhole is usually faster to set up for a one-time data transfer.
 
+## Batch Uploads For More Schools
+
+Use batch uploads when you want to add schools gradually, for example 100 schools at a time, without uploading the full multi-GB platform archive every round.
+
+This works because the API recursively reads every Parquet file under:
+
+```text
+/var/data/outcomes/platform_parquet/
+```
+
+Each batch should extract into its own non-overwriting subfolder, such as:
+
+```text
+platform_parquet/base_fact/schools-001/part-00000.parquet
+platform_parquet/work_facts/annual_salary/schools-001/part-00000.parquet
+platform_parquet/base_fact/schools-002/part-00000.parquet
+platform_parquet/work_facts/annual_salary/schools-002/part-00000.parquet
+```
+
+Do not drop batch files directly into a shared directory with generic names like `part-00000.parquet`, because later batches can overwrite earlier ones.
+
+### Create A School Batch Archive
+
+On the machine that has the latest extracted `platform_parquet`, create a text file with one `unitid` per line:
+
+```text
+110635
+190150
+243744
+```
+
+Then package the batch:
+
+```bash
+cd /Users/caelan/Downloads/Untitled/college_outcomes_platform
+.venv/bin/python scripts/package_school_batch.py \
+  --source /Users/caelan/Downloads/school_outcomes_data_v4_3/platform_parquet \
+  --schools-file /Users/caelan/Downloads/school-batch-001.txt \
+  --batch-name schools-001 \
+  --output /Users/caelan/Downloads/outcomes-schools-001.tar.gz
+```
+
+You can also pass unitids inline:
+
+```bash
+.venv/bin/python scripts/package_school_batch.py \
+  --source /Users/caelan/Downloads/school_outcomes_data_v4_3/platform_parquet \
+  --school 110635,190150,243744 \
+  --batch-name schools-001 \
+  --output /Users/caelan/Downloads/outcomes-schools-001.tar.gz
+```
+
+The archive contains only rows for those schools for datasets with a `unitid` column. Reference datasets are copied in because they are small.
+
+### Upload And Activate A Batch On Render
+
+In the Render Shell:
+
+```bash
+mkdir -p /var/data/outcomes
+cd /var/data/outcomes
+wormhole receive
+```
+
+On your laptop:
+
+```bash
+wormhole send /Users/caelan/Downloads/outcomes-schools-001.tar.gz
+```
+
+Back in the Render Shell:
+
+```bash
+cd /var/data/outcomes
+tar -xzf outcomes-schools-001.tar.gz
+rm outcomes-schools-001.tar.gz
+find platform_parquet/base_fact/schools-001 -name '*.parquet' | head
+```
+
+Restart or redeploy the Render service after each extracted batch. The API caches dataset file lists in process memory, so it will not reliably see new batch files until restart.
+
+### Warm The New Schools
+
+After redeploy, open the site and query one of the new schools, or call `/api/warm-cache` for the schools you expect users to open first. Warming is useful because the API creates per-school cache Parquet files on first use.
+
+### When To Use A Full Replacement Instead
+
+Use a full archive replacement when the precompute changes logic globally, for example:
+
+- Weighting/calibration changes.
+- CIP mapping changes.
+- New columns or renamed columns.
+- Rebuilt work facts or career features.
+- A bug fix that changes existing schools, not just adds new schools.
+
+For full replacement, move the old `platform_parquet` aside, extract the new full archive, and redeploy:
+
+```bash
+cd /var/data/outcomes
+mv platform_parquet platform_parquet_old_$(date +%Y%m%d_%H%M%S)
+tar -xzf outcomes-platform.tar.gz
+```
+
+Batch uploads are best for additive school rollout from the same precompute version.
+
+Avoid putting the same `unitid` in multiple active batches. If you need to replace an existing school's data, do a full replacement or remove the old batch files and clear the school cache before redeploying:
+
+```bash
+rm -rf /var/data/outcomes_school_cache/*
+```
+
 ## 3. Verify The API
 
 Open:

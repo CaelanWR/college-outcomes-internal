@@ -2321,6 +2321,39 @@
       color: var(--navy);
     }
 
+    .destination-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 15px 16px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255,255,255,0.82);
+      box-shadow: 0 12px 24px rgba(45,66,106,0.05);
+    }
+
+    .destination-toolbar-group {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .destination-toolbar-label {
+      color: var(--muted);
+      font-size: 0.74rem;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .destination-toolbar .segmented {
+      flex-wrap: wrap;
+    }
+
     .metric {
       background: linear-gradient(180deg, #ffffff, #F7FAFC);
       border: 1px solid var(--line);
@@ -2794,10 +2827,9 @@
   <nav class="tabs" id="tabs">
     <button class="tab active" data-tab="overview"><svg class="tab-icon" aria-hidden="true"><use href="#icon-overview"></use></svg>Overview</button>
     <button class="tab" data-tab="earnings"><svg class="tab-icon" aria-hidden="true"><use href="#icon-earnings"></use></svg>Starting Salary</button>
-    <button class="tab" data-tab="employers"><svg class="tab-icon" aria-hidden="true"><use href="#icon-employers"></use></svg>Employers</button>
+    <button class="tab" data-tab="destinations"><svg class="tab-icon" aria-hidden="true"><use href="#icon-employers"></use></svg>Destinations</button>
     <button class="tab" data-tab="career"><svg class="tab-icon" aria-hidden="true"><use href="#icon-career"></use></svg>Career</button>
     <button class="tab" data-tab="geography"><svg class="tab-icon" aria-hidden="true"><use href="#icon-geography"></use></svg>Geography</button>
-    <button class="tab" data-tab="roles"><svg class="tab-icon" aria-hidden="true"><use href="#icon-roles"></use></svg>Roles</button>
     <button class="tab" data-tab="demographics"><svg class="tab-icon" aria-hidden="true"><use href="#icon-demographics"></use></svg>Demographics</button>
     <button class="tab" data-tab="postgrad"><svg class="tab-icon" aria-hidden="true"><use href="#icon-postgrad"></use></svg>Further Education</button>
     <button class="tab" data-tab="coverage"><svg class="tab-icon" aria-hidden="true"><use href="#icon-coverage"></use></svg>Coverage</button>
@@ -2844,6 +2876,10 @@
       activeDrilldownContext: null,
       roleTreePath: [],
       industryTreePath: [],
+      destinationRelation: storage.getItem('outcomes.destinationRelation') || 'roles_employers',
+      destinationHorizon: storage.getItem('outcomes.destinationHorizon') || 'all',
+      destinationLeftPath: [],
+      destinationRightPath: [],
       topNByChart: {},
       appliedAdvanced: null,
       loading: false,
@@ -2883,9 +2919,59 @@
     ];
     const REQUEST_TOP_N = Math.max(...TOP_N_OPTIONS);
     const DASHBOARD_CACHE_LIMIT = 120;
-    const TAB_ORDER = ['career', 'earnings', 'employers', 'geography', 'roles', 'demographics', 'postgrad', 'coverage', 'overview'];
+    const TAB_ORDER = ['career', 'earnings', 'destinations', 'geography', 'demographics', 'postgrad', 'coverage', 'overview'];
     const DASHBOARD_VIEW_MODES = ['snapshot', 'overtime'];
     const MAX_COMPARE_SCHOOLS = 3;
+    const DESTINATION_RELATIONSHIPS = {
+      roles_employers: {
+        label: 'Roles -> Employers',
+        leftTitle: 'Roles',
+        rightTitle: 'Employers',
+        leftLevels: ['role_k50_v3', 'role_k150_v3'],
+        rightLevels: ['employer'],
+        dataset: 'employer_hierarchy',
+      },
+      employers_roles: {
+        label: 'Employers -> Roles',
+        leftTitle: 'Employers',
+        rightTitle: 'Roles',
+        leftLevels: ['employer'],
+        rightLevels: ['role_k50_v3', 'role_k150_v3'],
+        dataset: 'employer_hierarchy',
+      },
+      roles_industries: {
+        label: 'Roles -> Industries',
+        leftTitle: 'Roles',
+        rightTitle: 'Industries',
+        leftLevels: ['role_k50_v3', 'role_k150_v3'],
+        rightLevels: ['industry_k200', 'industry_k400'],
+        dataset: 'hierarchy',
+      },
+      industries_roles: {
+        label: 'Industries -> Roles',
+        leftTitle: 'Industries',
+        rightTitle: 'Roles',
+        leftLevels: ['industry_k200', 'industry_k400'],
+        rightLevels: ['role_k50_v3', 'role_k150_v3'],
+        dataset: 'hierarchy',
+      },
+      employers_industries: {
+        label: 'Employers -> Industries',
+        leftTitle: 'Employers',
+        rightTitle: 'Industries',
+        leftLevels: ['employer'],
+        rightLevels: ['industry_k200', 'industry_k400'],
+        dataset: 'employer_hierarchy',
+      },
+      industries_employers: {
+        label: 'Industries -> Employers',
+        leftTitle: 'Industries',
+        rightTitle: 'Employers',
+        leftLevels: ['industry_k200', 'industry_k400'],
+        rightLevels: ['employer'],
+        dataset: 'employer_hierarchy',
+      },
+    };
     let resizeTimer = null;
     let compareWarmupTimer = null;
     const exportLinks = [];
@@ -3235,6 +3321,7 @@
       if (selectionMode === 'compare' || selectionMode === 'major_compare') {
         return tab === 'career' ? 'overtime' : 'snapshot';
       }
+      if (tab === 'destinations') return 'snapshot';
       const overTimeTabs = new Set(['overview', 'earnings', 'career', 'geography', 'demographics']);
       return overTimeTabs.has(tab) ? 'overtime' : 'snapshot';
     }
@@ -3292,9 +3379,17 @@
     }
 
     function dashboardFiltersForCurrentView(extra = {}) {
+      const tab = state.tab || 'overview';
+      const activeTab = tab === 'destinations' && (state.selectionMode === 'compare' || state.selectionMode === 'major_compare')
+        ? 'roles'
+        : tab;
+      const destinationExtra = tab === 'destinations'
+        ? { horizon: state.destinationHorizon === 'all' ? '' : state.destinationHorizon }
+        : {};
       return currentFilters({
-        active_tab: state.tab || 'overview',
-        view_mode: state.viewMode || defaultViewForTab(state.tab || 'overview'),
+        ...destinationExtra,
+        active_tab: activeTab,
+        view_mode: state.viewMode || defaultViewForTab(tab),
         ...extra,
       });
     }
@@ -3355,6 +3450,8 @@
 
     function canWarmFullSchoolSlice(filters) {
       return !filters.compare_mode
+        && filters.active_tab !== 'destinations'
+        && Boolean(filters.horizon)
         && !filters.selected_employer
         && !filters.selected_employer_role
         && !filters.selected_postgrad_degree
@@ -3720,6 +3817,8 @@
           state.selectedPostgradProgram = null;
           state.roleTreePath = [];
           state.industryTreePath = [];
+          state.destinationLeftPath = [];
+          state.destinationRightPath = [];
         }
         if (reloadOptions || !state.options) await loadOptions(true);
         if (compareNeedsSelections()) {
@@ -4905,6 +5004,7 @@
     function defaultTopNForChart(chartId) {
       const id = String(chartId || '');
       if (['major-employer-heatmap', 'employer-bars', 'emp-top'].includes(id)) return 10;
+      if (['destination-left-tree', 'destination-right-tree'].includes(id)) return 12;
       return selectedTopN();
     }
 
@@ -5017,7 +5117,17 @@
     function drillBack(kind) {
       if (kind === 'roleTree') state.roleTreePath = state.roleTreePath.slice(0, -1);
       if (kind === 'industryTree') state.industryTreePath = state.industryTreePath.slice(0, -1);
-      renderRoles();
+      if (kind === 'destinationLeft') {
+        state.destinationLeftPath = state.destinationLeftPath.slice(0, -1);
+        renderDestinations();
+        return;
+      }
+      if (kind === 'destinationRight') {
+        state.destinationRightPath = state.destinationRightPath.slice(0, -1);
+        renderDestinations();
+        return;
+      }
+      renderDestinations();
     }
 
     function hexToRgb(hex) {
@@ -5175,10 +5285,9 @@
       const tab = state.tab;
       if (tab === 'overview') renderOverview();
       if (tab === 'earnings') renderEarnings();
-      if (tab === 'employers') renderEmployers();
+      if (tab === 'destinations' || tab === 'employers' || tab === 'roles') renderDestinations();
       if (tab === 'career') renderCareer();
       if (tab === 'geography') renderGeography();
-      if (tab === 'roles') renderRoles();
       if (tab === 'demographics') renderDemographics();
       if (tab === 'postgrad') renderPostgrad();
       if (tab === 'coverage') renderCoverage();
@@ -5270,7 +5379,7 @@
         renderSchoolCompareGeography();
         return;
       }
-      if (tab === 'roles') {
+      if (tab === 'roles' || tab === 'destinations') {
         renderSchoolCompareRoles();
         return;
       }
@@ -5460,7 +5569,7 @@
         return;
       }
 
-      if (tab === 'roles') {
+      if (tab === 'roles' || tab === 'destinations') {
         if (state.viewMode === 'overtime') {
           const roleTrend = state.data.major_role_trend_comparison || {};
           $('content').innerHTML = [
@@ -6415,6 +6524,89 @@
         });
         drawGeo('geo-salary', 'median_salary');
       }
+    }
+
+    function activeDestinationRelationship() {
+      return DESTINATION_RELATIONSHIPS[state.destinationRelation] || DESTINATION_RELATIONSHIPS.roles_employers;
+    }
+
+    function destinationHorizonLabel() {
+      if (state.destinationHorizon === 'all') return 'All years out';
+      return HORIZON_OPTIONS.find(option => option.value === state.destinationHorizon)?.label || 'All years out';
+    }
+
+    function destinationToolbar() {
+      const relationButtons = Object.entries(DESTINATION_RELATIONSHIPS).map(([value, config]) => (
+        `<button type="button" class="btn ${value === state.destinationRelation ? 'active' : ''}" data-destination-relation="${value}">${escapeHtml(config.label)}</button>`
+      )).join('');
+      const horizonButtons = [
+        { value: 'all', label: 'All time' },
+        ...HORIZON_OPTIONS,
+      ].map(option => (
+        `<button type="button" class="btn ${option.value === state.destinationHorizon ? 'active' : ''}" data-destination-horizon="${option.value}">${escapeHtml(option.label)}</button>`
+      )).join('');
+      return `
+        <div class="destination-toolbar span-12">
+          <div class="destination-toolbar-group">
+            <span class="destination-toolbar-label">Relationship</span>
+            <span class="segmented">${relationButtons}</span>
+          </div>
+          <div class="destination-toolbar-group">
+            <span class="destination-toolbar-label">Years out</span>
+            <span class="segmented">${horizonButtons}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function destinationRows(config) {
+      return state.data.roles?.[config.dataset] || [];
+    }
+
+    function destinationSubtitle(primaryTitle, primaryPath, contextTitle, contextPath) {
+      if (contextPath.length) return `${hierarchyTrail(primaryPath)}. Filtered by ${contextTitle.toLowerCase()}: ${hierarchyTrail(contextPath)}`;
+      return `${hierarchyTrail(primaryPath)}. ${destinationHorizonLabel()}.`;
+    }
+
+    function renderDestinations() {
+      const config = activeDestinationRelationship();
+      const rows = destinationRows(config);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        const leftContext = filterRowsByHierarchyPath(rows, config.rightLevels, state.destinationRightPath);
+        const nextLeftPath = ensureVisibleHierarchyPath(leftContext, config.leftLevels, state.destinationLeftPath, 'destination-left-tree');
+        if (!samePath(nextLeftPath, state.destinationLeftPath)) {
+          state.destinationLeftPath = nextLeftPath;
+          changed = true;
+        }
+        const rightContext = filterRowsByHierarchyPath(rows, config.leftLevels, state.destinationLeftPath);
+        const nextRightPath = ensureVisibleHierarchyPath(rightContext, config.rightLevels, state.destinationRightPath, 'destination-right-tree');
+        if (!samePath(nextRightPath, state.destinationRightPath)) {
+          state.destinationRightPath = nextRightPath;
+          changed = true;
+        }
+      }
+      const leftContextRows = filterRowsByHierarchyPath(rows, config.rightLevels, state.destinationRightPath);
+      const rightContextRows = filterRowsByHierarchyPath(rows, config.leftLevels, state.destinationLeftPath);
+      const leftNodes = visibleHierarchyRows(leftContextRows, config.leftLevels, state.destinationLeftPath, 'destination-left-tree');
+      const rightNodes = visibleHierarchyRows(rightContextRows, config.rightLevels, state.destinationRightPath, 'destination-right-tree');
+      const sharedPayDomain = treemapPayDomain([...leftNodes, ...rightNodes]);
+      $('content').innerHTML = [
+        destinationToolbar(),
+        treemapCard(config.leftTitle, 'destination-left-tree', destinationSubtitle(config.leftTitle, state.destinationLeftPath, config.rightTitle, state.destinationRightPath), state.destinationLeftPath, 'destinationLeft', 6),
+        treemapCard(config.rightTitle, 'destination-right-tree', destinationSubtitle(config.rightTitle, state.destinationRightPath, config.leftTitle, state.destinationLeftPath), state.destinationRightPath, 'destinationRight', 6),
+      ].join('');
+      drawHierarchyTreemap('destination-left-tree', leftContextRows, config.leftLevels, state.destinationLeftPath, node => {
+        if (!node.drillable) return;
+        state.destinationLeftPath = [...state.destinationLeftPath, node.label];
+        renderDestinations();
+      }, { payDomain: sharedPayDomain });
+      drawHierarchyTreemap('destination-right-tree', rightContextRows, config.rightLevels, state.destinationRightPath, node => {
+        if (!node.drillable) return;
+        state.destinationRightPath = [...state.destinationRightPath, node.label];
+        renderDestinations();
+      }, { payDomain: sharedPayDomain });
     }
 
     function renderRoles() {
@@ -9071,6 +9263,27 @@
         queuePlotResize();
       });
       $('content').addEventListener('click', event => {
+        const destinationRelation = event.target.closest('[data-destination-relation]');
+        if (destinationRelation) {
+          event.preventDefault();
+          state.destinationRelation = destinationRelation.dataset.destinationRelation || 'roles_employers';
+          state.destinationLeftPath = [];
+          state.destinationRightPath = [];
+          storage.setItem('outcomes.destinationRelation', state.destinationRelation);
+          renderDestinations();
+          queuePlotResize();
+          return;
+        }
+        const destinationHorizon = event.target.closest('[data-destination-horizon]');
+        if (destinationHorizon) {
+          event.preventDefault();
+          state.destinationHorizon = destinationHorizon.dataset.destinationHorizon || 'all';
+          state.destinationLeftPath = [];
+          state.destinationRightPath = [];
+          storage.setItem('outcomes.destinationHorizon', state.destinationHorizon);
+          refresh({ resetDrill: true });
+          return;
+        }
         const infoButton = event.target.closest('[data-chart-info-id]');
         if (infoButton) {
           event.preventDefault();

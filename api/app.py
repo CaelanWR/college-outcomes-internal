@@ -1107,9 +1107,14 @@ def _static_options() -> dict[str, Any]:
 @app.get("/api/health")
 def health() -> dict[str, Any]:
     manifest = _manifest()
+    base_fact = manifest.get("base_fact") or {}
+    current_students_fact = manifest.get("current_students_fact") or {}
     return {
         "status": "ok",
         "data_version": manifest.get("version"),
+        "data_created_at": manifest.get("created_at"),
+        "base_fact_rows": base_fact.get("rows"),
+        "current_students_fact_rows": current_students_fact.get("rows"),
         "base_fact_exists": _dataset_exists("base_fact"),
         "current_students_fact_exists": _dataset_exists("current_students_fact"),
         "work_facts_exists": bool((_platform_root() / "work_facts").exists()),
@@ -4247,10 +4252,12 @@ def _roles(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, A
         [MIN_CELL_WEIGHT],
     )
     hierarchy_rows = _role_industry_hierarchy(con, filters)
+    employer_hierarchy_rows = _role_employer_industry_hierarchy(con, filters)
     return {
         "roles": role_rows,
         "industries": industry_rows,
         "hierarchy": hierarchy_rows,
+        "employer_hierarchy": employer_hierarchy_rows,
         "role_tree": _hierarchy_nodes(hierarchy_rows, ["role_k50_v3", "role_k150_v3"], "All roles", "Role"),
         "industry_tree": _hierarchy_nodes(hierarchy_rows, ["industry_k200", "industry_k400"], "All industries", "Industry"),
     }
@@ -4285,6 +4292,47 @@ def _role_industry_hierarchy(con: duckdb.DuckDBPyConnection, filters: QueryReque
           AND LOWER({industry_expr}) NOT IN ('empty', 'unknown', 'other')
           AND NOT (degree = 'Bachelors' AND horizon = '1yr' AND role_k50_v3 = 'Corporate Attorney')
         GROUP BY role_k50_v3, role_k150_v3, industry_k200, industry_k400
+        HAVING SUM(final_weight) > 0
+        ORDER BY SUM(final_weight) DESC
+        LIMIT {max_rows}
+        """,
+    )
+
+
+def _role_employer_industry_hierarchy(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    """Flat role/employer/industry rows for linked destination treemaps."""
+    base_columns = _dataset_columns("base_fact")
+    role_detail_expr = "NULLIF(TRIM(role_k150_v3), '')" if "role_k150_v3" in base_columns else "NULL"
+    industry_expr = "TRIM(industry_k200)" if "industry_k200" in base_columns else "TRIM(industry_k50)"
+    industry_detail_expr = "NULLIF(TRIM(industry_k400), '')" if "industry_k400" in base_columns else "NULL"
+    same_school_filter = _same_school_employer_filter(filters)
+    max_rows = max(8000, _safe_limit(filters.top_n) * 400)
+    return _records_from_query(
+        con,
+        f"""
+        SELECT
+          TRIM(role_k50_v3) AS role_k50_v3,
+          COALESCE({role_detail_expr}, TRIM(role_k50_v3)) AS role_k150_v3,
+          TRIM(employer) AS employer,
+          {industry_expr} AS industry_k200,
+          COALESCE({industry_detail_expr}, {industry_expr}) AS industry_k400,
+          ROUND(SUM(final_weight), 2) AS n,
+          SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight,
+          SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END) AS salary_sum,
+          ROUND(SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+            / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0)) AS weighted_mean_salary
+        FROM slice
+        WHERE role_k50_v3 IS NOT NULL
+          AND TRIM(role_k50_v3) <> ''
+          AND LOWER(TRIM(role_k50_v3)) NOT IN ('empty', 'unknown', 'other')
+          AND employer IS NOT NULL
+          AND TRIM(employer) <> ''
+          AND unknown_employer_flag = 0
+          AND named_employer_flag = 1
+          AND career_employer_flag = 1
+          {same_school_filter}
+          AND NOT (degree = 'Bachelors' AND horizon = '1yr' AND role_k50_v3 = 'Corporate Attorney')
+        GROUP BY role_k50_v3, role_k150_v3, employer, industry_k200, industry_k400
         HAVING SUM(final_weight) > 0
         ORDER BY SUM(final_weight) DESC
         LIMIT {max_rows}
@@ -6156,7 +6204,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                     result["geography_trend"] = _geography_trend(con, filters)
                 return result
 
-            if tab == "roles":
+            if tab in {"roles", "destinations"}:
                 if view_mode == "snapshot":
                     result["roles"] = _roles(con, filters)
                 else:
