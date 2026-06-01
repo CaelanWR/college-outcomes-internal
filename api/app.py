@@ -6089,7 +6089,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                         else:
                             result["major_geography_comparison"] = _major_geography_comparison(con, filters)
                             result["major_concentration"] = _major_concentration(con, filters)
-                    if tab == "roles":
+                    if tab in {"roles", "destinations"}:
                         if view_mode == "overtime":
                             result["major_role_trend_comparison"] = {
                                 "roles": _entity_outcome_trend_comparison(
@@ -6107,9 +6107,26 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                                     MIN_CELL_WEIGHT,
                                 ),
                             }
+                            if tab == "destinations":
+                                result["major_employer_trend_comparison"] = _entity_outcome_trend_comparison(
+                                    con,
+                                    filters,
+                                    "employer",
+                                    f"""
+                                        AND employer IS NOT NULL
+                                        AND employer <> ''
+                                        AND unknown_employer_flag = 0
+                                        AND named_employer_flag = 1
+                                        AND career_employer_flag = 1
+                                        {_same_school_employer_filter(filters)}
+                                    """,
+                                    EMPLOYER_ROW_MIN_WEIGHT,
+                                )
                         else:
                             result["major_role_comparison"] = _major_role_comparison(con, filters)
                             result["major_concentration"] = _major_concentration(con, filters)
+                            if tab == "destinations":
+                                result["major_employer_comparison"] = _major_employer_comparison(con, filters)
                     if tab == "demographics":
                         if view_mode == "overtime":
                             result["major_demographic_trend_comparison"] = {
@@ -6200,7 +6217,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                             )
                         else:
                             result["school_geography_comparison"] = _school_geography_comparison(con, filters)
-                    if tab == "roles":
+                    if tab in {"roles", "destinations"}:
                         if view_mode == "overtime":
                             result["school_role_trend_comparison"] = {
                                 "roles": _entity_outcome_trend_comparison(
@@ -6218,8 +6235,25 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                                     MIN_CELL_WEIGHT,
                                 ),
                             }
+                            if tab == "destinations":
+                                result["school_employer_trend_comparison"] = _entity_outcome_trend_comparison(
+                                    con,
+                                    filters,
+                                    "employer",
+                                    f"""
+                                        AND employer IS NOT NULL
+                                        AND employer <> ''
+                                        AND unknown_employer_flag = 0
+                                        AND named_employer_flag = 1
+                                        AND career_employer_flag = 1
+                                        {_same_school_employer_filter(filters)}
+                                    """,
+                                    EMPLOYER_ROW_MIN_WEIGHT,
+                                )
                         else:
                             result["school_role_comparison"] = _school_role_comparison(con, filters)
+                            if tab == "destinations":
+                                result["school_employer_comparison"] = _school_employer_comparison(con, filters)
                     if tab == "demographics":
                         if view_mode == "overtime":
                             result["school_demographic_trend_comparison"] = {

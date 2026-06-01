@@ -2854,9 +2854,9 @@
 
   <nav class="tabs" id="tabs">
     <button class="tab active" data-tab="overview"><svg class="tab-icon" aria-hidden="true"><use href="#icon-overview"></use></svg>Overview</button>
-    <button class="tab" data-tab="earnings"><svg class="tab-icon" aria-hidden="true"><use href="#icon-earnings"></use></svg>Starting Salary</button>
     <button class="tab" data-tab="destinations"><svg class="tab-icon" aria-hidden="true"><use href="#icon-employers"></use></svg>Destinations</button>
     <button class="tab" data-tab="career"><svg class="tab-icon" aria-hidden="true"><use href="#icon-career"></use></svg>Career</button>
+    <button class="tab" data-tab="earnings"><svg class="tab-icon" aria-hidden="true"><use href="#icon-earnings"></use></svg>Starting Salary</button>
     <button class="tab" data-tab="geography"><svg class="tab-icon" aria-hidden="true"><use href="#icon-geography"></use></svg>Geography</button>
     <button class="tab" data-tab="demographics"><svg class="tab-icon" aria-hidden="true"><use href="#icon-demographics"></use></svg>Demographics</button>
     <button class="tab" data-tab="postgrad"><svg class="tab-icon" aria-hidden="true"><use href="#icon-postgrad"></use></svg>Further Education</button>
@@ -2971,7 +2971,7 @@
     ];
     const REQUEST_TOP_N = Math.max(...TOP_N_OPTIONS);
     const DASHBOARD_CACHE_LIMIT = 120;
-    const TAB_ORDER = ['career', 'earnings', 'destinations', 'geography', 'demographics', 'postgrad', 'coverage', 'overview'];
+    const TAB_ORDER = ['overview', 'destinations', 'career', 'earnings', 'geography', 'demographics', 'postgrad', 'coverage'];
     const DASHBOARD_VIEW_MODES = ['snapshot', 'overtime'];
     const MAX_COMPARE_SCHOOLS = 3;
     const DESTINATION_TYPES = {
@@ -3396,15 +3396,12 @@
 
     function dashboardFiltersForCurrentView(extra = {}) {
       const tab = state.tab || 'overview';
-      const activeTab = tab === 'destinations' && (state.selectionMode === 'compare' || state.selectionMode === 'major_compare')
-        ? 'roles'
-        : tab;
       const destinationExtra = tab === 'destinations'
         ? { horizon: state.destinationHorizon === 'all' ? '' : state.destinationHorizon }
         : {};
       return currentFilters({
         ...destinationExtra,
-        active_tab: activeTab,
+        active_tab: tab,
         view_mode: state.viewMode || defaultViewForTab(tab),
         ...extra,
       });
@@ -5419,7 +5416,11 @@
         renderSchoolCompareGeography();
         return;
       }
-      if (tab === 'roles' || tab === 'destinations') {
+      if (tab === 'destinations') {
+        renderCompareDestinations();
+        return;
+      }
+      if (tab === 'roles') {
         renderSchoolCompareRoles();
         return;
       }
@@ -5609,7 +5610,12 @@
         return;
       }
 
-      if (tab === 'roles' || tab === 'destinations') {
+      if (tab === 'destinations') {
+        renderCompareDestinations();
+        return;
+      }
+
+      if (tab === 'roles') {
         if (state.viewMode === 'overtime') {
           const roleTrend = state.data.major_role_trend_comparison || {};
           $('content').innerHTML = [
@@ -5744,6 +5750,65 @@
         drawMajorCompareAlumni('compare-alumni');
         drawMajorCompareSalary('compare-salary');
       }
+    }
+
+    function compareDestinationRows(type, trend = false) {
+      const prefix = state.selectionMode === 'major_compare' ? 'major' : 'school';
+      if (type === 'employers') return state.data[`${prefix}_employer_${trend ? 'trend_' : ''}comparison`] || [];
+      const rolePayload = state.data[`${prefix}_role_${trend ? 'trend_' : ''}comparison`] || {};
+      if (type === 'industries') return rolePayload.industries || [];
+      return rolePayload.roles || [];
+    }
+
+    function destinationCompareChartConfig(type, trend = false) {
+      const entity = compareEntityLabel();
+      const typeConfig = destinationTypeConfig(type);
+      const label = typeConfig.label;
+      const singular = { roles: 'Role', employers: 'Employer', industries: 'Industry' }[type] || label;
+      const chartSlug = type === 'employers' ? 'employer' : (type === 'industries' ? 'industry' : 'role');
+      return {
+        id: `compare-destination-${chartSlug}${trend ? '-trend' : ''}`,
+        title: trend ? `${label} Share Over Time by ${entity}` : `${label} Mix by ${entity}`,
+        yTitle: singular,
+        labelTransform: value => legendLabel(value, type === 'employers' ? 34 : 30),
+        onClick: type === 'employers'
+          ? point => openEmployerComparisonDrilldown(point)
+          : point => openRoleIndustryComparisonDrilldown({
+            ...point,
+            kind: type === 'industries' ? 'industry' : 'role',
+            chartId: `compare-destination-${chartSlug}`,
+          }),
+      };
+    }
+
+    function renderCompareDestinations() {
+      const trend = state.viewMode === 'overtime';
+      const leftType = state.destinationLeftType || 'roles';
+      const rightType = state.destinationRightType || 'employers';
+      const configs = [leftType, rightType].map(type => destinationCompareChartConfig(type, trend));
+      $('content').innerHTML = [
+        destinationToolbar(),
+        ...configs.map(config => card(config.title, config.id, 6, true, { topControl: true })),
+      ].join('');
+      [leftType, rightType].forEach((type, idx) => {
+        const config = configs[idx];
+        const rows = compareDestinationRows(type, trend);
+        if (trend) {
+          drawCompareCategoryTrend(config.id, rows, {
+            labelTransform: config.labelTransform,
+            yTitle: 'Share of employed alumni',
+          });
+          return;
+        }
+        const drawOptions = {
+          yTitle: config.yTitle,
+          labelTransform: config.labelTransform,
+          hoverLabel: `${config.yTitle} share`,
+        };
+        if (config.onClick) drawOptions.onClick = config.onClick;
+        if (state.selectionMode === 'major_compare') drawMajorComparisonHeatmap(config.id, rows, drawOptions);
+        else drawSchoolComparisonHeatmap(config.id, rows, drawOptions);
+      });
     }
 
     function renderSchoolCompareEmployers() {
@@ -9467,7 +9532,8 @@
           storage.setItem('outcomes.destinationLeftType', state.destinationLeftType);
           storage.setItem('outcomes.destinationRightType', state.destinationRightType);
           storage.removeItem('outcomes.destinationRelation');
-          renderDestinations();
+          if (state.selectionMode === 'compare' || state.selectionMode === 'major_compare') renderComparePage();
+          else renderDestinations();
           queuePlotResize();
           return;
         }
