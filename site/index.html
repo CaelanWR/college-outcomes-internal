@@ -5960,7 +5960,7 @@
         ].join('');
         drawTopMajorsVolume('overview-major-bars');
         drawEmployerBars('employer-bars');
-        drawGeo('overview-geo', 'share_pct');
+        drawGeo('overview-geo', 'share_pct', state.data.geography_all_alumni || state.data.geography || []);
       } else {
         $('content').innerHTML = [
           ...overviewMetrics(o),
@@ -6622,16 +6622,15 @@
       const salaryHorizon = activeHorizonLabel();
       if (state.viewMode === 'snapshot') {
         $('content').innerHTML = [
-          sharedHorizonToolbar(),
-          card('Top Cities by Alumni Share', 'geo-share', 7, true, { topControl: true }),
-          card(`Median Earnings by City (${salaryHorizon})`, 'geo-salary', 5, true, { topControl: true }),
+          card('Top Cities by Alumni Share (All Alumni)', 'geo-share', 7, true, { topControl: true }),
+          card(`Median Earnings by City (${salaryHorizon})`, 'geo-salary', 5, true, { topControl: true, horizonControl: true }),
         ].join('');
-        drawGeo('geo-share', 'share_pct');
+        drawGeo('geo-share', 'share_pct', state.data.geography_all_alumni || state.data.geography || []);
         drawGeo('geo-salary', 'median_salary');
       } else {
         $('content').innerHTML = [
-          sharedHorizonToolbar(),
-          card('City Share Over Time', 'geo-share-trend', 7, true, { topControl: true }),
+          sharedHorizonToolbar('New grad years after graduation'),
+          card(`New Grad City Share Over Time (${salaryHorizon})`, 'geo-share-trend', 7, true, { topControl: true }),
           card(`Current City Earnings (${salaryHorizon})`, 'geo-salary', 5, true, { topControl: true }),
         ].join('');
         drawTrendLines('geo-share-trend', state.data.geography_trend || [], 'location', 'share_pct', {
@@ -9045,8 +9044,9 @@
       });
     }
 
-    function drawGeo(id, metric) {
-      const rows = (state.data.geography || []).filter(r => metric !== 'median_salary' || r.median_salary).slice(0, topNFor(id)).reverse();
+    function drawGeo(id, metric, sourceRows = null) {
+      const baseRows = sourceRows || state.data.geography || [];
+      const rows = baseRows.filter(r => metric !== 'median_salary' || r.median_salary).slice(0, topNFor(id)).reverse();
       if (!rows.length) return noData(id);
       const isSalary = metric === 'median_salary';
       const isShare = metric === 'share_pct';

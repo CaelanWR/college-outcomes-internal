@@ -2629,16 +2629,76 @@ def _school_employer_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRe
 
 
 def _school_geography_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    limit = _safe_limit(filters.top_n)
     location_expr = _location_label_expr()
-    return _school_outcome_comparison(
+    return _records_from_query(
         con,
-        location_expr,
-        """
+        f"""
+        WITH eligible AS (
+          SELECT
+            unitid AS code,
+            school_name AS title,
+            {location_expr} AS label,
+            profile_weight
+          FROM cohort_slice
+          WHERE {location_expr} IS NOT NULL
+            AND TRIM(CAST({location_expr} AS VARCHAR)) <> ''
+            AND LOWER(TRIM(CAST({location_expr} AS VARCHAR))) NOT IN ('empty', 'unknown', 'other')
             AND COALESCE(location, city) IS NOT NULL
             AND LOWER(COALESCE(location, city)) NOT IN ('empty', 'unknown')
+        ),
+        top_labels AS (
+          SELECT label, SUM(profile_weight) AS total_n
+          FROM eligible
+          GROUP BY label
+          HAVING SUM(profile_weight) > ?
+          ORDER BY total_n DESC
+          LIMIT {limit}
+        ),
+        denom AS (
+          SELECT code, SUM(profile_weight) AS total_n
+          FROM eligible
+          GROUP BY code
+        ),
+        grouped AS (
+          SELECT
+            e.code,
+            MAX(e.title) AS title,
+            e.label,
+            SUM(e.profile_weight) AS n
+          FROM eligible e
+          JOIN top_labels t USING (label)
+          GROUP BY e.code, e.label
+        ),
+        salary AS (
+          SELECT
+            unitid AS code,
+            {location_expr} AS label,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS weighted_mean_salary,
+            quantile_cont(salary, 0.5) AS median_salary
+          FROM slice
+          WHERE COALESCE(location, city) IS NOT NULL
+            AND LOWER(COALESCE(location, city)) NOT IN ('empty', 'unknown')
+          GROUP BY unitid, label
+        )
+        SELECT
+          g.code,
+          g.title,
+          g.label,
+          ROUND(g.n, 2) AS n,
+          ROUND(100.0 * g.n / NULLIF(d.total_n, 0), 2) AS share_pct,
+          ROUND(s.salary_weight) AS salary_weight,
+          CASE WHEN s.salary_weight > ? THEN ROUND(s.weighted_mean_salary) ELSE NULL END AS weighted_mean_salary,
+          CASE WHEN s.salary_weight > ? THEN ROUND(s.median_salary) ELSE NULL END AS median_salary
+        FROM grouped g
+        JOIN denom d USING (code)
+        LEFT JOIN salary s USING (code, label)
+        WHERE g.n > ?
+        ORDER BY g.label, g.title
         """,
-        GEOGRAPHY_ROW_MIN_WEIGHT,
-        filters,
+        [GEOGRAPHY_ROW_MIN_WEIGHT, SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT, GEOGRAPHY_ROW_MIN_WEIGHT],
     )
 
 
@@ -3083,30 +3143,7 @@ def _major_geography_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRe
     location_expr = _location_label_expr()
     baseline_filters = filters.model_copy(deep=True)
     baseline_filters.majors = []
-    baseline_where_sql, baseline_params = _where(baseline_filters)
-    baseline_source = _base_source_for_filters(baseline_filters)
-    base_columns = _dataset_columns("base_fact")
-    adjusted_select = _runtime_adjusted_select(base_columns, "b")
-    con.execute(
-        f"""
-        CREATE OR REPLACE TEMP TABLE major_geo_baseline_slice AS
-        SELECT
-          {adjusted_select}
-        FROM (
-          SELECT *
-          FROM read_parquet(?)
-          {baseline_where_sql}
-        ) b
-        LEFT JOIN recent_school_calibration rsc
-          ON b.unitid = rsc.unitid
-         AND b.degree = rsc.degree
-         AND b.cip4 = rsc.cip4
-        LEFT JOIN recent_global_calibration rgc
-          ON b.degree = rgc.degree
-         AND b.cip4 = rgc.cip4
-        """,
-        [baseline_source, *baseline_params],
-    )
+    _create_cohort_slice_table(con, baseline_filters, "major_geo_baseline_slice")
     return _records_from_query(
         con,
         f"""
@@ -3115,9 +3152,8 @@ def _major_geography_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRe
             {cip_col} AS code,
             COALESCE(major_title, {cip_col}) AS title,
             {location_expr} AS label,
-            final_weight,
-            salary
-          FROM slice
+            profile_weight
+          FROM cohort_slice
           WHERE {cip_col} IS NOT NULL
             AND COALESCE(location, city) IS NOT NULL
             AND LOWER(COALESCE(location, city)) NOT IN ('empty', 'unknown')
@@ -3125,32 +3161,32 @@ def _major_geography_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRe
         baseline_eligible AS (
           SELECT
             {location_expr} AS label,
-            final_weight
+            profile_weight
           FROM major_geo_baseline_slice
           WHERE COALESCE(location, city) IS NOT NULL
             AND LOWER(COALESCE(location, city)) NOT IN ('empty', 'unknown')
         ),
         top_labels AS (
-          SELECT label, SUM(final_weight) AS total_n
+          SELECT label, SUM(profile_weight) AS total_n
           FROM eligible
           GROUP BY label
-          HAVING SUM(final_weight) > ?
+          HAVING SUM(profile_weight) > ?
           ORDER BY total_n DESC
           LIMIT {limit}
         ),
         denom AS (
-          SELECT code, SUM(final_weight) AS total_n
+          SELECT code, SUM(profile_weight) AS total_n
           FROM eligible
           GROUP BY code
         ),
         baseline_denom AS (
-          SELECT SUM(final_weight) AS total_n
+          SELECT SUM(profile_weight) AS total_n
           FROM baseline_eligible
         ),
         baseline AS (
           SELECT
             label,
-            SUM(final_weight) AS n
+            SUM(profile_weight) AS n
           FROM baseline_eligible
           GROUP BY label
         ),
@@ -3159,13 +3195,23 @@ def _major_geography_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRe
             e.code,
             MAX(e.title) AS title,
             e.label,
-            SUM(e.final_weight) AS n,
-            SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight ELSE 0 END) AS salary_weight,
-            SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight * e.salary ELSE 0 END)
-              / NULLIF(SUM(CASE WHEN e.salary IS NOT NULL THEN e.final_weight ELSE 0 END), 0) AS weighted_mean_salary
+            SUM(e.profile_weight) AS n
           FROM eligible e
           JOIN top_labels t USING (label)
           GROUP BY e.code, e.label
+        ),
+        salary AS (
+          SELECT
+            {cip_col} AS code,
+            {location_expr} AS label,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END) AS salary_weight,
+            SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+              / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0) AS weighted_mean_salary
+          FROM slice
+          WHERE {cip_col} IS NOT NULL
+            AND COALESCE(location, city) IS NOT NULL
+            AND LOWER(COALESCE(location, city)) NOT IN ('empty', 'unknown')
+          GROUP BY code, label
         )
         SELECT
           g.code,
@@ -3174,10 +3220,11 @@ def _major_geography_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRe
           ROUND(g.n, 2) AS n,
           ROUND(100.0 * g.n / NULLIF(d.total_n, 0), 2) AS share_pct,
           ROUND(100.0 * COALESCE(b.n, 0) / NULLIF((SELECT total_n FROM baseline_denom), 0), 2) AS baseline_share_pct,
-          CASE WHEN g.salary_weight > ? THEN ROUND(g.weighted_mean_salary) ELSE NULL END AS weighted_mean_salary
+          CASE WHEN s.salary_weight > ? THEN ROUND(s.weighted_mean_salary) ELSE NULL END AS weighted_mean_salary
         FROM grouped g
         JOIN denom d USING (code)
         LEFT JOIN baseline b USING (label)
+        LEFT JOIN salary s USING (code, label)
         WHERE g.n > ?
         ORDER BY g.label, g.title
         """,
@@ -4207,6 +4254,41 @@ def _geography(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[di
         GROUP BY 1
         HAVING SUM(final_weight) > ?
         ORDER BY SUM(final_weight) DESC
+        LIMIT {limit}
+        """,
+        [GEOGRAPHY_ROW_MIN_WEIGHT],
+    )
+
+
+def _geography_all_alumni(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    limit = min(_safe_limit(filters.top_n), 8)
+    location_expr = _location_label_expr()
+    return _records_from_query(
+        con,
+        f"""
+        WITH eligible AS (
+          SELECT
+            {location_expr} AS location,
+            profile_weight
+          FROM cohort_slice
+          WHERE COALESCE(location, city) IS NOT NULL
+            AND LOWER(COALESCE(location, city)) NOT IN ('empty', 'unknown')
+        ),
+        totals AS (
+          SELECT SUM(profile_weight) AS total_n
+          FROM eligible
+        )
+        SELECT
+          location,
+          ROUND(SUM(profile_weight), 2) AS n,
+          ROUND(100.0 * SUM(profile_weight) / NULLIF((SELECT total_n FROM totals), 0), 2) AS share_pct,
+          NULL AS salary_weight,
+          NULL AS weighted_mean_salary,
+          NULL AS median_salary
+        FROM eligible
+        GROUP BY 1
+        HAVING SUM(profile_weight) > ?
+        ORDER BY SUM(profile_weight) DESC
         LIMIT {limit}
         """,
         [GEOGRAPHY_ROW_MIN_WEIGHT],
@@ -6062,6 +6144,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                         "employers": _employers(con, filters),
                         "employer_trend": _employer_trend(con, filters),
                         "geography": _geography(con, filters),
+                        "geography_all_alumni": _geography_all_alumni(con, filters),
                         "geography_trend": _geography_trend(con, filters),
                         "roles": _roles(con, filters),
                         "role_trend": _role_trend(con, filters),
@@ -6357,6 +6440,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                     result["top_majors"] = _top_majors(con, filters)
                     result["employers"] = _employers(con, filters)
                     result["geography"] = _geography(con, filters)
+                    result["geography_all_alumni"] = _geography_all_alumni(con, filters)
                 else:
                     result["career"] = {"earnings": _career_earnings(con, filters)}
                     result["salary_trend"] = _salary_trend(con, filters)
@@ -6382,6 +6466,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
 
             if tab == "geography":
                 result["geography"] = _geography(con, filters)
+                result["geography_all_alumni"] = _geography_all_alumni(con, filters)
                 if view_mode == "overtime":
                     result["geography_trend"] = _geography_trend(con, filters)
                 return result
