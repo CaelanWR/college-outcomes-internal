@@ -2860,7 +2860,6 @@
     <button class="tab" data-tab="geography"><svg class="tab-icon" aria-hidden="true"><use href="#icon-geography"></use></svg>Geography</button>
     <button class="tab" data-tab="demographics"><svg class="tab-icon" aria-hidden="true"><use href="#icon-demographics"></use></svg>Demographics</button>
     <button class="tab" data-tab="postgrad"><svg class="tab-icon" aria-hidden="true"><use href="#icon-postgrad"></use></svg>Further Education</button>
-    <button class="tab" data-tab="coverage"><svg class="tab-icon" aria-hidden="true"><use href="#icon-coverage"></use></svg>Coverage</button>
   </nav>
 
   <main id="main" class="content">
@@ -2971,7 +2970,7 @@
     ];
     const REQUEST_TOP_N = Math.max(...TOP_N_OPTIONS);
     const DASHBOARD_CACHE_LIMIT = 120;
-    const TAB_ORDER = ['overview', 'destinations', 'career', 'earnings', 'geography', 'demographics', 'postgrad', 'coverage'];
+    const TAB_ORDER = ['overview', 'destinations', 'career', 'earnings', 'geography', 'demographics', 'postgrad'];
     const DASHBOARD_VIEW_MODES = ['snapshot', 'overtime'];
     const MAX_COMPARE_SCHOOLS = 3;
     const DESTINATION_TYPES = {
@@ -5492,22 +5491,34 @@
         $('content').innerHTML = [
           card('Comparison Snapshot', 'compare-overview-stats', 12, false, { export: false, compact: true }),
           card(`Career Earnings After Graduation by ${entity}`, 'compare-career-earnings', 12, true),
+          card('Top Majors by School', 'school-major-heatmap', 12, true, { topControl: true }),
           card(`Alumni Count by ${entity}`, 'compare-alumni', 7, true, { topControl: state.selectionMode === 'major_compare' }),
           card(`${entity} Comparison Table`, 'compare-table', 5, true),
         ].join('');
         drawCompareOverviewStats('compare-overview-stats');
         drawCareerEarnings('compare-career-earnings');
+        drawSchoolComparisonHeatmap('school-major-heatmap', state.data.school_major_comparison || [], {
+          yTitle: 'Major',
+          labelTransform: label => legendLabel(label, 34),
+          hoverLabel: 'Major share',
+        });
         drawCompareAlumni('compare-alumni');
         drawCompareTable('compare-table');
       } else {
         $('content').innerHTML = [
           card('Comparison Snapshot', 'compare-overview-stats', 12, false, { export: false, compact: true }),
           card(`Career Earnings After Graduation by ${entity}`, 'compare-career-earnings', 12, true),
+          card('Top Majors by School', 'school-major-heatmap', 12, true, { topControl: true }),
           card(`Alumni Trend by ${entity}`, 'compare-alumni-trend', 7, true, { topControl: state.selectionMode === 'major_compare' }),
           card(`${entity} Comparison Table`, 'compare-table', 5, true),
         ].join('');
         drawCompareOverviewStats('compare-overview-stats');
         drawCareerEarnings('compare-career-earnings');
+        drawSchoolComparisonHeatmap('school-major-heatmap', state.data.school_major_comparison || [], {
+          yTitle: 'Major',
+          labelTransform: label => legendLabel(label, 34),
+          hoverLabel: 'Major share',
+        });
         drawCompareAlumniTrend('compare-alumni-trend');
         drawCompareTable('compare-table');
       }
@@ -5768,7 +5779,7 @@
       const chartSlug = type === 'employers' ? 'employer' : (type === 'industries' ? 'industry' : 'role');
       return {
         id: `compare-destination-${chartSlug}${trend ? '-trend' : ''}`,
-        title: trend ? `${label} Share Over Time by ${entity}` : `${label} Mix by ${entity}`,
+        title: trend ? `${label} by ${entity} Over Time` : `${label} Mix by ${entity}`,
         yTitle: singular,
         labelTransform: value => legendLabel(value, type === 'employers' ? 34 : 30),
         onClick: type === 'employers'
@@ -5794,9 +5805,9 @@
         const config = configs[idx];
         const rows = compareDestinationRows(type, trend);
         if (trend) {
-          drawCompareCategoryTrend(config.id, rows, {
+          drawCompareYearHeatmap(config.id, rows, {
             labelTransform: config.labelTransform,
-            yTitle: 'Share of employed alumni',
+            yTitle: config.yTitle,
           });
           return;
         }
@@ -7431,6 +7442,103 @@
         yaxis: { title: options.yTitle || 'Share of alumni', ticksuffix: '%', automargin: true, rangemode: 'tozero' },
         legend: { orientation: 'h', y: 1.18, x: 0, itemwidth: 30 },
       }, plotConfig).then(plot => bindLegendGroupToggles(plot));
+    }
+
+    function drawCompareYearHeatmap(id, rows, options = {}) {
+      const cleanRows = (rows || [])
+        .filter(row => row.code && row.label && row.grad_year !== null && row.grad_year !== undefined && row.share_pct !== null && row.share_pct !== undefined);
+      if (!cleanRows.length) return noData(id);
+      const availableCodes = new Set(cleanRows.map(row => String(row.code)));
+      const fallbackTitles = new Map();
+      cleanRows.forEach(row => {
+        const code = String(row.code);
+        if (!fallbackTitles.has(code)) fallbackTitles.set(code, row.title || code);
+      });
+      const entities = compareRows()
+        .map(row => {
+          const code = String(row.code || row.unitid || '');
+          if (!code || !availableCodes.has(code)) return null;
+          const title = row.title || row.school_name || fallbackTitles.get(code) || code;
+          return {
+            code,
+            title,
+            label: state.selectionMode === 'major_compare' ? legendLabel(title, 18) : legendLabel(shortSchool(title), 18),
+          };
+        })
+        .filter(Boolean);
+      if (!entities.length) return noData(id);
+      const entityCodes = new Set(entities.map(entity => entity.code));
+      const labelTotals = new Map();
+      cleanRows.forEach(row => {
+        if (!entityCodes.has(String(row.code))) return;
+        const label = String(row.label || '');
+        labelTotals.set(label, (labelTotals.get(label) || 0) + Number(row.n || 0));
+      });
+      const labels = [...labelTotals.entries()]
+        .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
+        .slice(0, topNFor(id))
+        .map(([label]) => label);
+      if (!labels.length) return noData(id);
+      const years = [...new Set(cleanRows.map(row => Number(row.grad_year)).filter(Number.isFinite))]
+        .sort((a, b) => a - b);
+      if (!years.length) return noData(id);
+      const lookup = new Map();
+      cleanRows.forEach(row => {
+        lookup.set(`${Number(row.grad_year)}||${String(row.code)}||${String(row.label)}`, row);
+      });
+      const payloadForYear = year => {
+        const z = labels.map(label => entities.map(entity => Number(lookup.get(`${year}||${entity.code}||${label}`)?.share_pct || 0)));
+        const customdata = labels.map(label => entities.map(entity => {
+          const row = lookup.get(`${year}||${entity.code}||${label}`) || {};
+          return [label, entity.title, Number(row.n || 0), row.weighted_mean_salary ?? null, year];
+        }));
+        return { z, customdata };
+      };
+      const initialYear = years[years.length - 1];
+      const initial = payloadForYear(initialYear);
+      const values = cleanRows
+        .filter(row => entityCodes.has(String(row.code)) && labels.includes(String(row.label)))
+        .map(row => Number(row.share_pct || 0))
+        .filter(Number.isFinite);
+      const zMax = Math.max(5, Math.ceil((Math.max(...values, 0) + 2) / 5) * 5);
+      const frames = years.map(year => ({
+        name: String(year),
+        data: [payloadForYear(year)],
+      }));
+      Plotly.newPlot(id, [{
+        type: 'heatmap',
+        x: entities.map(entity => entity.label),
+        y: labels.map(label => options.labelTransform ? options.labelTransform(label) : legendLabel(label, 30)),
+        z: initial.z,
+        zmin: 0,
+        zmax: zMax,
+        customdata: initial.customdata,
+        colorscale: [[0, THEME.bg], [0.35, '#9AD3F9'], [0.7, COLORS[0]], [1, THEME.navy]],
+        colorbar: { title: '%', thickness: 12 },
+        hovertemplate: '%{customdata[0]}<br>%{customdata[1]}<br>Class of %{customdata[4]}<br>Share: %{z:.1f}%<br>Weighted alumni: %{customdata[2]:,.0f}<extra></extra>',
+      }], {
+        ...layoutBase,
+        height: Math.max(420, Math.min(700, 240 + labels.length * 38)),
+        margin: { ...layoutBase.margin, l: 172, r: 44, t: 24, b: 112 },
+        xaxis: { title: compareEntityLabel(), automargin: true },
+        yaxis: { title: options.yTitle || '', automargin: true },
+        sliders: [{
+          active: years.length - 1,
+          currentvalue: { prefix: 'Class of ', font: { color: '#2D426A', size: 13 } },
+          pad: { t: 22 },
+          steps: years.map(year => ({
+            label: String(year),
+            method: 'animate',
+            args: [[String(year)], {
+              mode: 'immediate',
+              frame: { duration: 0, redraw: true },
+              transition: { duration: 0 },
+            }],
+          })),
+        }],
+      }, plotConfig).then(plot => {
+        Plotly.addFrames(plot, frames);
+      });
     }
 
     function orderedCompareEntities(cleanRows) {

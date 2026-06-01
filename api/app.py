@@ -2224,6 +2224,61 @@ def _school_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) ->
     )
 
 
+def _school_major_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    cip_col = _cip_col(filters)
+    limit = _safe_limit(filters.top_n)
+    return _records_from_query(
+        con,
+        f"""
+        WITH eligible AS (
+          SELECT
+            unitid AS code,
+            school_name AS title,
+            COALESCE(major_title, {cip_col}) AS label,
+            profile_weight
+          FROM cohort_slice
+          WHERE {cip_col} IS NOT NULL
+            AND COALESCE(major_title, {cip_col}) IS NOT NULL
+            AND TRIM(COALESCE(major_title, {cip_col})) <> ''
+        ),
+        top_labels AS (
+          SELECT label, SUM(profile_weight) AS total_n
+          FROM eligible
+          GROUP BY label
+          HAVING SUM(profile_weight) > ?
+          ORDER BY total_n DESC
+          LIMIT {limit}
+        ),
+        denom AS (
+          SELECT code, SUM(profile_weight) AS total_n
+          FROM eligible
+          GROUP BY code
+        ),
+        grouped AS (
+          SELECT
+            e.code,
+            MAX(e.title) AS title,
+            e.label,
+            SUM(e.profile_weight) AS n
+          FROM eligible e
+          JOIN top_labels t USING (label)
+          GROUP BY e.code, e.label
+        )
+        SELECT
+          g.code,
+          g.title,
+          g.label,
+          ROUND(g.n, 2) AS n,
+          ROUND(100.0 * g.n / NULLIF(d.total_n, 0), 2) AS share_pct
+        FROM grouped g
+        JOIN denom d USING (code)
+        WHERE g.n > ?
+        ORDER BY g.label, g.title
+        """,
+        [MIN_CELL_WEIGHT, MIN_CELL_WEIGHT],
+    )
+
+
 def _school_outcome_comparison(
     con: duckdb.DuckDBPyConnection,
     label_sql: str,
@@ -6159,11 +6214,13 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                     result["school_comparison"] = _school_comparison(con, filters)
                     if tab == "overview":
                         result["career"] = {"earnings": _career_earnings(con, filters)}
+                        result["school_major_comparison"] = _school_major_comparison(con, filters)
                     if tab in {"all", "full"}:
                         result["alumni_trend_by_school"] = _alumni_trend_by_school(con, filters)
                         result["salary_trend_by_school"] = _salary_trend_by_school(con, filters)
                         result["salary_distribution"] = _salary_distribution(con)
                         result["salary_distributions_by_entity"] = _salary_distribution_by_entity(con, filters)
+                        result["school_major_comparison"] = _school_major_comparison(con, filters)
                         result["school_employer_comparison"] = _school_employer_comparison(con, filters)
                         if filters.selected_employer:
                             result["employer_detail_comparison"] = _employer_detail_comparison(con, filters)
