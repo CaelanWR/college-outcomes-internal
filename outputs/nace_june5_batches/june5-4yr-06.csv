@@ -1,0 +1,51 @@
+run_rank,unitid,ipeds_name,total_attendees,company_variants,company_types,best_match_score,needs_match_review,currently_precomputed_local,selection_tier,data_readiness_score,bachelor_users_2005_2025,recent_bachelor_users_2020_2025,readiness_num,force_include_for_june5_503_run,batch_id
+251,121150,Pepperdine University,1,Pepperdine University - Seaver College Career Center,College 4 Year Private,100.0,no,no,usable,60.5,14472.0,4463.0,60.5,yes,june5-4yr-06
+252,482149,Augusta University,1,Augusta University - Career Services,College 4 Year Public,100.0,no,no,usable,57.4,10461.0,3633.0,57.4,yes,june5-4yr-06
+253,213385,Lafayette College,1,Lafayette College,College 4 Year Private,100.0,no,no,usable,56.6,10636.0,3444.0,56.6,yes,june5-4yr-06
+254,217882,Clemson University,1,Clemson University - The Wilbur O. and Ann Powers College of Business,College 4 Year Public,100.0,no,no,usable,56.4,7648.0,2528.0,56.4,yes,june5-4yr-06
+255,204501,Oberlin College,1,Oberlin College,College 4 Year Private,100.0,no,no,usable,55.9,10407.0,2821.0,55.9,yes,june5-4yr-06
+256,101879,University of North Alabama,1,University of North Alabama,College 4 Year Public,100.0,no,no,usable,55.8,10664.0,3417.0,55.8,yes,june5-4yr-06
+257,216278,Susquehanna University,1,Susquehanna University,College 4 Year Private,100.0,no,no,thin,54.7,8151.0,2579.0,54.7,yes,june5-4yr-06
+258,142276,Idaho State University,1,Idaho State University,College 4 Year Public,100.0,no,no,thin,53.9,11186.0,3108.0,53.9,yes,june5-4yr-06
+259,199111,University of North Carolina Asheville,1,The University of North Carolina at Asheville,College 4 Year Public,100.0,no,no,thin,53.8,9403.0,2498.0,53.8,yes,june5-4yr-06
+260,195216,St Lawrence University,1,St. Lawrence University,College 4 Year Private,100.0,no,no,thin,53.7,9482.0,2659.0,53.7,yes,june5-4yr-06
+261,166939,Mount Holyoke College,1,Mount Holyoke College,College 4 Year Private,100.0,no,no,thin,53.2,9307.0,2630.0,53.2,yes,june5-4yr-06
+262,219471,University of South Dakota,1,The University of South Dakota,College 4 Year Public,100.0,no,no,thin,53.0,10469.0,3129.0,53.0,yes,june5-4yr-06
+263,107044,Harding University,1,Harding University,College 4 Year Private,100.0,no,no,thin,52.3,10107.0,2410.0,52.3,yes,june5-4yr-06
+264,213367,La Salle University,1,La Salle University,College 4 Year Private,100.0,no,no,thin,52.3,11371.0,2822.0,52.3,yes,june5-4yr-06
+265,212577,Franklin and Marshall College,1,Franklin & Marshall College,College 4 Year Private,100.0,no,no,thin,51.4,8864.0,2550.0,51.4,yes,june5-4yr-06
+266,134079,Florida Southern College,1,Florida Southern College,College 4 Year Private,100.0,no,no,thin,51.0,7746.0,2571.0,51.0,yes,june5-4yr-06
+267,100812,Athens State University,1,Athens State University,College 4 Year Public,100.0,no,no,thin,50.8,8058.0,2786.0,50.8,yes,june5-4yr-06
+268,159717,McNeese State University,1,McNeese State University,College 4 Year Public,100.0,no,no,thin,50.5,9602.0,2363.0,50.5,yes,june5-4yr-06
+269,100654,Alabama A & M University,1,Alabama A&M University,College 4 Year Public,100.0,no,no,thin,49.8,7486.0,2351.0,49.8,yes,june5-4yr-06
+270,165866,Framingham State University,1,Framingham State University,College 4 Year Public,100.0,no,no,thin,49.8,10155.0,2449.0,49.8,yes,june5-4yr-06
+271,159656,Loyola University New Orleans,1,Loyola University New Orleans - Career Development Center,College 4 Year Private,100.0,no,no,thin,49.7,9307.0,2705.0,49.7,yes,june5-4yr-06
+272,164465,Amherst College,1,Amherst College,College 4 Year Private,100.0,no,no,thin,49.3,7668.0,2356.0,49.3,yes,june5-4yr-06
+273,191931,Iona University,1,Iona University,College 4 Year Private,100.0,no,no,thin,49.3,9312.0,2414.0,49.3,yes,june5-4yr-06
+274,238458,Carroll University,1,Carroll University,College 4 Year Private,100.0,no,no,thin,47.9,7186.0,1937.0,47.9,yes,june5-4yr-06
+275,164580,Babson College,1,Babson College,College 4 Year Private,100.0,no,no,thin,47.4,10312.0,3982.0,47.4,yes,june5-4yr-06
+276,148627,Saint Xavier University,1,Saint Xavier University,College 4 Year Private,100.0,no,no,thin,47.3,7561.0,2235.0,47.3,yes,june5-4yr-06
+277,210401,Willamette University,1,Willamette University,College 4 Year Private,100.0,no,no,thin,46.2,7731.0,1792.0,46.2,yes,june5-4yr-06
+278,230995,Norwich University,1,Norwich University,College 4 Year Private,100.0,no,no,thin,46.2,7443.0,2396.0,46.2,yes,june5-4yr-06
+279,112260,Claremont McKenna College,1,Claremont McKenna College,College 4 Year Private,100.0,no,no,thin,45.9,5402.0,1830.0,45.9,yes,june5-4yr-06
+280,190691,CUNY York College,1,York College - ACE,College 4 Year Public,100.0,no,no,thin,45.0,5111.0,1810.0,45.0,yes,june5-4yr-06
+281,138187,Valencia College,1,Valencia College,College 4 Year Public,100.0,no,no,thin,44.1,5398.0,3988.0,44.1,yes,june5-4yr-06
+282,195164,St Bonaventure University,1,St. Bonaventure University,College 4 Year Private,100.0,no,no,thin,43.7,5947.0,1648.0,43.7,yes,june5-4yr-06
+283,211088,Arcadia University,1,Arcadia University,College 4 Year Private,100.0,no,no,thin,43.6,7164.0,1811.0,43.6,yes,june5-4yr-06
+284,201690,Central State University,1,Central State University,College 4 Year Public,100.0,no,no,thin,43.5,4155.0,1932.0,43.5,yes,june5-4yr-06
+285,169716,University of Detroit Mercy,1,University of Detroit Mercy,College 4 Year Private,100.0,no,no,thin,43.2,7133.0,2063.0,43.2,yes,june5-4yr-06
+286,443410,DigiPen Institute of Technology,1,DigiPen Institute of Technology,College 4 Year Private,100.0,no,no,thin,42.7,5972.0,2772.0,42.7,yes,june5-4yr-06
+287,190035,CUNY System Office,1,The City University of New York - School of Professional Studies,College 4 Year Public,100.0,no,no,thin,42.6,17777.0,7005.0,42.6,yes,june5-4yr-06
+288,123651,Vanguard University of Southern California,1,Vanguard University,College 4 Year Private,100.0,no,no,thin,42.1,6006.0,1454.0,42.1,yes,june5-4yr-06
+289,123165,Scripps College,1,Scripps College,College 4 Year Private,100.0,no,no,thin,41.9,3970.0,1302.0,41.9,yes,june5-4yr-06
+290,193584,Nazareth University,1,Nazareth University,College 4 Year Private,100.0,no,no,thin,41.5,5974.0,1561.0,41.5,yes,june5-4yr-06
+291,154350,Simpson College,1,Simpson College,College 4 Year Private,100.0,no,no,thin,41.4,4688.0,1009.0,41.4,yes,june5-4yr-06
+292,165529,Curry College,1,Curry College,College 4 Year Private,100.0,no,no,thin,41.4,6776.0,1652.0,41.4,yes,june5-4yr-06
+293,175005,St Catherine University,1,St. Catherine University,College 4 Year Private,100.0,no,no,thin,41.4,6536.0,1760.0,41.4,yes,june5-4yr-06
+294,179043,Rockhurst University,1,Rockhurst University,College 4 Year Private,100.0,no,no,thin,41.0,5821.0,1630.0,41.0,yes,june5-4yr-06
+295,192864,Marymount Manhattan College,1,Marymount Manhattan College,College 4 Year Private,100.0,no,no,thin,40.6,5853.0,1548.0,40.6,yes,june5-4yr-06
+296,217873,Claflin University,1,Claflin University,College 4 Year Private,100.0,no,no,thin,40.5,4121.0,1201.0,40.5,yes,june5-4yr-06
+297,222983,Austin College,1,Austin College,College 4 Year Private,100.0,no,no,thin,40.0,4383.0,1099.0,40.0,yes,june5-4yr-06
+298,211273,Bryn Mawr College,1,Bryn Mawr College - Career & Civic Engagement Center,College 4 Year Private,100.0,no,no,thin,39.8,5230.0,1563.0,39.8,yes,june5-4yr-06
+299,156541,University of the Cumberlands,1,University of the Cumberlands,College 4 Year Private,100.0,no,no,thin,39.1,4459.0,2436.0,39.1,yes,june5-4yr-06
+300,198507,Elizabeth City State University,1,Elizabeth City State University,College 4 Year Public,100.0,no,no,thin,38.8,3814.0,925.0,38.8,yes,june5-4yr-06

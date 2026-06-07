@@ -1,0 +1,159 @@
+unitid,ipeds_name,run_rank,total_attendees,selection_tier,readiness_num,bachelor_users_2005_2025,recent_bachelor_users_2020_2025,school_name,people_any_degree,bachelors_people,bachelors_2005_2025,bachelors_2020_2025,avg_calibration_weight,max_calibration_weight,named_employer_row_pct,unknown_employer_row_pct,same_school_employer_row_pct,career_employer_row_pct,salary_row_pct,overview_rows,bachelors_horizons,overview_salary_obs_pct,role_rows,employer_rows,geography_rows,quality_rows,quality_named_employer_pct,quality_unknown_employer_pct,quality_same_school_employer_pct,quality_career_employer_pct,quality_salary_obs_pct,suppressed_or_thin_major_rows,recommendation,render_recommendation
+179867,Washington University in St Louis,1,20,strong,86.4,30220.0,10254.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+489779,Purdue University Global,2,18,strong,87.2,59567.0,21699.0,Purdue University Global,6,4,4,1,1.76,3.3,1.0,0.0,0.0,1.0,0.769,13,3,1.9,17,17,17,17,100.0,0.0,0.0,100.0,100.0,14.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+110714,University of California-Santa Cruz,4,15,strong,92.4,58998.0,19236.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+126562,University of Colorado Denver/Anschutz Medical Campus,5,14,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+133951,Florida International University,7,10,strong,90.0,127198.0,50580.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+240268,University of Wisconsin-Eau Claire,12,9,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+186380,Rutgers University-New Brunswick,13,8,strong,89.6,34738.0,20651.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+228769,The University of Texas at Arlington,15,8,strong,88.3,71452.0,25329.0,The University of Texas at Arlington,3,3,3,0,3.08,3.69,1.0,0.0,0.0,1.0,0.857,7,3,2.857,14,14,14,14,100.0,0.0,0.0,100.0,85.714,14.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+180461,Montana State University,17,8,strong,86.1,25021.0,8582.0,Montana State University,2,1,1,0,3.83,3.83,0.0,1.0,0.0,0.0,0.375,8,3,4.0,11,11,11,11,0.0,100.0,0.0,0.0,100.0,6.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+127741,University of Northern Colorado,22,7,usable,71.4,20793.0,4678.0,University of Northern Colorado,1,0,0,0,,,,,,,0.0,2,0,,2,2,2,2,,,,,,0.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+196079,Binghamton University,23,6,strong,90.8,48472.0,17035.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+145637,University of Illinois Urbana-Champaign,24,6,strong,88.8,124476.0,40156.0,University of Illinois Urbana-Champaign,2,0,0,0,,,,,,,0.0,3,0,,6,6,6,6,,,,,,0.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+201885,University of Cincinnati-Main Campus,25,6,strong,88.5,77714.0,30634.0,University of Cincinnati-Main Campus,1,1,1,0,1.0,1.0,0.667,0.333,0.0,0.667,1.0,3,3,1.0,3,3,3,3,66.667,33.333,0.0,66.667,100.0,3.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+221740,The University of Tennessee-Chattanooga,27,6,strong,81.4,22205.0,7492.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+127820,Pikes Peak State College,34,6,avoid,16.9,537.0,286.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+110556,California State University-Fresno,35,6,avoid,-6.2,1.0,0.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+475741,Chamberlain University-Indiana,38,6,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+199120,University of North Carolina at Chapel Hill,39,5,strong,89.1,71250.0,24568.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+433387,Western Governors University,40,5,strong,86.8,161697.0,105216.0,Western Governors University,9,6,6,0,1.59,4.0,0.923,0.077,0.0,0.846,0.684,17,3,1.692,24,24,24,22,92.857,7.143,0.0,92.857,100.0,14.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+192819,Marist University,49,5,thin,40.8,5729.0,1681.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+196060,University at Albany,50,5,avoid,0.0,0.0,0.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+445188,University of California-Merced,54,5,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+190512,CUNY Bernard M Baruch College,56,4,strong,88.7,47938.0,17856.0,CUNY Bernard M Baruch College,3,2,2,2,1.86,2.72,0.75,0.25,0.0,0.5,0.8,3,2,2.0,7,7,6,5,93.75,6.25,0.0,93.75,100.0,4.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+196006,SUNY College of Technology at Alfred,69,4,thin,39.2,4185.0,1521.0,SUNY College of Technology at Alfred,1,1,1,0,2.5,2.5,1.0,0.0,0.0,1.0,1.0,3,3,3.0,6,6,6,6,100.0,0.0,0.0,100.0,100.0,6.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+193016,Mercy University,70,4,avoid,0.0,0.0,0.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+110486,California State University-Bakersfield,71,4,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+224147,Texas A & M University-Corpus Christi,74,4,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+476072,Herzing University,76,4,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+199148,University of North Carolina at Greensboro,77,3,strong,90.3,38908.0,12459.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+122755,San Jose State University,78,3,strong,88.8,89818.0,31998.0,San Jose State University,2,1,1,0,1.0,1.0,1.0,0.0,0.0,1.0,0.5,2,1,1.0,2,2,2,2,100.0,0.0,0.0,100.0,100.0,1.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+157951,Western Kentucky University,81,3,strong,87.8,31035.0,9066.0,Western Kentucky University,1,0,0,0,,,,,,,0.0,1,0,,2,2,2,2,,,,,,0.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+190637,CUNY Lehman College,90,3,strong,76.5,20893.0,8329.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+217864,Citadel Military College of South Carolina,104,3,thin,51.6,8901.0,2803.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+224615,Dallas College,115,3,avoid,26.3,1535.0,782.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+126289,Arapahoe Community College,117,3,avoid,16.1,415.0,229.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+486840,Kennesaw State University,120,3,avoid,0.0,0.0,0.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+110705,University of California-Santa Barbara,121,3,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+187985,University of New Mexico-Main Campus,126,3,,,,,University of New Mexico-Main Campus,2,1,1,0,1.0,1.0,0.0,1.0,0.0,0.0,0.5,6,3,1.0,9,9,9,9,0.0,100.0,0.0,0.0,100.0,3.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+215293,University of Pittsburgh-Pittsburgh Campus,127,3,,,,,University of Pittsburgh-Pittsburgh Campus,2,2,2,1,1.85,2.69,1.0,0.0,0.0,1.0,1.0,4,3,2.0,6,6,6,6,100.0,0.0,0.0,100.0,100.0,6.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+441663,Institute of Technology,128,3,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+110671,University of California-Riverside,129,2,strong,92.1,59363.0,21709.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+227368,The University of Texas Rio Grande Valley,133,2,strong,86.6,29250.0,9836.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+141574,University of Hawaii at Manoa,134,2,strong,83.8,28319.0,8698.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+181394,University of Nebraska at Omaha,135,2,strong,82.1,26386.0,8360.0,University of Nebraska at Omaha,1,1,1,0,2.5,2.5,1.0,0.0,0.0,1.0,1.0,3,3,3.0,6,6,6,6,100.0,0.0,0.0,100.0,100.0,6.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+450933,Columbia Southern University,136,2,strong,80.4,31210.0,10787.0,Columbia Southern University,1,0,0,0,,,,,,,0.0,1,0,,1,1,1,1,,,,,,0.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+409698,California State University-Monterey Bay,143,2,usable,73.0,16215.0,6215.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+240277,University of Wisconsin-Green Bay,147,2,usable,66.5,14080.0,4219.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+174844,St Olaf College,156,2,usable,56.4,10808.0,3009.0,St Olaf College,1,1,1,1,1.0,1.0,0.0,1.0,0.0,0.0,1.0,1,1,1.0,1,1,1,1,0.0,100.0,0.0,0.0,100.0,1.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+152318,Rose-Hulman Institute of Technology,160,2,thin,48.9,8127.0,2370.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+484905,University of North Texas at Dallas,167,2,thin,42.3,4117.0,2494.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+214157,Moravian University,169,2,thin,41.9,5595.0,1710.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+148654,University of Illinois Springfield,172,2,thin,40.0,7488.0,1960.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+227182,Lone Star College System,181,2,avoid,32.9,2657.0,1702.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+127945,Rocky Mountain College of Art and Design,184,2,avoid,28.4,2849.0,1297.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+160630,Southern University at New Orleans,186,2,avoid,28.2,2026.0,455.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+121619,Santa Ana College,189,2,avoid,19.3,458.0,240.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+141565,University of Hawaii at Hilo,193,2,avoid,0.0,0.0,0.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+219000,Augustana University,194,2,avoid,0.0,0.0,0.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+105516,University of Phoenix-Phoenix Campus,195,2,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+171483,Northwestern Michigan College,200,2,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+181464,University of Nebraska-Lincoln,201,2,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+215275,University of Pittsburgh-Greensburg,203,2,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+226152,Texas A & M International University,205,2,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+228149,St. Mary's University,206,2,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+228705,Texas A&M University-Kingsville,207,2,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+240453,University of Wisconsin-Milwaukee,210,2,,,,,University of Wisconsin-Milwaukee,1,0,0,0,,,,,,,0.0,0,0,,0,0,0,0,,,,,,0.0,missing_aggregates,holdout_missing_or_incomplete
+413680,Spartan College of Aeronautics & Technology,211,2,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+428453,Minnesota State Colleges and Universities System Office,212,2,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+145600,University of Illinois Chicago,216,1,strong,87.8,59046.0,22069.0,University of Illinois Chicago,2,0,0,0,,,,,,,0.0,5,0,,7,7,7,7,,,,,,0.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+228796,The University of Texas at El Paso,217,1,strong,87.8,29914.0,10122.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+190594,CUNY Hunter College,219,1,strong,87.6,34966.0,12691.0,CUNY Hunter College,1,0,0,0,,,,,,,0.0,1,0,,1,1,1,1,,,,,,0.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+110592,California State University-Los Angeles,220,1,strong,87.2,42707.0,15250.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+110574,California State University-East Bay,225,1,strong,85.9,37676.0,12084.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+220862,University of Memphis,226,1,strong,85.1,33805.0,9736.0,University of Memphis,3,2,2,0,1.91,2.4,0.667,0.333,0.0,0.667,0.5,6,2,2.0,9,9,9,9,66.667,33.333,0.0,66.667,100.0,6.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+196680,Excelsior University,233,1,strong,75.0,24679.0,6641.0,Excelsior University,1,1,1,0,1.0,1.0,1.0,0.0,0.0,0.5,1.0,2,2,1.0,2,2,2,2,100.0,0.0,0.0,100.0,100.0,2.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+228802,The University of Texas at Tyler,240,1,usable,68.8,15684.0,5423.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+240462,University of Wisconsin-Platteville,242,1,usable,67.8,15007.0,4122.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+199111,University of North Carolina Asheville,259,1,thin,53.8,9403.0,2498.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+195216,St Lawrence University,260,1,thin,53.7,9482.0,2659.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+212577,Franklin and Marshall College,265,1,thin,51.4,8864.0,2550.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+190691,CUNY York College,280,1,thin,45.0,5111.0,1810.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+195164,St Bonaventure University,282,1,thin,43.7,5947.0,1648.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+443410,DigiPen Institute of Technology,286,1,thin,42.7,5972.0,2772.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+190035,CUNY System Office,287,1,thin,42.6,17777.0,7005.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+175005,St Catherine University,293,1,thin,41.4,6536.0,1760.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+156541,University of the Cumberlands,299,1,thin,39.1,4459.0,2436.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+232256,Hampden-Sydney College,310,1,thin,35.7,3488.0,832.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+224554,East Texas A&M University,311,1,thin,35.6,4316.0,1293.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+190646,CUNY Medgar Evers College,315,1,avoid,34.1,4257.0,1371.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+159416,Louisiana State University-Shreveport,320,1,avoid,31.7,4843.0,1403.0,Louisiana State University-Shreveport,7,2,2,1,1.91,2.37,0.667,0.333,0.0,0.667,0.25,11,2,2.333,20,20,20,19,80.0,20.0,0.0,80.0,100.0,5.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+127200,Front Range Community College,325,1,avoid,22.8,652.0,349.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+151342,Indiana University-South Bend,326,1,avoid,22.2,462.0,221.0,Indiana University-South Bend,5,3,3,1,1.0,1.0,0.75,0.25,0.0,0.75,0.5,14,3,0.875,20,20,20,20,75.0,25.0,0.0,75.0,87.5,8.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+237686,West Virginia University at Parkersburg,327,1,avoid,20.7,1343.0,347.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+474863,Los Angeles Pacific University,328,1,avoid,18.2,564.0,461.0,Los Angeles Pacific University,1,1,1,0,1.0,1.0,1.0,0.0,0.0,1.0,1.0,1,1,1.0,1,1,1,1,100.0,0.0,0.0,100.0,100.0,1.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+181297,Nebraska Methodist College of Nursing & Allied Health,329,1,avoid,17.5,1155.0,396.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+238263,Madison Area Technical College,330,1,avoid,14.1,349.0,131.0,Madison Area Technical College,1,0,0,0,,,,,,,0.0,3,0,,3,3,3,3,,,,,,0.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+165884,Benjamin Franklin Cummings Institute of Technology,331,1,avoid,12.8,183.0,69.0,Benjamin Franklin Cummings Institute of Technology,479,88,88,28,1.82,4.0,0.885,0.115,0.01,0.864,0.152,100,3,1.712,1655,1539,835,470,89.167,11.344,0.114,89.053,91.2,125.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+234951,Clover Park Technical College,332,1,avoid,11.5,160.0,104.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+127617,Morgan Community College,333,1,avoid,8.1,138.0,30.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+141963,University of Hawaii System Office,334,1,avoid,0.0,0.0,0.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+204422,North Central State College,335,1,avoid,0.0,0.0,0.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+105668,Rio Salado College,339,1,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+117672,Southern California University of Health Sciences,341,1,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+130989,Goldey-Beacom College,346,1,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+161518,Saint Joseph's College of Maine,356,1,,,,,Saint Joseph's College of Maine,1,1,1,1,1.0,1.0,1.0,0.0,0.0,1.0,1.0,2,2,1.0,2,2,2,2,100.0,0.0,0.0,100.0,100.0,2.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+171137,University of Michigan-Dearborn,361,1,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+174251,University of Minnesota-Morris,362,1,,,,,University of Minnesota-Morris,1,1,1,1,1.7,1.7,1.0,0.0,0.0,1.0,1.0,1,1,2.0,2,2,2,2,100.0,0.0,0.0,100.0,100.0,2.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+178059,Maryville University of Saint Louis,366,1,,,,,Maryville University of Saint Louis,1,1,1,0,3.3,3.3,1.0,0.0,0.0,1.0,1.0,3,3,3.0,6,6,6,6,100.0,0.0,0.0,100.0,100.0,6.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+184603,Fairleigh Dickinson University-Metropolitan Campus,368,1,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+190655,CUNY New York City College of Technology,370,1,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+225575,Huston-Tillotson University,380,1,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+229300,The University of Texas Health Science Center at Houston,382,1,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+230782,Weber State University,383,1,,,,,Weber State University,1,0,0,0,,,,,,,0.0,2,0,,2,2,2,2,,,,,,0.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+241216,Atlantic University,386,1,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+431123,Escuela Tecnica de Electricidad,387,1,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+459949,Texas A&M University-San Antonio,388,1,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+498562,Commonwealth University of Pennsylvania,389,1,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+221768,The University of Tennessee-Martin,394,7,review_match,51.2,9435.0,2217.0,The University of Tennessee-Martin,2,2,2,0,1.9,2.5,0.8,0.2,0.2,0.6,1.0,3,3,2.2,8,8,8,6,66.667,33.333,29.167,37.5,100.0,6.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+178439,University of Missouri-System Office,395,6,review_match,5.3,13.0,2.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+181215,University of Nebraska at Kearney,396,5,review_match,49.3,8596.0,2400.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+171146,University of Michigan-Flint,398,4,review_match,53.2,9822.0,2780.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+159407,Louisiana State University-Eunice,400,4,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+228787,The University of Texas at Dallas,401,3,review_match,88.3,53013.0,24783.0,The University of Texas at Dallas,1,0,0,0,,,,,,,0.0,1,0,,2,2,2,2,,,,,,0.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+191728,Hunter Business School,403,3,review_match,8.7,33.0,5.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+186371,Rutgers University-Camden,404,2,review_match,56.7,10476.0,3277.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+104586,Embry-Riddle Aeronautical University-Prescott,405,2,review_match,15.4,85.0,2.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+163204,University of Maryland Global Campus,406,2,review_match,12.4,215.0,197.0,University of Maryland Global Campus,3,1,1,1,2.8,2.8,1.0,0.0,0.0,1.0,0.167,6,2,1.5,10,10,10,10,100.0,0.0,0.0,100.0,50.0,4.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+110422,California Polytechnic State University-San Luis Obispo,407,1,review_match,93.0,71389.0,24989.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+173920,Minnesota State University-Mankato,409,1,review_match,90.6,30113.0,9028.0,Minnesota State University-Mankato,1,0,0,0,,,,,,,0.0,2,0,,2,2,2,2,,,,,,0.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+174233,University of Minnesota-Duluth,411,1,review_match,88.7,128442.0,37963.0,University of Minnesota-Duluth,4,3,3,1,1.48,2.44,0.833,0.167,0.0,0.833,0.556,9,3,1.0,11,11,11,11,87.5,12.5,0.0,87.5,75.0,8.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+196185,SUNY Oneonta,412,1,review_match,69.5,17247.0,4274.0,SUNY Oneonta,1,0,0,0,,,,,,,0.0,2,0,,2,2,2,2,,,,,,0.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+150066,Anderson University,413,1,review_match,54.8,10315.0,2974.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+128106,Colorado State University Pueblo,416,1,review_match,46.1,7378.0,1625.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+190576,CUNY Graduate School and University Center,420,1,review_match,11.3,116.0,27.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+196246,State University of New York at Plattsburgh,421,1,review_match,0.0,0.0,0.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+201469,Bryant & Stratton College-Parma,422,1,review_match,0.0,0.0,0.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+215266,University of Pittsburgh-Bradford,423,1,review_match,0.0,0.0,0.0,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+449728,ATA College,424,1,,,,,,0,0,0,0,,,,,,,,0,0,,0,0,0,0,,,,,,0.0,missing_from_export,holdout_missing_or_incomplete
+228778,The University of Texas at Austin,425,15,strong,89.2,153775.0,49745.0,The University of Texas at Austin,6,1,1,0,4.0,4.0,1.0,0.0,0.0,1.0,0.133,15,3,2.667,23,23,23,23,100.0,0.0,0.0,100.0,66.667,6.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+134130,University of Florida,427,13,strong,89.0,139813.0,47716.0,University of Florida,103,18,18,8,1.67,4.0,0.741,0.259,0.0,0.704,0.138,78,3,2.333,265,258,260,165,75.269,24.731,0.0,75.269,93.548,31.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+110617,California State University-Sacramento,433,10,strong,90.5,66976.0,22178.0,California State University-Sacramento,1,0,0,0,,,,,,,0.0,2,0,,4,4,4,4,,,,,,0.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+218663,University of South Carolina-Columbia,441,7,strong,90.3,76575.0,27222.0,University of South Carolina-Columbia,6,2,2,0,1.41,1.69,0.6,0.4,0.0,0.6,0.286,14,3,1.4,21,21,21,21,50.0,50.0,0.0,50.0,87.5,8.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+204796,Ohio State University-Main Campus,442,7,strong,90.2,158542.0,51776.0,Ohio State University-Main Campus,5,4,4,0,1.0,1.0,1.0,0.0,0.0,1.0,0.643,14,3,1.0,17,17,17,17,100.0,0.0,0.0,100.0,100.0,9.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+234076,University of Virginia-Main Campus,446,7,strong,88.1,65615.0,22206.0,University of Virginia-Main Campus,1,0,0,0,,,,,,,0.0,2,0,,2,2,2,2,,,,,,0.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+110653,University of California-Irvine,448,6,strong,90.5,92219.0,32991.0,University of California-Irvine,3,1,1,1,1.0,1.0,1.0,0.0,0.0,1.0,0.2,5,1,1.0,5,5,5,5,100.0,0.0,0.0,100.0,100.0,1.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+134097,Florida State University,449,6,strong,90.5,120759.0,38072.0,Florida State University,5,1,1,0,3.26,3.26,1.0,0.0,0.5,0.5,0.2,10,2,3.0,12,12,12,12,100.0,0.0,50.0,50.0,100.0,4.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+110635,University of California-Berkeley,451,6,strong,87.8,134138.0,45886.0,University of California-Berkeley,7,0,0,0,,,,,,,0.0,12,0,,16,16,16,16,,,,,,0.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+110565,California State University-Fullerton,455,5,strong,91.3,98053.0,33061.0,California State University-Fullerton,1,1,1,0,3.29,3.29,1.0,0.0,0.0,1.0,1.0,2,2,3.0,4,4,4,4,100.0,0.0,0.0,100.0,100.0,4.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+229027,The University of Texas at San Antonio,456,5,strong,91.3,64916.0,24130.0,The University of Texas at San Antonio,2,0,0,0,,,,,,,0.0,4,0,,6,6,6,6,,,,,,0.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+225511,University of Houston,459,5,strong,89.1,106252.0,39449.0,University of Houston,4,0,0,0,,,,,,,0.0,8,0,,11,11,11,11,,,,,,0.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+163268,University of Maryland-Baltimore County,462,4,strong,89.8,31711.0,9819.0,University of Maryland-Baltimore County,2,0,0,0,,,,,,,0.0,5,0,,5,5,5,5,,,,,,0.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+240444,University of Wisconsin-Madison,465,4,strong,89.5,113098.0,38287.0,University of Wisconsin-Madison,3,3,3,1,1.48,1.8,1.0,0.0,0.0,0.714,0.714,7,3,1.143,13,13,13,13,100.0,0.0,0.0,100.0,76.923,13.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+139959,University of Georgia,470,3,strong,90.7,101173.0,35036.0,University of Georgia,3,1,1,0,1.0,1.0,1.0,0.0,0.5,0.5,0.4,5,2,1.0,5,5,5,5,100.0,0.0,50.0,50.0,100.0,2.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+209551,University of Oregon,489,1,strong,90.6,62160.0,18063.0,University of Oregon,6,4,4,0,2.39,4.0,0.857,0.143,0.286,0.571,0.636,10,3,2.286,17,17,17,16,81.818,18.182,31.818,50.0,100.0,11.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+110680,University of California-San Diego,490,1,strong,90.5,103583.0,39283.0,University of California-San Diego,1,1,1,0,3.2,3.2,0.0,1.0,0.0,0.0,1.0,1,1,3.0,2,2,2,2,0.0,100.0,0.0,0.0,100.0,2.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+110644,University of California-Davis,491,1,strong,90.2,101735.0,33846.0,University of California-Davis,4,0,0,0,,,,,,,0.0,8,0,,13,13,13,13,,,,,,0.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+110608,California State University-Northridge,492,1,strong,90.1,89150.0,27884.0,California State University-Northridge,3,0,0,0,,,,,,,0.0,6,0,,12,12,12,12,,,,,,0.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n
+231174,University of Vermont,503,5,strong,91.3,35290.0,11213.0,University of Vermont,1,0,0,0,,,,,,,0.0,2,0,,4,4,4,4,,,,,,0.0,large_error_risk_low_bachelor_n,holdout_large_error_risk_tiny_n

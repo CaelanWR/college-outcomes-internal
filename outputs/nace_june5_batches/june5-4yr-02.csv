@@ -1,0 +1,51 @@
+run_rank,unitid,ipeds_name,total_attendees,company_variants,company_types,best_match_score,needs_match_review,currently_precomputed_local,selection_tier,data_readiness_score,bachelor_users_2005_2025,recent_bachelor_users_2020_2025,readiness_num,force_include_for_june5_503_run,batch_id
+51,145813,Illinois State University,5,Illinois State University,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-02
+52,146481,Lake Forest College,5,Lake Forest College,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-02
+53,384254,Beacon College,5,Beacon College,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-02
+54,445188,University of California-Merced,5,University of California - Merced,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-02
+55,196088,University at Buffalo,4,University at Buffalo - The State University of New York – Career Design Center,College 4 Year Public,100.0,no,no,strong,88.8,66198.0,22564.0,88.8,yes,june5-4yr-02
+56,190512,CUNY Bernard M Baruch College,4,Baruch College,College 4 Year Public,100.0,no,no,strong,88.7,47938.0,17856.0,88.7,yes,june5-4yr-02
+57,185262,Kean University,4,Kean University; Kean University - College of Business and Public Management,College 4 Year Public,100.0,no,no,strong,87.5,29712.0,9766.0,87.5,yes,june5-4yr-02
+58,172644,Wayne State University,4,Wayne State University - Career Services; Wayne State University - Ilitch School Career Services,College 4 Year Public,100.0,no,no,strong,86.7,44025.0,16704.0,86.7,yes,june5-4yr-02
+59,164988,Boston University,4,Boston University - Questrom School of Business; Boston University – Center for Career Development,College 4 Year Private,100.0,no,no,strong,86.4,85282.0,26810.0,86.4,yes,june5-4yr-02
+60,200332,North Dakota State University-Main Campus,4,North Dakota State University,College 4 Year Public,100.0,no,no,strong,79.3,23757.0,6606.0,79.3,yes,june5-4yr-02
+61,240727,University of Wyoming,4,University of Wyoming,College 4 Year Public,100.0,no,no,usable,74.3,20720.0,5820.0,74.3,yes,june5-4yr-02
+62,164739,Bentley University,4,Bentley University,College 4 Year Private,100.0,no,no,usable,73.6,19300.0,5967.0,73.6,yes,june5-4yr-02
+63,135717,Miami Dade College,4,Miami Dade College Wolfson Campus - STEM Legacy,College 4 Year Public,100.0,no,no,usable,59.7,13399.0,5771.0,59.7,yes,june5-4yr-02
+64,165699,Endicott College,4,Endicott College,College 4 Year Private,100.0,no,no,usable,58.8,9819.0,3592.0,58.8,yes,june5-4yr-02
+65,131283,The Catholic University of America,4,The Catholic University of America,College 4 Year Private,100.0,no,no,usable,55.9,11493.0,3285.0,55.9,yes,june5-4yr-02
+66,217536,Salve Regina University,4,Salve Regina University,College 4 Year Private,100.0,no,no,thin,45.7,6738.0,2245.0,45.7,yes,june5-4yr-02
+67,196592,Touro University,4,Touro University,College 4 Year Private,100.0,no,no,thin,45.3,9602.0,2403.0,45.3,yes,june5-4yr-02
+68,153384,Grinnell College,4,Grinnell College,College 4 Year Private,100.0,no,no,thin,44.2,6498.0,2024.0,44.2,yes,june5-4yr-02
+69,196006,SUNY College of Technology at Alfred,4,Alfred State College - SUNY,College 4 Year Public,100.0,no,no,thin,39.2,4185.0,1521.0,39.2,yes,june5-4yr-02
+70,193016,Mercy University,4,Mercy University,College 4 Year Private,100.0,no,no,avoid,0.0,0.0,0.0,0.0,yes,june5-4yr-02
+71,110486,California State University-Bakersfield,4,California State University - Bakersfield,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-02
+72,166629,University of Massachusetts-Amherst,4,University of Massachusetts - Amherst,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-02
+73,184694,Fairleigh Dickinson University-Florham Campus,4,Fairleigh Dickinson University,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-02
+74,224147,Texas A & M University-Corpus Christi,4,Texas A&M University - Corpus Christi,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-02
+75,231165,Vermont State University,4,Vermont State University,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-02
+76,476072,Herzing University,4,Herzing University,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-02
+77,199148,University of North Carolina at Greensboro,3,University of North Carolina Greensboro - Bryan School of Business & Economics,College 4 Year Public,100.0,no,no,strong,90.3,38908.0,12459.0,90.3,yes,june5-4yr-02
+78,122755,San Jose State University,3,San Jose State University,College 4 Year Public,100.0,no,no,strong,88.8,89818.0,31998.0,88.8,yes,june5-4yr-02
+79,232186,George Mason University,3,George Mason University - Costello College of Business,College 4 Year Public,100.0,no,no,strong,88.2,76471.0,28701.0,88.2,yes,june5-4yr-02
+80,164924,Boston College,3,Boston College - Career Center,College 4 Year Private,100.0,no,no,strong,88.1,41883.0,13121.0,88.1,yes,june5-4yr-02
+81,157951,Western Kentucky University,3,Western Kentucky University,College 4 Year Public,100.0,no,no,strong,87.8,31035.0,9066.0,87.8,yes,june5-4yr-02
+82,137847,The University of Tampa,3,University of Tampa,College 4 Year Private,100.0,no,no,strong,86.8,25205.0,10239.0,86.8,yes,june5-4yr-02
+83,221999,Vanderbilt University,3,Vanderbilt University - Career Center,College 4 Year Private,100.0,no,no,strong,85.7,28757.0,9237.0,85.7,yes,june5-4yr-02
+84,119605,National University,3,National University,College 4 Year Private,100.0,no,no,strong,84.2,35810.0,11903.0,84.2,yes,june5-4yr-02
+85,194824,Rensselaer Polytechnic Institute,3,Rensselaer Polytechnic Institute - Center for Career & Professional Development,College 4 Year Private,100.0,no,no,strong,83.2,23162.0,7716.0,83.2,yes,june5-4yr-02
+86,228246,Southern Methodist University,3,Southern Methodist University - Cox School of Business; Southern Methodist University - Hegi Family Career Development Center,College 4 Year Private,100.0,no,no,strong,82.3,25403.0,8387.0,82.3,yes,june5-4yr-02
+87,169910,Ferris State University,3,Ferris State University,College 4 Year Public,100.0,no,no,strong,81.6,26429.0,6133.0,81.6,yes,june5-4yr-02
+88,156620,Eastern Kentucky University,3,Eastern Kentucky University,College 4 Year Public,100.0,no,no,strong,79.8,24178.0,7278.0,79.8,yes,june5-4yr-02
+89,128771,Central Connecticut State University,3,Central Connecticut State University,College 4 Year Public,100.0,no,no,strong,76.7,22197.0,5965.0,76.7,yes,june5-4yr-02
+90,190637,CUNY Lehman College,3,Lehman College - ACE; Lehman College - College of Business,College 4 Year Public,100.0,no,no,strong,76.5,20893.0,8329.0,76.5,yes,june5-4yr-02
+91,133650,Florida Agricultural and Mechanical University,3,Florida A&M University; Florida A&M University - School of Business and Industry,College 4 Year Public,100.0,no,no,strong,76.4,19131.0,5407.0,76.4,yes,june5-4yr-02
+92,126580,University of Colorado Colorado Springs,3,University of Colorado - Colorado Springs; University of Colorado Colorado Springs - College of Business,College 4 Year Public,100.0,no,no,strong,75.4,20152.0,6939.0,75.4,yes,june5-4yr-02
+93,151306,University of Southern Indiana,3,University of Southern Indiana,College 4 Year Public,100.0,no,no,usable,65.1,15562.0,4164.0,65.1,yes,june5-4yr-02
+94,165015,Brandeis University,3,Brandeis University,College 4 Year Private,100.0,no,no,usable,64.0,14709.0,4505.0,64.0,yes,june5-4yr-02
+95,165662,Emerson College,3,Emerson College,College 4 Year Private,100.0,no,no,usable,61.9,16150.0,4972.0,61.9,yes,june5-4yr-02
+96,190558,College of Staten Island CUNY,3,College of Staten Island - CUNY; College of Staten Island - Chazanoff School of Business,College 4 Year Public,100.0,no,no,usable,61.9,11836.0,4290.0,61.9,yes,june5-4yr-02
+97,171456,Northern Michigan University,3,Northern Michigan University,College 4 Year Public,100.0,no,no,usable,59.9,13533.0,3387.0,59.9,yes,june5-4yr-02
+98,190044,Clarkson University,3,Clarkson University,College 4 Year Private,100.0,no,no,usable,56.1,10813.0,3020.0,56.1,yes,june5-4yr-02
+99,138947,Clark Atlanta University,3,Clark Atlanta University,College 4 Year Private,100.0,no,no,thin,54.9,9780.0,2858.0,54.9,yes,june5-4yr-02
+100,137078,St Petersburg College,3,St. Petersburg College,College 4 Year Public,100.0,no,no,thin,54.7,11424.0,4477.0,54.7,yes,june5-4yr-02

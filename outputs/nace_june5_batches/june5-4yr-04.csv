@@ -1,0 +1,51 @@
+run_rank,unitid,ipeds_name,total_attendees,company_variants,company_types,best_match_score,needs_match_review,currently_precomputed_local,selection_tier,data_readiness_score,bachelor_users_2005_2025,recent_bachelor_users_2020_2025,readiness_num,force_include_for_june5_503_run,batch_id
+151,229814,West Texas A & M University,2,West Texas A&M University,College 4 Year Public,100.0,no,no,usable,61.8,13442.0,4108.0,61.8,yes,june5-4yr-04
+152,181002,Creighton University,2,Creighton University,College 4 Year Private,100.0,no,no,usable,60.5,12828.0,4057.0,60.5,yes,june5-4yr-04
+153,199157,North Carolina Central University,2,North Carolina Central University; North Carolina Central University - School of Business,College 4 Year Public,100.0,no,no,usable,59.1,12723.0,3569.0,59.1,yes,june5-4yr-04
+154,169080,Calvin University,2,Calvin University,College 4 Year Private,100.0,no,no,usable,58.6,11387.0,3091.0,58.6,yes,june5-4yr-04
+155,148487,Roosevelt University,2,Roosevelt University,College 4 Year Private,100.0,no,no,usable,57.3,18207.0,2810.0,57.3,yes,june5-4yr-04
+156,174844,St Olaf College,2,St. Olaf College,College 4 Year Private,100.0,no,no,usable,56.4,10808.0,3009.0,56.4,yes,june5-4yr-04
+157,202523,Denison University,2,Denison University,College 4 Year Private,100.0,no,no,usable,55.7,9186.0,2731.0,55.7,yes,june5-4yr-04
+158,136950,Rollins College,2,Rollins College,College 4 Year Private,100.0,no,no,thin,53.8,10205.0,2932.0,53.8,yes,june5-4yr-04
+159,127918,Regis University,2,Regis University,College 4 Year Private,100.0,no,no,thin,51.0,13714.0,2552.0,51.0,yes,june5-4yr-04
+160,152318,Rose-Hulman Institute of Technology,2,Rose-Hulman Institute of Technology,College 4 Year Private,100.0,no,no,thin,48.9,8127.0,2370.0,48.9,yes,june5-4yr-04
+161,153834,Luther College,2,Luther College,College 4 Year Private,100.0,no,no,thin,47.2,6867.0,1471.0,47.2,yes,june5-4yr-04
+162,213987,Mercyhurst University,2,Mercyhurst University,College 4 Year Private,100.0,no,no,thin,46.9,8015.0,1958.0,46.9,yes,june5-4yr-04
+163,209506,Oregon Institute of Technology,2,Oregon Institute of Technology,College 4 Year Public,100.0,no,no,thin,46.7,6617.0,2089.0,46.7,yes,june5-4yr-04
+164,216287,Swarthmore College,2,Swarthmore College - Career Services,College 4 Year Private,100.0,no,no,thin,46.5,6434.0,2089.0,46.5,yes,june5-4yr-04
+165,139144,Berry College,2,Berry College,College 4 Year Private,100.0,no,no,thin,43.9,5711.0,1717.0,43.9,yes,june5-4yr-04
+166,132709,Broward College,2,Broward College,College 4 Year Public,100.0,no,no,thin,43.1,6988.0,3283.0,43.1,yes,june5-4yr-04
+167,484905,University of North Texas at Dallas,2,University of North Texas at Dallas; University of North Texas at Dallas - Center for Socioeconomic Mobility through Education,College 4 Year Public,100.0,no,no,thin,42.3,4117.0,2494.0,42.3,yes,june5-4yr-04
+168,199962,Wingate University,2,Wingate University,College 4 Year Private,100.0,no,no,thin,41.9,5212.0,1815.0,41.9,yes,june5-4yr-04
+169,214157,Moravian University,2,Moravian University,College 4 Year Private,100.0,no,no,thin,41.9,5595.0,1710.0,41.9,yes,june5-4yr-04
+170,188641,Alfred University,2,Alfred University,College 4 Year Private,100.0,no,no,thin,40.2,5185.0,1108.0,40.2,yes,june5-4yr-04
+171,140696,Oglethorpe University,2,Oglethorpe University,College 4 Year Private,100.0,no,no,thin,40.1,3720.0,1339.0,40.1,yes,june5-4yr-04
+172,148654,University of Illinois Springfield,2,University of Illinois Springfield,College 4 Year Public,100.0,no,no,thin,40.0,7488.0,1960.0,40.0,yes,june5-4yr-04
+173,161457,University of New England,2,University of New England,College 4 Year Private,100.0,no,no,thin,39.9,5958.0,1725.0,39.9,yes,june5-4yr-04
+174,217493,Rhode Island School of Design,2,Rhode Island School of Design,College 4 Year Private,100.0,no,no,thin,39.5,8715.0,2369.0,39.5,yes,june5-4yr-04
+175,215947,Seton Hill University,2,Seton Hill University,College 4 Year Private,100.0,no,no,thin,39.2,4259.0,1269.0,39.2,yes,june5-4yr-04
+176,169983,Kettering University,2,Kettering University,College 4 Year Private,100.0,no,no,thin,38.8,5834.0,1702.0,38.8,yes,june5-4yr-04
+177,181330,Midland University,2,Midland University,College 4 Year Private,100.0,no,no,thin,37.7,2772.0,1173.0,37.7,yes,june5-4yr-04
+178,128391,Western Colorado University,2,Western Colorado University,College 4 Year Public,100.0,no,no,thin,36.3,4576.0,1237.0,36.3,yes,june5-4yr-04
+179,181127,Hastings College,2,Hastings College,College 4 Year Private,100.0,no,no,thin,35.5,2518.0,602.0,35.5,yes,june5-4yr-04
+180,199643,Shaw University,2,Shaw University,College 4 Year Private,100.0,no,no,avoid,33.5,3182.0,579.0,33.5,yes,june5-4yr-04
+181,227182,Lone Star College System,2,Lone Star College - Cy-Fair; Lone Star College - Online,College 4 Year Public,100.0,no,no,avoid,32.9,2657.0,1702.0,32.9,yes,june5-4yr-04
+182,199865,Warren Wilson College,2,Warren Wilson College,College 4 Year Private,100.0,no,no,avoid,31.3,1946.0,440.0,31.3,yes,june5-4yr-04
+183,187897,New Mexico Highlands University,2,New Mexico Highlands University,College 4 Year Public,100.0,no,no,avoid,29.8,2346.0,566.0,29.8,yes,june5-4yr-04
+184,127945,Rocky Mountain College of Art and Design,2,Rocky Mountain College of Art and Design,College 4 Year Private,100.0,no,no,avoid,28.4,2849.0,1297.0,28.4,yes,june5-4yr-04
+185,157535,University of Pikeville,2,University of Pikeville,College 4 Year Private,100.0,no,no,avoid,28.3,1469.0,517.0,28.3,yes,june5-4yr-04
+186,160630,Southern University at New Orleans,2,Southern University at New Orleans,College 4 Year Public,100.0,no,no,avoid,28.2,2026.0,455.0,28.2,yes,june5-4yr-04
+187,102632,University of Alaska Southeast,2,University of Alaska Southeast,College 4 Year Public,100.0,no,no,avoid,22.9,1218.0,352.0,22.9,yes,june5-4yr-04
+188,136516,Polk State College,2,Polk State College - Career Services,College 4 Year Public,100.0,no,no,avoid,20.9,2316.0,1030.0,20.9,yes,june5-4yr-04
+189,121619,Santa Ana College,2,Santa Ana College,College 4 Year Public,100.0,no,no,avoid,19.3,458.0,240.0,19.3,yes,june5-4yr-04
+190,446640,Harrisburg University of Science and Technology,2,Harrisburg University of Science and Technology,College 4 Year Private,100.0,no,no,avoid,18.8,1006.0,619.0,18.8,yes,june5-4yr-04
+191,223506,Brazosport College,2,Brazosport College,College 4 Year Public,100.0,no,no,avoid,13.4,599.0,321.0,13.4,yes,june5-4yr-04
+192,177986,Logan University,2,Logan University,College 4 Year Private,100.0,no,no,avoid,13.1,756.0,238.0,13.1,yes,june5-4yr-04
+193,141565,University of Hawaii at Hilo,2,University of Hawaii at Hilo,College 4 Year Public,100.0,no,no,avoid,0.0,0.0,0.0,0.0,yes,june5-4yr-04
+194,219000,Augustana University,2,Augustana University,College 4 Year Private,100.0,no,no,avoid,0.0,0.0,0.0,0.0,yes,june5-4yr-04
+195,105516,University of Phoenix-Phoenix Campus,2,University of Phoenix,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-04
+196,127565,Metropolitan State University of Denver,2,Metropolitan State University of Denver - C2Hub,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-04
+197,129215,Eastern Connecticut State University,2,Eastern Connecticut State University,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-04
+198,138600,Agnes Scott College,2,Agnes Scott College,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-04
+199,165671,Emmanuel College,2,Emmanuel College,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-04
+200,171483,Northwestern Michigan College,2,Northwestern Michigan College,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-04

@@ -1,0 +1,51 @@
+run_rank,unitid,ipeds_name,total_attendees,company_variants,company_types,best_match_score,needs_match_review,currently_precomputed_local,selection_tier,data_readiness_score,bachelor_users_2005_2025,recent_bachelor_users_2020_2025,readiness_num,force_include_for_june5_503_run,batch_id
+101,175856,Jackson State University,3,Jackson State University,College 4 Year Public,100.0,no,no,thin,54.0,11063.0,2862.0,54.0,yes,june5-4yr-03
+102,151263,University of Indianapolis,3,University of Indianapolis,College 4 Year Private,100.0,no,no,thin,52.7,10033.0,2999.0,52.7,yes,june5-4yr-03
+103,161086,Colby College,3,Colby College,College 4 Year Private,100.0,no,no,thin,52.3,8581.0,2783.0,52.3,yes,june5-4yr-03
+104,217864,Citadel Military College of South Carolina,3,The Citadel,College 4 Year Public,100.0,no,no,thin,51.6,8901.0,2803.0,51.6,yes,june5-4yr-03
+105,232937,Norfolk State University,3,Norfolk State University,College 4 Year Public,100.0,no,no,thin,51.2,9670.0,2432.0,51.2,yes,june5-4yr-03
+106,132657,Lynn University,3,Lynn University; Lynn University - Division of Student Affairs,College 4 Year Private,100.0,no,no,thin,46.9,6893.0,2324.0,46.9,yes,june5-4yr-03
+107,237367,Fairmont State University,3,Fairmont State University,College 4 Year Public,100.0,no,no,thin,44.0,5746.0,1530.0,44.0,yes,june5-4yr-03
+108,156295,Berea College,3,Berea College,College 4 Year Private,100.0,no,no,thin,43.9,4446.0,1313.0,43.9,yes,june5-4yr-03
+109,147536,National Louis University,3,National Louis University,College 4 Year Private,100.0,no,no,thin,42.8,7776.0,3172.0,42.8,yes,june5-4yr-03
+110,175342,Alcorn State University,3,Alcorn State University,College 4 Year Public,100.0,no,no,thin,38.2,3952.0,1115.0,38.2,yes,june5-4yr-03
+111,138716,Albany State University,3,Albany State University,College 4 Year Public,100.0,no,no,thin,36.9,5884.0,1484.0,36.9,yes,june5-4yr-03
+112,231581,Bridgewater College,3,Bridgewater College,College 4 Year Private,100.0,no,no,thin,35.7,4409.0,1140.0,35.7,yes,june5-4yr-03
+113,148016,Principia College,3,Principia College,College 4 Year Private,100.0,no,no,avoid,33.0,1722.0,372.0,33.0,yes,june5-4yr-03
+114,126182,Adams State University,3,Adams State University,College 4 Year Public,100.0,no,no,avoid,26.6,3058.0,675.0,26.6,yes,june5-4yr-03
+115,224615,Dallas College,3,Dallas College - Career and Transfer Skills,College 4 Year Public,100.0,no,no,avoid,26.3,1535.0,782.0,26.3,yes,june5-4yr-03
+116,133508,Florida SouthWestern State College,3,Florida SouthWestern State College,College 4 Year Public,100.0,no,no,avoid,19.9,1820.0,743.0,19.9,yes,june5-4yr-03
+117,126289,Arapahoe Community College,3,Arapahoe Community College,College 4 Year Public,100.0,no,no,avoid,16.1,415.0,229.0,16.1,yes,june5-4yr-03
+118,177940,Lincoln University,3,Lincoln University of Missouri,College 4 Year Public,100.0,no,no,avoid,0.0,0.0,0.0,0.0,yes,june5-4yr-03
+119,262129,New College of Florida,3,New College of Florida,College 4 Year Public,100.0,no,no,avoid,0.0,0.0,0.0,0.0,yes,june5-4yr-03
+120,486840,Kennesaw State University,3,Kennesaw State University,College 4 Year Public,100.0,no,no,avoid,0.0,0.0,0.0,0.0,yes,june5-4yr-03
+121,110705,University of California-Santa Barbara,3,University of California - Santa Barbara; University of California - Santa Barbara - Bren School of Environmental Science & Management,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-03
+122,121309,Point Loma Nazarene University,3,Point Loma Nazarene University - Career Services,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-03
+123,137351,University of South Florida,3,University of South Florida - Tampa; University of South Florida - Tampa - Center for Career & Professional Development,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-03
+124,155061,Fort Hays State University,3,Fort Hays State University,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-03
+125,181783,Wayne State College,3,Wayne State College,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-03
+126,187985,University of New Mexico-Main Campus,3,University of New Mexico; University of New Mexico - Robert O. Anderson Schools of Management,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-03
+127,215293,University of Pittsburgh-Pittsburgh Campus,3,University of Pittsburgh - Career Center,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-03
+128,441663,Institute of Technology,3,Massachusetts Institute of Technology (MIT) UPOP,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-03
+129,110671,University of California-Riverside,2,University of California - Riverside - Career Center,College 4 Year Public,100.0,no,no,strong,92.1,59363.0,21709.0,92.1,yes,june5-4yr-03
+130,201441,Bowling Green State University-Main Campus,2,Bowling Green State University - Career Center,College 4 Year Public,100.0,no,no,strong,88.4,39838.0,10645.0,88.4,yes,june5-4yr-03
+131,139658,Emory University,2,Emory University; Emory University - Career Center,College 4 Year Private,100.0,no,no,strong,87.4,32157.0,11009.0,87.4,yes,june5-4yr-03
+132,202480,University of Dayton,2,University of Dayton,College 4 Year Private,100.0,no,no,strong,87.0,27694.0,8928.0,87.0,yes,june5-4yr-03
+133,227368,The University of Texas Rio Grande Valley,2,The University of Texas - Rio Grande Valley,College 4 Year Public,100.0,no,no,strong,86.6,29250.0,9836.0,86.6,yes,june5-4yr-03
+134,141574,University of Hawaii at Manoa,2,University of Hawaii at Manoa - Shidler College of Business,College 4 Year Public,100.0,no,no,strong,83.8,28319.0,8698.0,83.8,yes,june5-4yr-03
+135,181394,University of Nebraska at Omaha,2,University of Nebraska at Omaha - College of Business Administration; University of Nebraska at Omaha – Academic & Career Development Center,College 4 Year Public,100.0,no,no,strong,82.1,26386.0,8360.0,82.1,yes,june5-4yr-03
+136,450933,Columbia Southern University,2,Columbia Southern University,College 4 Year Private,100.0,no,no,strong,80.4,31210.0,10787.0,80.4,yes,june5-4yr-03
+137,122931,Santa Clara University,2,Santa Clara University,College 4 Year Private,100.0,no,no,strong,79.9,22927.0,7687.0,79.9,yes,june5-4yr-03
+138,122436,University of San Diego,2,University of San Diego,College 4 Year Private,100.0,no,no,strong,77.0,22008.0,6765.0,77.0,yes,june5-4yr-03
+139,233277,Radford University,2,Radford University,College 4 Year Public,100.0,no,no,strong,77.0,22441.0,5011.0,77.0,yes,june5-4yr-03
+140,141334,University of West Georgia,2,University of West Georgia,College 4 Year Public,100.0,no,no,strong,75.9,20531.0,5897.0,75.9,yes,june5-4yr-03
+141,199847,Wake Forest University,2,Wake Forest University - OPCD; Wake Forest University - Office of Personal & Career Development,College 4 Year Private,100.0,no,no,strong,75.6,20385.0,6786.0,75.6,yes,june5-4yr-03
+142,178411,Missouri University of Science and Technology,2,Missouri University of Science & Technology,College 4 Year Public,100.0,no,no,usable,74.8,17672.0,5571.0,74.8,yes,june5-4yr-03
+143,409698,California State University-Monterey Bay,2,California State University - Monterey Bay,College 4 Year Public,100.0,no,no,usable,73.0,16215.0,6215.0,73.0,yes,june5-4yr-03
+144,110361,California Baptist University,2,California Baptist University,College 4 Year Private,100.0,no,no,usable,72.5,16849.0,7678.0,72.5,yes,june5-4yr-03
+145,106704,University of Central Arkansas,2,University of Central Arkansas,College 4 Year Public,100.0,no,no,usable,70.3,17379.0,4841.0,70.3,yes,june5-4yr-03
+146,130253,Sacred Heart University,2,Sacred Heart University - Office of Career Development,College 4 Year Private,100.0,no,no,usable,68.2,15360.0,5643.0,68.2,yes,june5-4yr-03
+147,240277,University of Wisconsin-Green Bay,2,University of Wisconsin - Green Bay,College 4 Year Public,100.0,no,no,usable,66.5,14080.0,4219.0,66.5,yes,june5-4yr-03
+148,157401,Murray State University,2,Murray State University,College 4 Year Public,100.0,no,no,usable,65.8,16557.0,4214.0,65.8,yes,june5-4yr-03
+149,217165,Bryant University,2,Bryant University,College 4 Year Private,100.0,no,no,usable,62.8,13793.0,3963.0,62.8,yes,june5-4yr-03
+150,133881,Florida Institute of Technology,2,Florida Institute of Technology,College 4 Year Private,100.0,no,no,usable,62.1,13806.0,4379.0,62.1,yes,june5-4yr-03

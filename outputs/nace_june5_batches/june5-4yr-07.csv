@@ -1,0 +1,51 @@
+run_rank,unitid,ipeds_name,total_attendees,company_variants,company_types,best_match_score,needs_match_review,currently_precomputed_local,selection_tier,data_readiness_score,bachelor_users_2005_2025,recent_bachelor_users_2020_2025,readiness_num,force_include_for_june5_503_run,batch_id
+301,180106,Carroll College,1,Carroll College,College 4 Year Private,100.0,no,no,thin,38.5,3212.0,764.0,38.5,yes,june5-4yr-07
+302,214069,Misericordia University,1,Misericordia University,College 4 Year Private,100.0,no,no,thin,38.3,4760.0,1377.0,38.3,yes,june5-4yr-07
+303,204264,Muskingum University,1,Muskingum University,College 4 Year Private,100.0,no,no,thin,37.8,3498.0,839.0,37.8,yes,june5-4yr-07
+304,102234,Spring Hill College,1,Spring Hill College,College 4 Year Private,100.0,no,no,thin,37.6,3390.0,891.0,37.6,yes,june5-4yr-07
+305,210775,Alvernia University,1,Alvernia University,College 4 Year Private,100.0,no,no,thin,37.2,4341.0,1076.0,37.2,yes,june5-4yr-07
+306,200217,University of Mary,1,University of Mary,College 4 Year Private,100.0,no,no,thin,37.0,4067.0,1232.0,37.0,yes,june5-4yr-07
+307,189088,Bard College,1,Bard College,College 4 Year Private,100.0,no,no,thin,36.4,7448.0,2194.0,36.4,yes,june5-4yr-07
+308,212984,Holy Family University,1,Holy Family University,College 4 Year Private,100.0,no,no,thin,36.2,4302.0,1193.0,36.2,yes,june5-4yr-07
+309,219046,Black Hills State University,1,Black Hills State University,College 4 Year Public,100.0,no,no,thin,35.8,3679.0,789.0,35.8,yes,june5-4yr-07
+310,232256,Hampden-Sydney College,1,Hampden-Sydney College,College 4 Year Private,100.0,no,no,thin,35.7,3488.0,832.0,35.7,yes,june5-4yr-07
+311,224554,East Texas A&M University,1,East Texas A&M University,College 4 Year Public,100.0,no,no,thin,35.6,4316.0,1293.0,35.6,yes,june5-4yr-07
+312,204617,Ohio Dominican University,1,Ohio Dominican University,College 4 Year Private,100.0,no,no,thin,35.4,4085.0,736.0,35.4,yes,june5-4yr-07
+313,192192,Keuka College,1,Keuka College,College 4 Year Private,100.0,no,no,thin,35.2,4164.0,881.0,35.2,yes,june5-4yr-07
+314,131450,Gallaudet University,1,Gallaudet University,College 4 Year Private,100.0,no,no,avoid,34.2,2636.0,783.0,34.2,yes,june5-4yr-07
+315,190646,CUNY Medgar Evers College,1,Medgar Evers College - ASAP,College 4 Year Public,100.0,no,no,avoid,34.1,4257.0,1371.0,34.1,yes,june5-4yr-07
+316,164632,Bay Path University,1,Bay Path University,College 4 Year Private,100.0,no,no,avoid,33.3,4788.0,1527.0,33.3,yes,june5-4yr-07
+317,155511,McPherson College,1,McPherson College,College 4 Year Private,100.0,no,no,avoid,32.7,1898.0,718.0,32.7,yes,june5-4yr-07
+318,176044,Mississippi Valley State University,1,Mississippi Valley State University,College 4 Year Public,100.0,no,no,avoid,32.6,2352.0,460.0,32.6,yes,june5-4yr-07
+319,233718,Sweet Briar College,1,Sweet Briar College,College 4 Year Private,100.0,no,no,avoid,32.3,1731.0,381.0,32.3,yes,june5-4yr-07
+320,159416,Louisiana State University-Shreveport,1,Louisiana State University in Shreveport,College 4 Year Public,100.0,no,no,avoid,31.7,4843.0,1403.0,31.7,yes,june5-4yr-07
+321,180948,Chadron State College,1,Chadron State College,College 4 Year Public,100.0,no,no,avoid,31.4,2708.0,622.0,31.4,yes,june5-4yr-07
+322,141361,Young Harris College,1,Young Harris College,College 4 Year Private,100.0,no,no,avoid,29.1,1535.0,537.0,29.1,yes,june5-4yr-07
+323,218919,Voorhees University,1,Voorhees University,College 4 Year Private,100.0,no,no,avoid,26.7,1038.0,267.0,26.7,yes,june5-4yr-07
+324,157377,Midway University,1,Midway University,College 4 Year Private,100.0,no,no,avoid,26.4,1877.0,624.0,26.4,yes,june5-4yr-07
+325,127200,Front Range Community College,1,Front Range Community College,College 4 Year Public,100.0,no,no,avoid,22.8,652.0,349.0,22.8,yes,june5-4yr-07
+326,151342,Indiana University-South Bend,1,Indiana University - South Bend,College 4 Year Public,100.0,no,no,avoid,22.2,462.0,221.0,22.2,yes,june5-4yr-07
+327,237686,West Virginia University at Parkersburg,1,West Virginia University at Parkersburg,College 4 Year Public,100.0,no,no,avoid,20.7,1343.0,347.0,20.7,yes,june5-4yr-07
+328,474863,Los Angeles Pacific University,1,Los Angeles Pacific University,College 4 Year Private,100.0,no,no,avoid,18.2,564.0,461.0,18.2,yes,june5-4yr-07
+329,181297,Nebraska Methodist College of Nursing & Allied Health,1,Nebraska Methodist College,College 4 Year Private,100.0,no,no,avoid,17.5,1155.0,396.0,17.5,yes,june5-4yr-07
+330,238263,Madison Area Technical College,1,Madison Area Technical College,College 4 Year Public,100.0,no,no,avoid,14.1,349.0,131.0,14.1,yes,june5-4yr-07
+331,165884,Benjamin Franklin Cummings Institute of Technology,1,Benjamin Franklin Cummings Institute of Technology,College 4 Year Private,100.0,no,no,avoid,12.8,183.0,69.0,12.8,yes,june5-4yr-07
+332,234951,Clover Park Technical College,1,Clover Park Technical College,College 4 Year Public,100.0,no,no,avoid,11.5,160.0,104.0,11.5,yes,june5-4yr-07
+333,127617,Morgan Community College,1,Morgan Community College,College 4 Year Public,100.0,no,no,avoid,8.1,138.0,30.0,8.1,yes,june5-4yr-07
+334,141963,University of Hawaii System Office,1,University of Hawaii System,College 4 Year Public,100.0,no,no,avoid,0.0,0.0,0.0,0.0,yes,june5-4yr-07
+335,204422,North Central State College,1,North Central State College,College 4 Year Public,100.0,no,no,avoid,0.0,0.0,0.0,0.0,yes,june5-4yr-07
+336,482680,University of North Georgia,1,University of North Georgia,College 4 Year Public,100.0,no,no,avoid,0.0,0.0,0.0,0.0,yes,june5-4yr-07
+337,102094,University of South Alabama,1,University of South Alabama,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-07
+338,102614,University of Alaska Fairbanks,1,University of Alaska Fairbanks,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-07
+339,105668,Rio Salado College,1,Rio Salado College,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-07
+340,106397,University of Arkansas,1,University of Arkansas - Fayetteville,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-07
+341,117672,Southern California University of Health Sciences,1,University of California - Office of the President,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-07
+342,118693,Menlo College,1,Menlo College,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-07
+343,120403,Otis College of Art and Design,1,Otis College of Art & Design,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-07
+344,127185,Fort Lewis College,1,Fort Lewis College,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-07
+345,130934,Delaware State University,1,Delaware State University,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-07
+346,130989,Goldey-Beacom College,1,Goldey-Beacom College,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-07
+347,139940,Georgia State University,1,Georgia State University - J. Mack Robinson College of Business,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-07
+348,140960,Savannah State University,1,Savannah State University,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-07
+349,144005,Chicago State University,1,Chicago State University,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-07
+350,148131,Quincy University,1,Quincy University,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-07

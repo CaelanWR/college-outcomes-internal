@@ -1,0 +1,51 @@
+run_rank,unitid,ipeds_name,total_attendees,company_variants,company_types,best_match_score,needs_match_review,currently_precomputed_local,selection_tier,data_readiness_score,bachelor_users_2005_2025,recent_bachelor_users_2020_2025,readiness_num,force_include_for_june5_503_run,batch_id
+451,110635,University of California-Berkeley,6,University of California - Berkeley; University of California - Berkeley - College of Engineering; University of California - Berkeley - MaCSS,College 4 Year Public,100.0,no,yes,strong,87.8,134138.0,45886.0,87.8,yes,june5-4yr-10
+452,147767,Northwestern University,6,Northwestern University; Northwestern University - Robert R. McCormick School of Engineering and Applied Science,College 4 Year Private,100.0,no,yes,strong,84.3,39913.0,12555.0,84.3,yes,june5-4yr-10
+453,144050,University of Chicago,6,The University of Chicago; The University of Chicago - MA Program in the Social Sciences,College 4 Year Private,100.0,no,yes,strong,80.5,26509.0,9493.0,80.5,yes,june5-4yr-10
+454,199218,University of North Carolina Wilmington,5,University of North Carolina Wilmington; University of North Carolina Wilmington - CHSSA Dean's Office,College 4 Year Public,100.0,no,yes,strong,92.1,42899.0,14202.0,92.1,yes,june5-4yr-10
+455,110565,California State University-Fullerton,5,California State University - Fullerton,College 4 Year Public,100.0,no,yes,strong,91.3,98053.0,33061.0,91.3,yes,june5-4yr-10
+456,229027,The University of Texas at San Antonio,5,The University of Texas at San Antonio - Career Services,College 4 Year Public,100.0,no,yes,strong,91.3,64916.0,24130.0,91.3,yes,june5-4yr-10
+457,433660,Florida Gulf Coast University,5,Florida Gulf Coast University; Florida Gulf Coast University - Lutgert College of Business,College 4 Year Public,100.0,no,yes,strong,90.8,28497.0,11213.0,90.8,yes,june5-4yr-10
+458,129020,University of Connecticut,5,University of Connecticut - Center for Career Development,College 4 Year Public,100.0,no,yes,strong,89.7,72610.0,24092.0,89.7,yes,june5-4yr-10
+459,225511,University of Houston,5,"University of Houston - C.T. Bauer College of Business; University of Houston - Cullen College of Engineering; University of Houston - Institute for Global Engagement (Houston, TX); University of Houston - University Career Services",College 4 Year Public,100.0,no,yes,strong,89.1,106252.0,39449.0,89.1,yes,june5-4yr-10
+460,209542,Oregon State University,4,Oregon State University; Oregon State University - Career Development Center; Oregon State University - Public Health,College 4 Year Public,100.0,no,yes,strong,91.3,66833.0,26397.0,91.3,yes,june5-4yr-10
+461,228875,Texas Christian University,4,Texas Christian University; Texas Christian University - Center for Career & Professional Development,College 4 Year Private,100.0,no,yes,strong,90.9,31368.0,10812.0,90.9,yes,june5-4yr-10
+462,163268,University of Maryland-Baltimore County,4,University of Maryland - Baltimore County,College 4 Year Public,100.0,no,yes,strong,89.8,31711.0,9819.0,89.8,yes,june5-4yr-10
+463,232982,Old Dominion University,4,Old Dominion University,College 4 Year Public,100.0,no,yes,strong,89.8,45956.0,13582.0,89.8,yes,june5-4yr-10
+464,195003,Rochester Institute of Technology,4,Rochester Institute of Technology; Rochester Institute of Technology - National Technical Institute for the Deaf,College 4 Year Private,100.0,no,yes,strong,89.6,44882.0,14279.0,89.6,yes,june5-4yr-10
+465,240444,University of Wisconsin-Madison,4,University of Wisconsin - Madison - Office of Academic & Career Success; University of Wisconsin - Madison - Office of Experiential Learning,College 4 Year Public,100.0,no,yes,strong,89.5,113098.0,38287.0,89.5,yes,june5-4yr-10
+466,151351,Indiana University-Bloomington,4,Indiana University - Bloomington - Kelley School of Business; Indiana University - Bloomington - Kelley School of Business - Career Services; Indiana University - Bloomington - School of Informatics & Computing,College 4 Year Public,100.0,no,yes,strong,89.4,144764.0,46355.0,89.4,yes,june5-4yr-10
+467,139931,Georgia Southern University,3,Georgia Southern University,College 4 Year Public,100.0,no,yes,strong,91.6,51643.0,15142.0,91.6,yes,june5-4yr-10
+468,236939,Washington State University,3,Washington State University - Carson College of Business; Washington State University - Vancouver,College 4 Year Public,100.0,no,yes,strong,91.3,68591.0,22227.0,91.3,yes,june5-4yr-10
+469,122409,San Diego State University,3,San Diego State University; San Diego State University - Fowler College of Business,College 4 Year Public,100.0,no,yes,strong,90.7,102578.0,35580.0,90.7,yes,june5-4yr-10
+470,139959,University of Georgia,3,The University of Georgia - Career Center,College 4 Year Public,100.0,no,yes,strong,90.7,101173.0,35036.0,90.7,yes,june5-4yr-10
+471,142115,Boise State University,3,Boise State University - College of Business and Economics,College 4 Year Public,100.0,no,yes,strong,90.5,37566.0,14153.0,90.5,yes,june5-4yr-10
+472,220978,Middle Tennessee State University,3,Middle Tennessee State University,College 4 Year Public,100.0,no,yes,strong,90.5,48506.0,13187.0,90.5,yes,june5-4yr-10
+473,126818,Colorado State University-Fort Collins,3,Colorado State University - Fort Collins - College of Business; Colorado State University -Fort Collins - The Career Center,College 4 Year Public,100.0,no,yes,strong,90.0,78497.0,24635.0,90.0,yes,june5-4yr-10
+474,204857,Ohio University-Main Campus,3,Ohio University - Career Services; Ohio University - Division of Student Affairs,College 4 Year Public,100.0,no,yes,strong,89.5,66066.0,17455.0,89.5,yes,june5-4yr-10
+475,153658,University of Iowa,3,The University of Iowa - College of Engineering; University of Iowa - Pomerantz Career Center; University of Iowa - Tippie Career Services,College 4 Year Public,100.0,no,yes,strong,89.3,65134.0,20638.0,89.3,yes,june5-4yr-10
+476,190150,Columbia University in the City of New York,3,Columbia University - Center for Career Education,College 4 Year Private,100.0,no,yes,strong,83.3,43458.0,14231.0,83.3,yes,june5-4yr-10
+477,236948,University of Washington-Seattle Campus,3,University of Washington - Career Center; University of Washington - Michael G. Foster School of Business,College 4 Year Public,100.0,no,yes,,,,,,yes,june5-4yr-10
+478,228459,Texas State University,2,Texas State University,College 4 Year Public,100.0,no,yes,strong,91.1,86875.0,28045.0,91.1,yes,june5-4yr-10
+479,176017,University of Mississippi,2,Mississippi Christian University; University of Mississippi,College 4 Year Private; College 4 Year Public,100.0,no,yes,strong,91.0,44038.0,15112.0,91.0,yes,june5-4yr-10
+480,223232,Baylor University,2,Baylor University - Career Center,College 4 Year Private,100.0,no,yes,strong,90.8,46881.0,16305.0,90.8,yes,june5-4yr-10
+481,130943,University of Delaware,2,University of Delaware - Career Center,College 4 Year Public,100.0,no,yes,strong,90.5,60825.0,19237.0,90.5,yes,june5-4yr-10
+482,207388,Oklahoma State University-Main Campus,2,Oklahoma State University - Career Services,College 4 Year Public,100.0,no,yes,strong,89.9,55507.0,16498.0,89.9,yes,june5-4yr-10
+483,196097,Stony Brook University,2,Stony Brook University - Career Center,College 4 Year Public,100.0,no,yes,strong,89.2,52995.0,19031.0,89.2,yes,june5-4yr-10
+484,230764,University of Utah,2,The University of Utah - Office of the Undergraduate Studies,College 4 Year Public,100.0,no,yes,strong,89.1,67991.0,21782.0,89.1,yes,june5-4yr-10
+485,166027,Harvard University,2,Harvard University - Harvard Divinity School; Harvard University - Mignone Center for Career Success,College 4 Year Private,100.0,no,yes,strong,83.1,43861.0,15808.0,83.1,yes,june5-4yr-10
+486,217819,College of Charleston,1,College of Charleston,College 4 Year Public,100.0,no,yes,strong,92.7,32870.0,9487.0,92.7,yes,june5-4yr-10
+487,366711,California State University-San Marcos,1,California State University - San Marcos - College of Business Administration,College 4 Year Public,100.0,no,yes,strong,92.2,31272.0,11819.0,92.2,yes,june5-4yr-10
+488,164076,Towson University,1,Towson University,College 4 Year Public,100.0,no,yes,strong,91.3,54721.0,16433.0,91.3,yes,june5-4yr-10
+489,209551,University of Oregon,1,University of Oregon,College 4 Year Public,100.0,no,yes,strong,90.6,62160.0,18063.0,90.6,yes,june5-4yr-10
+490,110680,University of California-San Diego,1,University of California - San Diego,College 4 Year Public,100.0,no,yes,strong,90.5,103583.0,39283.0,90.5,yes,june5-4yr-10
+491,110644,University of California-Davis,1,University of California - Davis,College 4 Year Public,100.0,no,yes,strong,90.2,101735.0,33846.0,90.2,yes,june5-4yr-10
+492,110608,California State University-Northridge,1,California State University - Northridge,College 4 Year Public,100.0,no,yes,strong,90.1,89150.0,27884.0,90.1,yes,june5-4yr-10
+493,228723,Texas A&M University-College Station,1,Texas A&M University - Career Center,College 4 Year Public,100.0,no,yes,strong,90.1,175162.0,63911.0,90.1,yes,june5-4yr-10
+494,216339,Temple University,1,Temple University - Japan Campus,College 4 Year Public,100.0,no,yes,strong,89.6,91140.0,28826.0,89.6,yes,june5-4yr-10
+495,185590,Montclair State University,1,Montclair State University,College 4 Year Public,100.0,no,yes,strong,89.3,48796.0,16350.0,89.3,yes,june5-4yr-10
+496,198419,Duke University,1,Duke University - Duke LIFE,College 4 Year Private,100.0,no,yes,strong,85.3,31097.0,10573.0,85.3,yes,june5-4yr-10
+497,123961,University of Southern California,1,University of Southern California - Career Center,College 4 Year Private,100.0,no,yes,strong,85.2,89402.0,30307.0,85.2,yes,june5-4yr-10
+498,217156,Brown University,1,Brown University,College 4 Year Private,100.0,no,yes,strong,84.8,26362.0,8745.0,84.8,yes,june5-4yr-10
+499,243744,Stanford University,1,Stanford University,College 4 Year Private,100.0,no,yes,strong,84.1,38664.0,11437.0,84.1,yes,june5-4yr-10
+500,130794,Yale University,1,Yale University - Office of Career Strategy,College 4 Year Private,100.0,no,yes,strong,81.9,26486.0,8466.0,81.9,yes,june5-4yr-10

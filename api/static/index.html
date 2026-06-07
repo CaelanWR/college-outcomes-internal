@@ -3478,31 +3478,52 @@
       });
     }
 
-    function horizonWarmupValues(baseFilters) {
+    function hydrateDestinationAllCaches(baseFilters, fullData) {
+      DASHBOARD_VIEW_MODES.forEach(viewMode => {
+        setCachedDashboard({ ...baseFilters, horizon: '', active_tab: 'destinations', view_mode: viewMode }, fullData);
+      });
+    }
+
+    function hydrateFullSchoolCaches(baseFilters, fullData) {
+      if (baseFilters.horizon === '') {
+        hydrateDestinationAllCaches(baseFilters, fullData);
+        return;
+      }
+      hydrateTabCachesFromFullDashboard(baseFilters, fullData);
+    }
+
+    function horizonWarmupValues(baseFilters, options = {}) {
       return [...new Set([
         baseFilters.horizon || '1yr',
         ...HORIZON_OPTIONS.map(option => option.value),
+        ...(options.includeDestinationAll ? [''] : []),
       ])];
+    }
+
+    async function warmFullSchoolCaches(baseFilters, generation, options = {}) {
+      const horizons = horizonWarmupValues(baseFilters, { includeDestinationAll: true });
+      let warmed = 0;
+      let latestData = null;
+      for (const horizon of horizons) {
+        if (horizon === options.skipHorizon) continue;
+        if (generation !== state.prefetchGeneration) return { warmed, latestData };
+        const horizonFilters = { ...baseFilters, horizon };
+        const fullFilters = { ...horizonFilters, active_tab: 'all', view_mode: 'all' };
+        const fullData = await fetchDashboard(fullFilters);
+        if (generation !== state.prefetchGeneration) return { warmed, latestData };
+        hydrateFullSchoolCaches(horizonFilters, fullData);
+        warmed += 1;
+        latestData = fullData;
+      }
+      return { warmed, latestData };
     }
 
     async function prefetchDashboardViews(baseFilters, generation) {
       if (generation !== state.prefetchGeneration || state.loading) return;
       if (canWarmFullSchoolSlice(baseFilters, { allowWarmupHorizons: true })) {
-        const horizons = horizonWarmupValues(baseFilters);
-        let warmed = 0;
-        let latestData = null;
         try {
-          for (const horizon of horizons) {
-            if (generation !== state.prefetchGeneration || state.loading) return;
-            const horizonFilters = { ...baseFilters, horizon };
-            const fullFilters = { ...horizonFilters, active_tab: 'all', view_mode: 'all' };
-            const fullData = await fetchDashboard(fullFilters);
-            if (generation !== state.prefetchGeneration) return;
-            hydrateTabCachesFromFullDashboard(horizonFilters, fullData);
-            warmed += 1;
-            latestData = fullData;
-          }
-          if (warmed === horizons.length) {
+          const { warmed, latestData } = await warmFullSchoolCaches(baseFilters, generation);
+          if (warmed === horizonWarmupValues(baseFilters, { includeDestinationAll: true }).length) {
             if (!state.loading) setStatus('ok', `${latestData?.meta?.data_version || 'Connected'} | all tabs and years ready`);
             return;
           }
@@ -3852,7 +3873,13 @@
         } else if (canWarmFullSchoolSlice(filters)) {
           const fullFilters = { ...filters, active_tab: 'all', view_mode: 'all' };
           state.data = await fetchDashboard(fullFilters);
-          hydrateTabCachesFromFullDashboard(filters, state.data);
+          hydrateFullSchoolCaches(filters, state.data);
+          setStatus('', 'Preparing all tabs and years');
+          try {
+            await warmFullSchoolCaches(filters, state.prefetchGeneration, { skipHorizon: filters.horizon || '1yr' });
+          } catch {
+            // Keep the active school usable even if a background horizon cache misses.
+          }
         } else {
           state.data = await fetchDashboard(filters);
         }

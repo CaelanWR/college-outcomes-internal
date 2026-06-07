@@ -1,0 +1,4 @@
+run_rank,unitid,ipeds_name,total_attendees,company_variants,company_types,best_match_score,needs_match_review,currently_precomputed_local,selection_tier,data_readiness_score,bachelor_users_2005_2025,recent_bachelor_users_2020_2025,readiness_num,force_include_for_june5_503_run,batch_id
+501,186131,Princeton University,1,Princeton University,College 4 Year Private,100.0,no,yes,strong,77.9,19687.0,6483.0,77.9,yes,june5-4yr-11
+502,215062,University of Pennsylvania,1,University of Pennsylvania,College 4 Year Private,100.0,no,yes,,,,,,yes,june5-4yr-11
+503,231174,University of Vermont,5,The University of Vermont; University of Toronto,College 4 Year Public,100.0,yes,yes,strong,91.3,35290.0,11213.0,91.3,yes,june5-4yr-11

@@ -1,0 +1,51 @@
+run_rank,unitid,ipeds_name,total_attendees,company_variants,company_types,best_match_score,needs_match_review,currently_precomputed_local,selection_tier,data_readiness_score,bachelor_users_2005_2025,recent_bachelor_users_2020_2025,readiness_num,force_include_for_june5_503_run,batch_id
+351,149231,Southern Illinois University Edwardsville,1,Southern Illinois University - Carbondale - College of Business & Analytics,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-08
+352,151801,Indiana Wesleyan University-Marion,1,Indiana Wesleyan University,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-08
+353,155681,Pittsburg State University,1,Pittsburg State University,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-08
+354,158802,Dillard University,1,Dillard University,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-08
+355,159009,Grambling State University,1,Grambling State University,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-08
+356,161518,Saint Joseph's College of Maine,1,Saint Joseph's College of Maine,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-08
+357,164270,McDaniel College,1,McDaniel College,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-08
+358,166638,University of Massachusetts-Boston,1,University of Massachusetts - Boston,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-08
+359,166674,Massachusetts College of Art and Design,1,Massachusetts College of Art & Design,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-08
+360,168254,Western New England University,1,Western New England University - College of Arts and Sciences,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-08
+361,171137,University of Michigan-Dearborn,1,University of Michigan - Dearborn,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-08
+362,174251,University of Minnesota-Morris,1,University of Minnesota - Morris,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-08
+363,175227,Dunwoody College of Technology,1,Dunwoody College of Technology,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-08
+364,176080,Mississippi State University,1,Mississippi State University - Holmes Center for Student Success,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-08
+365,176965,University of Central Missouri,1,University of Central Missouri,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-08
+366,178059,Maryville University of Saint Louis,1,Maryville University of St. Louis,College 4 Year Private,91.4,no,no,,,,,,yes,june5-4yr-08
+367,180416,Montana Technological University,1,Montana Tech,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-08
+368,184603,Fairleigh Dickinson University-Metropolitan Campus,1,Fairleigh Dickinson University - Metropolitan Campus,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-08
+369,184612,Felician University,1,Felician University,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-08
+370,190655,CUNY New York City College of Technology,1,New York City College of Technology - ASAP,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-08
+371,191968,Ithaca College,1,Ithaca College - Center for Career Exploration and Development,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-08
+372,197151,School of Visual Arts,1,School of Visual Arts,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-08
+373,199193,North Carolina State University at Raleigh,1,North Carolina State University,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-08
+374,199607,Salem College,1,Salem College,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-08
+375,199698,St. Andrews University,1,University of St Andrews,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-08
+376,201654,Cedarville University,1,Cedarville University,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-08
+377,217013,Wilson College,1,Wilson College,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-08
+378,218724,Coastal Carolina University,1,Coastal Carolina University,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-08
+379,219347,South Dakota School of Mines and Technology,1,South Dakota School of Mines & Technology,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-08
+380,225575,Huston-Tillotson University,1,Huston-Tillotson University,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-08
+381,229160,Texas Wesleyan University,1,Texas Wesleyan University,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-08
+382,229300,The University of Texas Health Science Center at Houston,1,The University of Texas - School of Public Health San Antonio,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-08
+383,230782,Weber State University,1,Weber State University,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-08
+384,230816,Bennington College,1,Bennington College,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-08
+385,239017,Lawrence University,1,Lawrence University,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-08
+386,241216,Atlantic University,1,"The Atlanta University Center Consortium, Inc.",College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-08
+387,431123,Escuela Tecnica de Electricidad,1,Escuela Bancaria y Comercial,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-08
+388,459949,Texas A&M University-San Antonio,1,Texas A&M University - San Antonio,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-08
+389,498562,Commonwealth University of Pennsylvania,1,Commonwealth University of Pennsylvania,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-08
+390,126614,University of Colorado Boulder,24,University of Colorado Boulder - College of Engineering & Applied Science; University of Colorado at Boulder; University of Colorado at Boulder - Leeds School of Business - Career Development; University of Colorado at Boulder - Leeds School of Business - Employer Relations,College 4 Year Public,100.0,yes,no,review_match,89.7,120845.0,41290.0,89.7,yes,june5-4yr-08
+391,104151,Arizona State University Campus Immersion,16,"Arizona State University - Barrett Honors College; Arizona State University - Career & Professional Development Svcs; Arizona State University - School of Public Affairs; Arizona State University - University College (Tempe, AZ); Arizona State University - W.P. Carey School of Business",College 4 Year Public,100.0,yes,no,review_match,89.1,235086.0,99577.0,89.1,yes,june5-4yr-08
+392,233921,Virginia Polytechnic Institute and State University,15,Virginia Tech; Virginia Tech - Career and Professional Development; Virginia Tech - College of Liberal Arts and Human Science; Virginia Tech - Pamplin College of Business Career Services,College 4 Year Public,100.0,yes,no,review_match,0.0,0.0,0.0,0.0,yes,june5-4yr-08
+393,231624,William & Mary,12,William & Mary,College 4 Year Public,100.0,yes,no,review_match,83.3,25708.0,8265.0,83.3,yes,june5-4yr-08
+394,221768,The University of Tennessee-Martin,7,The University of Tennessee - Center for Career Development; The University of Tennessee - Haslam College of Business; The University of Tennessee at Martin,College 4 Year Public,100.0,yes,no,review_match,51.2,9435.0,2217.0,51.2,yes,june5-4yr-08
+395,178439,University of Missouri-System Office,6,University of Missouri - Columbia - Career Center; University of Missouri - Kansas City Career Services,College 4 Year Public,100.0,yes,no,review_match,5.3,13.0,2.0,5.3,yes,june5-4yr-08
+396,181215,University of Nebraska at Kearney,5,University of Nebraska - Lincoln - Career Services; University of Nebraska at Kearney - College of Business & Technology,College 4 Year Public,100.0,yes,no,review_match,49.3,8596.0,2400.0,49.3,yes,june5-4yr-08
+397,199102,North Carolina A & T State University,4,North Carolina A&T State University,College 4 Year Public,100.0,yes,no,review_match,85.6,24416.0,9127.0,85.6,yes,june5-4yr-08
+398,171146,University of Michigan-Flint,4,University of Michigan - Flint,College 4 Year Public,100.0,yes,no,review_match,53.2,9822.0,2780.0,53.2,yes,june5-4yr-08
+399,188526,Albany College of Pharmacy and Health Sciences,4,Massachusetts College of Pharmacy & Health Sciences,College 4 Year Private,100.0,yes,no,review_match,13.9,540.0,265.0,13.9,yes,june5-4yr-08
+400,159407,Louisiana State University-Eunice,4,Louisiana State University – LSU Olinde Career Center,College 4 Year Public,88.1,yes,no,,,,,,yes,june5-4yr-08

@@ -1,0 +1,51 @@
+run_rank,unitid,ipeds_name,total_attendees,company_variants,company_types,best_match_score,needs_match_review,currently_precomputed_local,selection_tier,data_readiness_score,bachelor_users_2005_2025,recent_bachelor_users_2020_2025,readiness_num,force_include_for_june5_503_run,batch_id
+201,181464,University of Nebraska-Lincoln,2,University of Nebraska - Lincoln,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-05
+202,187134,The College of New Jersey,2,The College of New Jersey,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-05
+203,215275,University of Pittsburgh-Greensburg,2,University of Pittsburgh at Greensburg,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-05
+204,220181,Fisk University,2,Fisk University,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-05
+205,226152,Texas A & M International University,2,Texas A&M International University,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-05
+206,228149,St. Mary's University,2,St. Mary's University,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-05
+207,228705,Texas A&M University-Kingsville,2,Texas A&M University - Kingsville,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-05
+208,232308,Hollins University,2,Hollins University,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-05
+209,239318,Milwaukee School of Engineering,2,Milwaukee School of Engineering,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-05
+210,240453,University of Wisconsin-Milwaukee,2,University of Wisconsin - Milwaukee - Center for Student Experience and Talent,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-05
+211,413680,Spartan College of Aeronautics & Technology,2,Spartan College of Aeronautics and Technology,College 4 Year Private,100.0,no,no,,,,,,yes,june5-4yr-05
+212,428453,Minnesota State Colleges and Universities System Office,2,University of Minnesota,College 4 Year Public,100.0,no,no,,,,,,yes,june5-4yr-05
+213,147703,Northern Illinois University,1,Northern Illinois University,College 4 Year Public,100.0,no,no,strong,88.7,47454.0,10661.0,88.7,yes,june5-4yr-05
+214,171571,Oakland University,1,Oakland University - Career and Life Design Center,College 4 Year Public,100.0,no,no,strong,88.7,37478.0,11805.0,88.7,yes,june5-4yr-05
+215,157289,University of Louisville,1,University of Louisville - College of Business,College 4 Year Public,100.0,no,no,strong,88.5,36327.0,11508.0,88.5,yes,june5-4yr-05
+216,145600,University of Illinois Chicago,1,University of Illinois at Chicago - College of Engineering,College 4 Year Public,100.0,no,no,strong,87.8,59046.0,22069.0,87.8,yes,june5-4yr-05
+217,228796,The University of Texas at El Paso,1,The University of Texas at El Paso,College 4 Year Public,100.0,no,no,strong,87.8,29914.0,10122.0,87.8,yes,june5-4yr-05
+218,146719,Loyola University Chicago,1,Loyola University Chicago,College 4 Year Private,100.0,no,no,strong,87.7,35808.0,12611.0,87.7,yes,june5-4yr-05
+219,190594,CUNY Hunter College,1,Hunter College,College 4 Year Public,100.0,no,no,strong,87.6,34966.0,12691.0,87.6,yes,june5-4yr-05
+220,110592,California State University-Los Angeles,1,California State University - Los Angeles,College 4 Year Public,100.0,no,no,strong,87.2,42707.0,15250.0,87.2,yes,june5-4yr-05
+221,111948,Chapman University,1,Chapman University,College 4 Year Private,100.0,no,no,strong,87.0,28408.0,10919.0,87.0,yes,june5-4yr-05
+222,144740,DePaul University,1,DePaul University,College 4 Year Private,100.0,no,no,strong,86.8,54769.0,15635.0,86.8,yes,june5-4yr-05
+223,206084,University of Toledo,1,The University of Toledo - John B. and Lillian E. Neff College of Business and Innovation,College 4 Year Public,100.0,no,no,strong,86.5,34974.0,9644.0,86.5,yes,june5-4yr-05
+224,191241,Fordham University,1,Fordham University,College 4 Year Private,100.0,no,no,strong,86.2,35535.0,12467.0,86.2,yes,june5-4yr-05
+225,110574,California State University-East Bay,1,California State University - East Bay,College 4 Year Public,100.0,no,no,strong,85.9,37676.0,12084.0,85.9,yes,june5-4yr-05
+226,220862,University of Memphis,1,The University of Memphis – QEP Team,College 4 Year Public,100.0,no,no,strong,85.1,33805.0,9736.0,85.1,yes,june5-4yr-05
+227,176372,University of Southern Mississippi,1,The University of Southern Mississippi,College 4 Year Public,100.0,no,no,strong,82.7,26682.0,7844.0,82.7,yes,june5-4yr-05
+228,157447,Northern Kentucky University,1,Northern Kentucky University,College 4 Year Public,100.0,no,no,strong,79.6,24768.0,6961.0,79.6,yes,june5-4yr-05
+229,186876,Stockton University,1,Stockton University,College 4 Year Public,100.0,no,no,strong,78.8,21743.0,6951.0,78.8,yes,june5-4yr-05
+230,195030,University of Rochester,1,University of Rochester - The Gwen M. Greene Center for Career Education and Connections,College 4 Year Private,100.0,no,no,strong,78.2,23134.0,7688.0,78.2,yes,june5-4yr-05
+231,122612,University of San Francisco,1,University of San Francisco - School of  Management,College 4 Year Private,100.0,no,no,strong,78.0,24836.0,7739.0,78.0,yes,june5-4yr-05
+232,213349,Kutztown University of Pennsylvania,1,Kutztown University of Pennsylvania,College 4 Year Public,100.0,no,no,strong,76.0,20691.0,4927.0,76.0,yes,june5-4yr-05
+233,196680,Excelsior University,1,Excelsior University,College 4 Year Private,100.0,no,no,strong,75.0,24679.0,6641.0,75.0,yes,june5-4yr-05
+234,171128,Michigan Technological University,1,Michigan Technological University,College 4 Year Public,100.0,no,no,usable,74.9,17122.0,5065.0,74.9,yes,june5-4yr-05
+235,142285,University of Idaho,1,University of Idaho,College 4 Year Public,100.0,no,no,usable,74.7,20106.0,5050.0,74.7,yes,june5-4yr-05
+236,129242,Fairfield University,1,Fairfield University,College 4 Year Private,100.0,no,no,usable,73.9,15547.0,5442.0,73.9,yes,june5-4yr-05
+237,187046,Thomas Edison State University,1,Thomas Edison State University,College 4 Year Public,100.0,no,no,usable,71.2,20665.0,6008.0,71.2,yes,june5-4yr-05
+238,236595,Seattle University,1,Seattle University,College 4 Year Private,100.0,no,no,usable,70.5,18201.0,5359.0,70.5,yes,june5-4yr-05
+239,163453,Morgan State University,1,Morgan State University,College 4 Year Public,100.0,no,no,usable,68.8,14322.0,4475.0,68.8,yes,june5-4yr-05
+240,228802,The University of Texas at Tyler,1,The University of Texas at Tyler,College 4 Year Public,100.0,no,no,usable,68.8,15684.0,5423.0,68.8,yes,june5-4yr-05
+241,226091,Lamar University,1,Lamar University,College 4 Year Public,100.0,no,no,usable,68.1,17386.0,5599.0,68.1,yes,june5-4yr-05
+242,240462,University of Wisconsin-Platteville,1,University of Wisconsin - Platteville,College 4 Year Public,100.0,no,no,usable,67.8,15007.0,4122.0,67.8,yes,june5-4yr-05
+243,120883,University of the Pacific,1,University of the Pacific,College 4 Year Private,100.0,no,no,usable,66.6,17200.0,4747.0,66.6,yes,june5-4yr-05
+244,219602,Austin Peay State University,1,Austin Peay State University,College 4 Year Public,100.0,no,no,usable,66.4,15804.0,4550.0,66.4,yes,june5-4yr-05
+245,230603,Southern Utah University,1,Southern Utah University,College 4 Year Public,100.0,no,no,usable,66.2,12699.0,5121.0,66.2,yes,june5-4yr-05
+246,233374,University of Richmond,1,University of Richmond - Alumni & Career Services,College 4 Year Private,100.0,no,no,usable,66.2,14412.0,4340.0,66.2,yes,june5-4yr-05
+247,190099,Colgate University,1,Colgate University,College 4 Year Private,100.0,no,no,usable,63.4,12570.0,3932.0,63.4,yes,june5-4yr-05
+248,164748,Berklee College of Music,1,Berklee College of Music - Valencia,College 4 Year Private,100.0,no,no,usable,63.1,16191.0,5754.0,63.1,yes,june5-4yr-05
+249,188429,Adelphi University,1,Adelphi University,College 4 Year Private,100.0,no,no,usable,61.5,14264.0,4289.0,61.5,yes,june5-4yr-05
+250,209825,University of Portland,1,University of Portland,College 4 Year Private,100.0,no,no,usable,60.6,11635.0,3582.0,60.6,yes,june5-4yr-05
