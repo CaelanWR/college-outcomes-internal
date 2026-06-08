@@ -1141,9 +1141,46 @@
 
     .graduate-transition-panel {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: 1fr;
       gap: 18px;
       align-items: start;
+    }
+
+    .graduate-transition-stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .graduate-transition-stat {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(247,250,252,0.92));
+      padding: 13px 14px;
+      min-width: 0;
+    }
+
+    .graduate-transition-stat strong {
+      display: block;
+      color: var(--ink);
+      font-size: clamp(1.18rem, 1.8vw, 1.55rem);
+      line-height: 1;
+    }
+
+    .graduate-transition-stat span {
+      display: block;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.68rem;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .graduate-transition-groups {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
     }
 
     .graduate-transition-group {
@@ -1167,7 +1204,7 @@
 
     .graduate-transition-row {
       display: grid;
-      grid-template-columns: minmax(0, 1.2fr) minmax(120px, 0.8fr) auto;
+      grid-template-columns: minmax(0, 1fr) auto;
       gap: 12px;
       align-items: center;
       min-width: 0;
@@ -1190,22 +1227,6 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-    }
-
-    .graduate-transition-track {
-      position: relative;
-      height: 12px;
-      border-radius: 999px;
-      background: rgba(45,66,106,0.08);
-      overflow: hidden;
-    }
-
-    .graduate-transition-fill {
-      position: absolute;
-      inset: 0 auto 0 0;
-      width: var(--share);
-      border-radius: inherit;
-      background: var(--transition-color, var(--sky));
     }
 
     .graduate-transition-metric {
@@ -2904,7 +2925,13 @@
       .metric, .card { padding: 18px; }
       .salary-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .career-model-grid { grid-template-columns: 1fr; }
-      .graduate-value-summary, .graduate-value-path, .graduate-transition-panel { grid-template-columns: 1fr; }
+      .graduate-value-summary,
+      .graduate-value-path,
+      .graduate-transition-panel,
+      .graduate-transition-stats,
+      .graduate-transition-groups {
+        grid-template-columns: 1fr;
+      }
       .graduate-transition-row { grid-template-columns: minmax(0, 1fr); gap: 7px; }
       .graduate-transition-metric { text-align: left; }
       .internship-panel,
@@ -6918,10 +6945,6 @@
       const graduateValue = state.data.career?.graduate_value || {};
       const row = graduateValue.primary || {};
       if (!graduateValue.available || !Object.keys(row).length) return noDataMessage(id, graduateValue.reason);
-      const lift = Number(row.salary_lift_dollars || 0);
-      const liftDirection = lift >= 0 ? 'above' : 'below';
-      const year = Number(row.years_after_degree || 0);
-      const yearLabel = year ? `${year} years after grad school` : 'after grad school';
       $(id).innerHTML = `
         <div class="graduate-value-panel">
           <div class="graduate-value-summary">
@@ -6972,11 +6995,12 @@
       const tickVals = [...new Set(xValues)].sort((a, b) => a - b);
       const tickText = tickVals.map(value => {
         if (value === -1) return 'Before';
-        if (value === 0) return 'Grad degree';
+        if (value === 0) return 'Degree complete';
         return `${value} yr`;
       });
-      const negativeLiftColor = '#E783C4';
-      const liftColor = Number(selectedPoint.lift || 0) >= 0 ? THEME.green : negativeLiftColor;
+      const expectedTiming = ['Before grad school', 'Degree completed', ...points.map(point => `${point.year} years after degree`)];
+      const observedTiming = ['Degree completed', ...points.map(point => `${point.year} years after degree`)];
+      const liftColor = Number(selectedPoint.lift || 0) >= 0 ? 'rgba(72,235,143,0.34)' : 'rgba(231,131,196,0.38)';
       Plotly.newPlot(id, [
         {
           type: 'scatter',
@@ -6986,35 +7010,36 @@
           y: [beforeSalary, beforeSalary, ...points.map(point => point.expected)],
           line: { color: 'rgba(45,66,106,0.46)', width: 4, dash: 'dash' },
           marker: { color: 'rgba(45,66,106,0.58)', size: 7 },
-          customdata: [{ alumni: primary.n_alumni }, { alumni: primary.n_alumni }, ...points],
-          hovertemplate: '%{x} years after degree<br>Expected pay %{y:$,.0f}<extra></extra>',
+          customdata: expectedTiming,
+          hovertemplate: '%{customdata}<br>Expected pay %{y:$,.0f}<extra></extra>',
         },
         {
           type: 'scatter',
           mode: 'lines+markers',
           name: 'Observed after grad school',
-          x: xValues,
-          y: [beforeSalary, beforeSalary, ...points.map(point => point.observed)],
+          x: [0, ...points.map(point => point.year)],
+          y: [beforeSalary, ...points.map(point => point.observed)],
           line: { color: THEME.green, width: 5 },
           marker: { color: THEME.green, size: 8, line: { color: '#fff', width: 1.5 } },
-          customdata: [{ alumni: primary.n_alumni }, { alumni: primary.n_alumni }, ...points],
-          hovertemplate: '%{x} years after degree<br>Observed pay %{y:$,.0f}<extra></extra>',
+          customdata: observedTiming,
+          hovertemplate: '%{customdata}<br>Observed pay %{y:$,.0f}<extra></extra>',
         },
         {
           type: 'scatter',
           mode: 'lines',
-          name: 'Salary lift',
+          name: 'Benchmark gap',
           x: [selectedPoint.year, selectedPoint.year],
           y: [selectedPoint.expected, selectedPoint.observed],
           line: { color: liftColor, width: 7 },
-          hovertemplate: `Lift ${money(selectedPoint.lift)}<extra></extra>`,
+          hoverinfo: 'skip',
+          showlegend: false,
         },
       ], {
         ...layoutBase,
         height: compactWindow() ? 390 : 430,
         margin: { l: compactWindow() ? 62 : 82, r: 36, t: 24, b: 70 },
         xaxis: {
-          title: 'Timing relative to graduate degree',
+          title: 'Career timing around graduate degree',
           tickmode: 'array',
           tickvals: tickVals,
           ticktext: tickText,
@@ -7030,6 +7055,17 @@
           automargin: true,
         },
         shapes: [{
+          type: 'rect',
+          x0: -1,
+          x1: 0,
+          y0: 0,
+          y1: 1,
+          xref: 'x',
+          yref: 'paper',
+          fillcolor: 'rgba(45,66,106,0.065)',
+          line: { width: 0 },
+          layer: 'below',
+        }, {
           type: 'line',
           x0: 0,
           x1: 0,
@@ -7042,24 +7078,22 @@
         }],
         annotations: [
           {
-            x: 0,
+            x: -0.5,
             y: 1.02,
             xref: 'x',
             yref: 'paper',
-            text: 'Graduate degree',
+            text: 'Degree period',
             showarrow: false,
             font: { color: THEME.muted, size: 12 },
           },
           {
-            x: selectedPoint.year,
-            y: Math.max(selectedPoint.expected, selectedPoint.observed),
-            text: `${money(Math.abs(selectedPoint.lift))} ${Number(selectedPoint.lift || 0) >= 0 ? 'lift' : 'below'}`,
-            showarrow: true,
-            arrowhead: 2,
-            ax: 42,
-            ay: -32,
-            font: { color: liftColor, size: 13 },
-            arrowcolor: liftColor,
+            x: 0,
+            y: 1.02,
+            xref: 'x',
+            yref: 'paper',
+            text: 'Degree complete',
+            showarrow: false,
+            font: { color: THEME.muted, size: 12 },
           },
         ],
         legend: { orientation: 'h', y: 1.12, x: 0 },
@@ -7069,21 +7103,18 @@
     function graduateTransitionRowsHtml(rows, title) {
       const visibleRows = (rows || []).slice(0, 6);
       if (!visibleRows.length) return '';
-      const maxShare = Math.max(1, ...visibleRows.map(row => Number(row.share_pct || 0)));
       const body = visibleRows.map(row => {
         const delta = Number(row.salary_delta || 0);
         const color = delta >= 0 ? THEME.green : '#E783C4';
-        const shareWidth = Math.max(8, Math.min(100, 100 * Number(row.share_pct || 0) / maxShare));
+        const preLabel = row.pre_label || 'Earlier path';
+        const postLabel = row.post_label || 'Later path';
         return `
-          <div class="graduate-transition-row">
+          <div class="graduate-transition-row" title="${escapeHtml(preLabel)} → ${escapeHtml(postLabel)}">
             <div class="graduate-transition-label">
-              ${escapeHtml(legendLabel(row.post_label, 34))}
-              <span>${escapeHtml(legendLabel(row.pre_label, 42))} → ${escapeHtml(legendLabel(row.post_label, 42))}</span>
+              ${escapeHtml(legendLabel(preLabel, 32))} → ${escapeHtml(legendLabel(postLabel, 32))}
+              <span>${escapeHtml(pct(row.share_pct))} of transitions · ${escapeHtml(num(row.n_alumni))} alumni</span>
             </div>
-            <div class="graduate-transition-track" title="${escapeHtml(pct(row.share_pct))} of transitions">
-              <div class="graduate-transition-fill" style="--share:${shareWidth}%; --transition-color:${color};"></div>
-            </div>
-            <div class="graduate-transition-metric">${escapeHtml(money(delta))}</div>
+            <div class="graduate-transition-metric" style="color:${color};">${escapeHtml(money(delta))}</div>
           </div>
         `;
       }).join('');
@@ -7100,12 +7131,34 @@
       const transitions = state.data.career?.graduate_transitions || {};
       const roles = transitions.roles || [];
       const industries = transitions.industries || [];
-      const content = [
+      const value = state.data.career?.graduate_value?.primary || {};
+      const stats = Object.keys(value).length ? `
+        <div class="graduate-transition-stats">
+          <div class="graduate-transition-stat">
+            <strong>${pct(value.role_change_pct)}</strong>
+            <span>Role changed</span>
+          </div>
+          <div class="graduate-transition-stat">
+            <strong>${pct(value.industry_change_pct)}</strong>
+            <span>Industry changed</span>
+          </div>
+          <div class="graduate-transition-stat">
+            <strong>${pct(value.employer_change_pct)}</strong>
+            <span>Employer changed</span>
+          </div>
+        </div>
+      ` : '';
+      const groups = [
         graduateTransitionRowsHtml(roles, 'Role moves'),
         graduateTransitionRowsHtml(industries, 'Industry moves'),
       ].filter(Boolean).join('');
-      if (!content) return noData(id);
-      $(id).innerHTML = `<div class="graduate-transition-panel">${content}</div>`;
+      if (!stats && !groups) return noData(id);
+      $(id).innerHTML = `
+        <div class="graduate-transition-panel">
+          ${stats}
+          ${groups ? `<div class="graduate-transition-groups">${groups}</div>` : ''}
+        </div>
+      `;
     }
 
     function drawCareerEarnings(id) {
