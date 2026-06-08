@@ -9392,7 +9392,6 @@
             previous_salary_premium: premiumChange?.previous_premium,
             recent_salary_premium: premiumChange?.recent_premium,
             salary_premium_change: premiumChange?.premium_change,
-            current_coverage_pct: shareChange?.later_coverage_pct,
           };
         })
         .filter(row =>
@@ -9470,11 +9469,7 @@
         textfont: { size: 12, color: '#233b5f' },
         marker: {
           size: markerSizes,
-          color: rows.map(row => Number(row.current_coverage_pct || 0)),
-          colorscale: [[0, '#e7eef7'], [0.45, '#73c7f3'], [1, '#21466f']],
-          cmin: 0,
-          cmax: 100,
-          colorbar: { title: 'Coverage', ticksuffix: '%', thickness: 12 },
+          color: yValues.map(value => value >= 0 ? '#5bd58f' : '#e66386'),
           opacity: 0.86,
           line: { color: '#ffffff', width: 1.5 },
         },
@@ -9485,7 +9480,6 @@
           signedMoney(row.salary_premium_change),
           row.later_projected_students,
           row.later_observed_profiles,
-          row.current_coverage_pct,
           row.later_share_pct,
           row.previous_share_pct,
           row.share_change_pct,
@@ -9494,7 +9488,7 @@
           row.previous_projected_students,
           row.previous_observed_profiles,
         ]),
-        hovertemplate: `%{customdata[0]}<br>${periodLabel}<br>${activeHorizonLabel()} pay premium change: %{customdata[3]}<br>Previous premium: %{customdata[10]}<br>Recent premium: %{customdata[11]}<br>Projected share change: %{customdata[9]:+.1f} pts<br>Later projected share: %{customdata[7]:.1f}%<br>Earlier projected share: %{customdata[8]:.1f}%<br>Later projected students: %{customdata[4]:,.0f}<br>Earlier projected students: %{customdata[12]:,.0f}<br>Later observed profiles: %{customdata[5]:,.0f}<br>Coverage: %{customdata[6]:.1f}%<extra></extra>`,
+        hovertemplate: `%{customdata[0]}<br>${periodLabel}<br>${activeHorizonLabel()} pay change: %{customdata[3]}<br>Previous premium: %{customdata[9]}<br>Recent premium: %{customdata[10]}<br>Projected share change: %{customdata[8]:+.1f} pts<br>Later projected share: %{customdata[6]:.1f}%<br>Earlier projected share: %{customdata[7]:.1f}%<br>Later projected students: %{customdata[4]:,.0f}<br>Earlier projected students: %{customdata[11]:,.0f}<extra></extra>`,
       });
       Plotly.newPlot(id, traces, {
         ...layoutBase,
