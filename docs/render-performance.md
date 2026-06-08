@@ -43,7 +43,7 @@ OUTCOMES_DUCKDB_THREADS=4 \
 OUTCOMES_DUCKDB_MEMORY_LIMIT=12GB \
 OUTCOMES_DUCKDB_TEMP_DIR=/var/data/duckdb_tmp \
 OUTCOMES_SCHOOL_CACHE_DIR=/var/data/outcomes_school_cache \
-python scripts/warm_school_cache.py --work core
+python warm_school_cache.py --work core
 ```
 
 For a quicker first pass, warm only `base_fact`:
@@ -54,7 +54,7 @@ OUTCOMES_DUCKDB_THREADS=4 \
 OUTCOMES_DUCKDB_MEMORY_LIMIT=12GB \
 OUTCOMES_DUCKDB_TEMP_DIR=/var/data/duckdb_tmp \
 OUTCOMES_SCHOOL_CACHE_DIR=/var/data/outcomes_school_cache \
-python scripts/warm_school_cache.py --work none
+python warm_school_cache.py --work none
 ```
 
 The full `--work all` mode is useful for maximum first-click speed but can take

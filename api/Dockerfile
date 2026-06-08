@@ -16,6 +16,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app.py .
 COPY start.py .
+COPY warm_school_cache.py .
 COPY static ./static
 
 EXPOSE 8000
