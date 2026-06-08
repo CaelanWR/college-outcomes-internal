@@ -5963,24 +5963,32 @@ def _career_superstars(con: duckdb.DuckDBPyConnection, filters: QueryRequest) ->
     limit = _safe_limit(filters.top_n)
     where_sql, params = _where(filters, include_horizon=False, include_postgrad=True)
     same_school_filter = _same_school_employer_filter(filters)
+    base_columns = _dataset_columns("base_fact")
+    projection = _project_columns(
+        base_columns,
+        [
+            "person_key",
+            "school_name",
+            "degree",
+            "major_title",
+            "grad_year",
+            "horizon_years",
+            "employer",
+            "role_k50_v3",
+            "role_k150_v3",
+            "industry_k50",
+            "salary",
+            "seniority",
+            "final_weight",
+            "internship_flag",
+        ],
+    )
     return _records_from_query(
         con,
         f"""
         WITH filtered AS (
           SELECT
-            person_key,
-            school_name,
-            degree,
-            major_title,
-            grad_year,
-            horizon_years,
-            employer,
-            role_k50_v3,
-            role_k150_v3,
-            industry_k50,
-            salary,
-            seniority,
-            final_weight
+            {projection}
           FROM read_parquet(?)
           {where_sql}
             {"AND" if where_sql else "WHERE"} person_key IS NOT NULL
