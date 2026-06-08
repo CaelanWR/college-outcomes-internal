@@ -5976,7 +5976,7 @@
         $('content').innerHTML = [
           card('Comparison Snapshot', 'compare-overview-stats', 12, false, { export: false, compact: true }),
           card('Career Earnings After Graduation by Major', 'compare-career-earnings', 12, true),
-          card('Major Size and Projected Growth', 'compare-alumni', 6, true, { topControl: true }),
+          card('Projected Change in Major Share', 'compare-alumni', 6, true, { topControl: true }),
           card(`Median Salary by Major (${salaryHorizon})`, 'compare-salary', 6, true, { topControl: true, horizonControl: true }),
         ].join('');
         drawCompareOverviewStats('compare-overview-stats');
@@ -8297,48 +8297,41 @@
     function drawMajorCompareAlumni(id) {
       const { currentTotalsByCode, totalCurrentStudents } = majorCurrentDemandStats();
       const hasCurrentStudents = totalCurrentStudents > 0;
+      if (!hasCurrentStudents) {
+        $(id).innerHTML = '<div class="empty">No projected current-student data for this major comparison.</div>';
+        return;
+      }
       const rows = (state.data.major_comparison || [])
         .filter(row => row.alumni_share_pct || currentTotalsByCode.has(String(row.code)))
         .map(row => {
           const currentStudents = currentTotalsByCode.get(String(row.code)) || 0;
-          const currentSharePct = hasCurrentStudents
-            ? 100 * currentStudents / totalCurrentStudents
-            : null;
+          const currentSharePct = 100 * currentStudents / totalCurrentStudents;
           const alumniSharePct = Number(row.alumni_share_pct || 0);
-          const projectedGrowthPct = currentSharePct !== null && alumniSharePct > 0
-            ? 100 * (Number(currentSharePct) - alumniSharePct) / alumniSharePct
-            : null;
-          const sizeValue = hasCurrentStudents ? currentStudents : Number(row.alumni || 0);
+          const projectedChangePct = Number(currentSharePct || 0) - alumniSharePct;
           return {
             ...row,
             current_students: currentStudents || null,
             current_share_pct: currentSharePct,
-            projected_growth_pct: projectedGrowthPct,
-            size_value: sizeValue,
-            display_share_pct: hasCurrentStudents ? Number(currentSharePct || 0) : alumniSharePct,
+            projected_change_pct: projectedChangePct,
+            display_change_pct: Math.abs(projectedChangePct),
           };
         })
-        .sort((a, b) => Number(b.size_value || 0) - Number(a.size_value || 0))
+        .filter(row => Number.isFinite(Number(row.projected_change_pct)))
+        .sort((a, b) => Number(b.display_change_pct || 0) - Number(a.display_change_pct || 0))
         .slice(0, topNFor(id))
-        .reverse();
+        .sort((a, b) => Number(a.projected_change_pct || 0) - Number(b.projected_change_pct || 0));
       if (!rows.length) return noData(id);
       const y = rows.map(row => wrapAxisLabel(majorName(row), 28));
-      const growthValues = rows.map(row => Number(row.projected_growth_pct)).filter(Number.isFinite);
-      const maxAbsGrowth = growthValues.length ? Math.max(...growthValues.map(Math.abs), 25) : 25;
-      const colors = rows.map(row => Number.isFinite(Number(row.projected_growth_pct)) ? Number(row.projected_growth_pct) : 0);
+      const changeValues = rows.map(row => Number(row.projected_change_pct || 0));
+      const maxAbsChange = Math.max(...changeValues.map(Math.abs), 1);
+      const signedPct = value => `${Number(value) >= 0 ? '+' : ''}${Number(value).toFixed(1)} pts`;
       const traces = [{
         type: 'bar',
         orientation: 'h',
-        name: hasCurrentStudents ? 'Projected size' : 'Alumni size',
+        name: 'Projected change',
         y,
-        x: rows.map(row => row.size_value),
-        text: rows.map(row => {
-          const sizeText = hasCurrentStudents ? num(row.current_students) : num(row.alumni);
-          const growthText = row.projected_growth_pct === null || row.projected_growth_pct === undefined
-            ? ''
-            : ` ${Number(row.projected_growth_pct) >= 0 ? '+' : ''}${pct(row.projected_growth_pct)}`;
-          return `${sizeText}${growthText}`;
-        }),
+        x: rows.map(row => row.projected_change_pct),
+        text: rows.map(row => signedPct(row.projected_change_pct)),
         textposition: 'outside',
         cliponaxis: false,
         customdata: rows.map(row => [
@@ -8347,27 +8340,25 @@
           row.current_share_pct,
           row.alumni,
           row.alumni_share_pct,
-          row.projected_growth_pct,
+          row.projected_change_pct,
         ]),
         marker: {
-          color: hasCurrentStudents ? colors : COLORS[1],
-          colorscale: [[0, '#d65c5c'], [0.5, '#dce6f0'], [1, '#42a66e']],
-          cmin: -maxAbsGrowth,
-          cmax: maxAbsGrowth,
-          colorbar: hasCurrentStudents ? { title: 'Growth', ticksuffix: '%', thickness: 10 } : undefined,
+          color: rows.map(row => Number(row.projected_change_pct || 0) >= 0 ? '#5bd58f' : '#e66386'),
           line: { color: '#fff', width: 1.2 },
         },
-        hovertemplate: hasCurrentStudents
-          ? '%{customdata[0]}<br>Projected students: %{customdata[1]:,.0f}<br>Projected share: %{customdata[2]:.1f}%<br>Alumni share: %{customdata[4]:.1f}%<br>Growth vs alumni share: %{customdata[5]:+.1f}%<extra></extra>'
-          : '%{customdata[0]}<br>Alumni: %{customdata[3]:,.0f}<br>Alumni share: %{customdata[4]:.1f}%<extra></extra>',
+        hovertemplate: '%{customdata[0]}<br>Projected change: %{customdata[5]:+.1f} pts<br>Projected share: %{customdata[2]:.1f}%<br>Alumni share: %{customdata[4]:.1f}%<br>Projected students: %{customdata[1]:,.0f}<extra></extra>',
       }];
-      const layout = horizontalBarLayout(id, rows.map(row => ({ label: majorName(row) })), '', { rightMargin: 154 });
+      const layout = horizontalBarLayout(id, rows.map(row => ({ label: majorName(row) })), '%', { rightMargin: 118 });
       Plotly.newPlot(id, traces, {
         ...layout,
         xaxis: {
           ...layout.xaxis,
-          title: hasCurrentStudents ? 'Projected current students' : 'Alumni in selected slice',
-          tickformat: ',',
+          title: 'Projected change in share of class',
+          ticksuffix: ' pts',
+          zeroline: true,
+          zerolinecolor: '#a9b4c4',
+          zerolinewidth: 2,
+          range: [-maxAbsChange * 1.28, maxAbsChange * 1.28],
         },
         showlegend: false,
       }, plotConfig);
