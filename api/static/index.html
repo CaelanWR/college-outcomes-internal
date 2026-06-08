@@ -3686,6 +3686,14 @@
       return `${yearSpanLabel(recent.years, 'recent alumni classes')} to ${currentStudentYearSpanLabel(currentStudentComparisonYears())}`;
     }
 
+    function majorMomentumPayPeriodLabel() {
+      const premium = salaryPremiumChangeStats();
+      const payLabel = premium.previousYears?.length && premium.recentYears?.length
+        ? `pay ${yearSpanLabel(premium.previousYears)} to ${yearSpanLabel(premium.recentYears)}`
+        : 'pay change';
+      return `${payLabel}; share ${majorShareChangePeriodLabel()}`;
+    }
+
     function currentFilters(extra = {}) {
       const advanced = activeAdvancedControls();
       const noFurtherValue = advanced.noFurther;
@@ -6560,7 +6568,7 @@
           ...overviewMetrics(o),
           card('Top Majors in Current Slice', 'overview-major-bars', 6, true, { topControl: true }),
           card('Top Career Employers', 'employer-bars', 6, true, { topControl: true }),
-          ...(!hasMajor ? [card(`Major Pay Premium vs Projected Share Change (${majorShareChangePeriodLabel()})`, 'major-momentum-pay', 12, true, { topControl: true, horizonControl: true })] : []),
+          ...(!hasMajor ? [card(`Major Pay Premium Change vs Projected Share Change (${majorMomentumPayPeriodLabel()})`, 'major-momentum-pay', 12, true, { topControl: true, horizonControl: true })] : []),
           card('Top Cities by Alumni Share', 'overview-geo', 12, false, { topControl: true }),
         ].join('');
         drawTopMajorsVolume('overview-major-bars');
@@ -9064,6 +9072,74 @@
       return { years, alumniByCode, shareByCode, totalAlumni };
     }
 
+    function salaryTrendValue(row) {
+      const value = Number(row?.median_salary || row?.weighted_mean_salary || 0);
+      return Number.isFinite(value) && value > 0 ? value : null;
+    }
+
+    function weightedSalaryAverage(rows) {
+      let weightedTotal = 0;
+      let weightTotal = 0;
+      (rows || []).forEach(row => {
+        const value = salaryTrendValue(row);
+        const weight = Number(row?.salary_weight || row?.alumni || 0);
+        if (!Number.isFinite(value) || !Number.isFinite(weight) || weight <= 0) return;
+        weightedTotal += value * weight;
+        weightTotal += weight;
+      });
+      return weightTotal > 0 ? weightedTotal / weightTotal : null;
+    }
+
+    function salaryPremiumChangeStats() {
+      const majorRows = state.data.salary_trend_by_major || [];
+      const baselineRows = state.data.salary_trend || [];
+      const baselineByYear = new Map();
+      baselineRows.forEach(row => {
+        const year = Number(row.grad_year);
+        if (!Number.isFinite(year) || salaryTrendValue(row) === null) return;
+        if (!baselineByYear.has(year)) baselineByYear.set(year, []);
+        baselineByYear.get(year).push(row);
+      });
+      const salaryYears = [...baselineByYear.keys()].sort((a, b) => a - b);
+      const recentYears = salaryYears.slice(-5);
+      const previousYears = salaryYears.slice(Math.max(0, salaryYears.length - 10), Math.max(0, salaryYears.length - 5));
+      if (!recentYears.length || !previousYears.length) {
+        return { byCode: new Map(), recentYears, previousYears };
+      }
+      const previousSet = new Set(previousYears.map(String));
+      const recentSet = new Set(recentYears.map(String));
+      const previousBaseline = weightedSalaryAverage(baselineRows.filter(row => previousSet.has(String(row.grad_year))));
+      const recentBaseline = weightedSalaryAverage(baselineRows.filter(row => recentSet.has(String(row.grad_year))));
+      if (!Number.isFinite(previousBaseline) || !Number.isFinite(recentBaseline)) {
+        return { byCode: new Map(), recentYears, previousYears };
+      }
+      const grouped = new Map();
+      majorRows.forEach(row => {
+        const code = String(row.code || row.title || '');
+        if (!code || salaryTrendValue(row) === null) return;
+        if (!grouped.has(code)) grouped.set(code, { previous: [], recent: [] });
+        const year = String(row.grad_year || '');
+        if (previousSet.has(year)) grouped.get(code).previous.push(row);
+        if (recentSet.has(year)) grouped.get(code).recent.push(row);
+      });
+      const byCode = new Map();
+      grouped.forEach((group, code) => {
+        const previousSalary = weightedSalaryAverage(group.previous);
+        const recentSalary = weightedSalaryAverage(group.recent);
+        if (!Number.isFinite(previousSalary) || !Number.isFinite(recentSalary)) return;
+        const previousPremium = previousSalary - previousBaseline;
+        const recentPremium = recentSalary - recentBaseline;
+        byCode.set(code, {
+          previous_salary: previousSalary,
+          recent_salary: recentSalary,
+          previous_premium: previousPremium,
+          recent_premium: recentPremium,
+          premium_change: recentPremium - previousPremium,
+        });
+      });
+      return { byCode, recentYears, previousYears };
+    }
+
     function drawMajorMomentumPayBubble(id) {
       const comparisonYears = currentStudentComparisonYears();
       const {
@@ -9072,11 +9148,12 @@
         totalCurrentStudents,
       } = majorCurrentDemandStats({ years: comparisonYears });
       const recent = recentAlumniShareStats();
-      const baselineSalary = Number(state.data.overview?.median_salary || state.data.overview?.weighted_mean_salary || 0);
-      if (!totalCurrentStudents || !recent.totalAlumni || !baselineSalary) return noData(id);
+      const premiumStats = salaryPremiumChangeStats();
+      if (!totalCurrentStudents || !recent.totalAlumni || !premiumStats.byCode.size) return noData(id);
       const rows = (state.data.top_majors || [])
         .map(row => {
           const code = String(row.code || '');
+          const premiumChange = premiumStats.byCode.get(code);
           const projectedStudents = currentTotalsByCode.get(code) || 0;
           const observedProfiles = observedCurrentByCode.get(code) || 0;
           const projectedSharePct = totalCurrentStudents > 0 ? 100 * projectedStudents / totalCurrentStudents : null;
@@ -9084,7 +9161,6 @@
             ? recent.shareByCode.get(code)
             : null;
           const salary = Number(row.median_salary || row.weighted_mean_salary || 0);
-          const salaryPremium = salary && baselineSalary ? salary - baselineSalary : null;
           const coveragePct = projectedStudents > 0 ? Math.min(100, 100 * observedProfiles / projectedStudents) : null;
           return {
             ...row,
@@ -9095,24 +9171,26 @@
             recent_alumni_share_pct: recentSharePct,
             share_change_pct: projectedSharePct !== null && recentSharePct !== null ? projectedSharePct - recentSharePct : null,
             salary_value: salary,
-            salary_premium: salaryPremium,
+            previous_salary_premium: premiumChange?.previous_premium,
+            recent_salary_premium: premiumChange?.recent_premium,
+            salary_premium_change: premiumChange?.premium_change,
             current_coverage_pct: coveragePct,
           };
         })
         .filter(row =>
           row.code
           && Number.isFinite(Number(row.share_change_pct))
-          && Number.isFinite(Number(row.salary_premium))
+          && Number.isFinite(Number(row.salary_premium_change))
           && Number(row.projected_students || 0) > 0
         )
-        .sort((a, b) => Math.abs(Number(b.share_change_pct || 0)) + Math.abs(Number(b.salary_premium || 0)) / 10000
-          - (Math.abs(Number(a.share_change_pct || 0)) + Math.abs(Number(a.salary_premium || 0)) / 10000))
+        .sort((a, b) => Math.abs(Number(b.share_change_pct || 0)) + Math.abs(Number(b.salary_premium_change || 0)) / 10000
+          - (Math.abs(Number(a.share_change_pct || 0)) + Math.abs(Number(a.salary_premium_change || 0)) / 10000))
         .slice(0, topNFor(id));
       if (rows.length < 2) return noData(id);
       const maxProjected = Math.max(1, ...rows.map(row => Number(row.projected_students || 0)));
       const markerSizes = rows.map(row => 18 + 42 * Math.sqrt(Number(row.projected_students || 0) / maxProjected));
       const xValues = rows.map(row => Number(row.share_change_pct || 0));
-      const yValues = rows.map(row => Number(row.salary_premium || 0));
+      const yValues = rows.map(row => Number(row.salary_premium_change || 0));
       const xAbs = Math.max(1, ...xValues.map(Math.abs));
       const yAbs = Math.max(1000, ...yValues.map(value => Math.abs(value)));
       const signedMoney = value => {
@@ -9142,16 +9220,18 @@
         customdata: rows.map(row => [
           majorName(row),
           row.salary_value,
-          row.salary_premium,
-          signedMoney(row.salary_premium),
+          row.salary_premium_change,
+          signedMoney(row.salary_premium_change),
           row.projected_students,
           row.observed_current_profiles,
           row.current_coverage_pct,
           row.projected_share_pct,
           row.recent_alumni_share_pct,
           row.share_change_pct,
+          signedMoney(row.previous_salary_premium),
+          signedMoney(row.recent_salary_premium),
         ]),
-        hovertemplate: `%{customdata[0]}<br>${activeHorizonLabel()}: %{customdata[1]:$,.0f}<br>Pay premium: %{customdata[3]}<br>Share change: %{customdata[9]:+.1f} pts<br>Projected share: %{customdata[7]:.1f}%<br>Recent alumni share: %{customdata[8]:.1f}%<br>Projected students: %{customdata[4]:,.0f}<br>Observed current profiles: %{customdata[5]:,.0f}<br>Coverage: %{customdata[6]:.1f}%<extra></extra>`,
+        hovertemplate: `%{customdata[0]}<br>${activeHorizonLabel()} pay premium change: %{customdata[3]}<br>Previous premium: %{customdata[10]}<br>Recent premium: %{customdata[11]}<br>Share change: %{customdata[9]:+.1f} pts<br>Projected share: %{customdata[7]:.1f}%<br>Recent alumni share: %{customdata[8]:.1f}%<br>Projected students: %{customdata[4]:,.0f}<br>Observed current profiles: %{customdata[5]:,.0f}<br>Coverage: %{customdata[6]:.1f}%<extra></extra>`,
       }], {
         ...layoutBase,
         height: 500,
@@ -9166,7 +9246,7 @@
           automargin: true,
         },
         yaxis: {
-          title: `Pay premium vs school average (${activeHorizonLabel(true)})`,
+          title: `Change in pay premium vs school average (${activeHorizonLabel(true)})`,
           tickprefix: '$',
           tickformat: '~s',
           zeroline: true,

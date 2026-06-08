@@ -6823,6 +6823,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                         "top_majors": _top_majors(con, filters),
                         "current_student_trend_by_major": _current_student_trend_by_major(con, filters),
                         "alumni_trend_by_major": _alumni_trend_by_major(con, filters),
+                        "salary_trend_by_major": _salary_trend_by_major(con, filters),
                         "major_trend": _major_trend(con, filters, filters.include_current_students),
                         "employers": _employers(con, filters),
                         "employer_trend": _employer_trend(con, filters),
@@ -6870,6 +6871,8 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                     if tab == "overview":
                         result["current_student_trend_by_major"] = _current_student_trend_by_major(con, filters)
                         result["alumni_trend_by_major"] = _alumni_trend_by_major(con, filters)
+                        result["salary_trend"] = _salary_trend(con, filters)
+                        result["salary_trend_by_major"] = _salary_trend_by_major(con, filters)
                         result["career"] = {"earnings": _career_earnings(con, filters)}
                     if view_mode == "overtime" and tab == "overview":
                         result["alumni_trend_by_major"] = _alumni_trend_by_major(con, filters)
@@ -7123,6 +7126,8 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                 result["role_summary"] = _overview_role_summary(con)
                 if view_mode == "snapshot":
                     result["top_majors"] = _top_majors(con, filters)
+                    result["salary_trend"] = _salary_trend(con, filters)
+                    result["salary_trend_by_major"] = _salary_trend_by_major(con, filters)
                     result["current_student_trend_by_major"] = _current_student_trend_by_major(con, filters)
                     result["alumni_trend_by_major"] = _alumni_trend_by_major(con, filters)
                     result["employers"] = _employers(con, filters)
