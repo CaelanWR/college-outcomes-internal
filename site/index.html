@@ -6671,7 +6671,7 @@
           ...overviewMetrics(o),
           card('Top Majors in Current Slice', 'overview-major-bars', 6, true, { topControl: true }),
           card('Top Career Employers', 'employer-bars', 6, true, { topControl: true }),
-          ...(!hasMajor ? [card(`Major Pay Premium Change vs Projected Share Change (${majorMomentumPayPeriodLabel()})`, 'major-momentum-pay', 12, true, { topControl: true, horizonControl: true })] : []),
+          ...(!hasMajor ? [card('Major Momentum', 'major-momentum-pay', 12, true, { topControl: true, horizonControl: true })] : []),
           card('Top Cities by Alumni Share', 'overview-geo', 12, false, { topControl: true }),
         ].join('');
         drawTopMajorsVolume('overview-major-bars');
@@ -9382,6 +9382,7 @@
       const yValues = rows.map(row => Number(row.salary_premium_change || 0));
       const xAbs = Math.max(1, ...xValues.map(Math.abs));
       const yAbs = Math.max(1000, ...yValues.map(value => Math.abs(value)));
+      const periodLabel = majorMomentumPayPeriodLabel();
       const signedMoney = value => {
         const n = Number(value);
         if (!Number.isFinite(n)) return 'No data';
@@ -9422,7 +9423,7 @@
           row.previous_projected_students,
           row.previous_observed_profiles,
         ]),
-        hovertemplate: `%{customdata[0]}<br>${activeHorizonLabel()} pay premium change: %{customdata[3]}<br>Previous premium: %{customdata[10]}<br>Recent premium: %{customdata[11]}<br>Projected share change: %{customdata[9]:+.1f} pts<br>Later projected share: %{customdata[7]:.1f}%<br>Earlier projected share: %{customdata[8]:.1f}%<br>Later projected students: %{customdata[4]:,.0f}<br>Earlier projected students: %{customdata[12]:,.0f}<br>Later observed profiles: %{customdata[5]:,.0f}<br>Coverage: %{customdata[6]:.1f}%<extra></extra>`,
+        hovertemplate: `%{customdata[0]}<br>${periodLabel}<br>${activeHorizonLabel()} pay premium change: %{customdata[3]}<br>Previous premium: %{customdata[10]}<br>Recent premium: %{customdata[11]}<br>Projected share change: %{customdata[9]:+.1f} pts<br>Later projected share: %{customdata[7]:.1f}%<br>Earlier projected share: %{customdata[8]:.1f}%<br>Later projected students: %{customdata[4]:,.0f}<br>Earlier projected students: %{customdata[12]:,.0f}<br>Later observed profiles: %{customdata[5]:,.0f}<br>Coverage: %{customdata[6]:.1f}%<extra></extra>`,
       }], {
         ...layoutBase,
         height: 500,
