@@ -3289,6 +3289,7 @@
       appliedAdvanced: null,
       schoolSearchQuery: '',
       schoolSearchFocused: false,
+      schoolSearchBlurTimer: null,
       compareSchoolSearchQuery: '',
       loading: false,
       pendingRefresh: null,
@@ -4141,6 +4142,12 @@
           `)
           .join('')
         : '<div class="school-suggestion-empty">No matching schools</div>';
+    }
+
+    function cancelSchoolSearchBlur() {
+      if (!state.schoolSearchBlurTimer) return;
+      clearTimeout(state.schoolSearchBlurTimer);
+      state.schoolSearchBlurTimer = null;
     }
 
     function renderSchoolSelectOptions(rows, selectedUnitid = '') {
@@ -10934,23 +10941,29 @@
       });
 
       $('school-search').addEventListener('input', () => {
+        cancelSchoolSearchBlur();
         state.schoolSearchQuery = $('school-search').value || '';
         state.schoolSearchFocused = true;
         renderSchoolSelectOptions(state.options?.schools || [], $('school-select')?.value || '');
       });
       $('school-search').addEventListener('focus', () => {
+        cancelSchoolSearchBlur();
+        state.schoolSearchQuery = $('school-search').value || '';
         state.schoolSearchFocused = true;
         renderSchoolSearchOptions(state.options?.schools || []);
       });
       $('school-search').addEventListener('blur', () => {
-        setTimeout(() => {
+        cancelSchoolSearchBlur();
+        state.schoolSearchBlurTimer = setTimeout(() => {
+          state.schoolSearchBlurTimer = null;
+          if (document.activeElement === $('school-search')) return;
           state.schoolSearchFocused = false;
           renderSchoolSearchOptions(state.options?.schools || []);
         }, 120);
       });
-      $('school-search').addEventListener('change', () => selectSchoolFromSearch(false));
       $('school-search').addEventListener('keydown', event => {
         if (event.key === 'Escape') {
+          cancelSchoolSearchBlur();
           state.schoolSearchQuery = '';
           state.schoolSearchFocused = false;
           $('school-search').value = '';
@@ -10965,6 +10978,7 @@
         const button = event.target.closest('[data-school-suggestion]');
         if (!button) return;
         event.preventDefault();
+        cancelSchoolSearchBlur();
         const match = (state.options?.schools || []).find(row => String(row.unitid) === String(button.dataset.schoolSuggestion));
         selectSchoolRow(match);
       });
