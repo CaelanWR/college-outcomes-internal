@@ -3754,12 +3754,19 @@
       return `${yearSpanLabel(recent.years, 'recent alumni classes')} to ${currentStudentYearSpanLabel(currentStudentComparisonYears())}`;
     }
 
+    function projectedShareChangePeriodLabel() {
+      const share = projectedShareChangeStats();
+      return share.previousYears?.length && share.laterYears?.length
+        ? `${currentStudentYearSpanLabel(share.previousYears)} to ${currentStudentYearSpanLabel(share.laterYears)}`
+        : majorShareChangePeriodLabel();
+    }
+
     function majorMomentumPayPeriodLabel() {
       const premium = salaryPremiumChangeStats();
       const payLabel = premium.previousYears?.length && premium.recentYears?.length
         ? `pay ${yearSpanLabel(premium.previousYears)} to ${yearSpanLabel(premium.recentYears)}`
         : 'pay change';
-      return `${payLabel}; share ${majorShareChangePeriodLabel()}`;
+      return `${payLabel}; share ${projectedShareChangePeriodLabel()}`;
     }
 
     function currentFilters(extra = {}) {
@@ -9135,6 +9142,102 @@
       };
     }
 
+    function currentShareWindowCandidates() {
+      const years = currentStudentYears();
+      const byKey = new Map();
+      const addCandidate = candidateYears => {
+        const cleanYears = [...new Set((candidateYears || []).map(Number).filter(Number.isFinite))]
+          .sort((a, b) => a - b);
+        if (!cleanYears.length) return;
+        const key = cleanYears.join('|');
+        if (byKey.has(key)) return;
+        const stats = majorCurrentDemandStats({ years: cleanYears });
+        if (Number(stats.totalCurrentStudents || 0) <= 0 || stats.currentTotalsByCode.size < 2) return;
+        byKey.set(key, {
+          years: cleanYears,
+          stats,
+          start: cleanYears[0],
+          end: cleanYears[cleanYears.length - 1],
+          center: cleanYears.reduce((total, year) => total + year, 0) / cleanYears.length,
+          total: Number(stats.totalCurrentStudents || 0),
+        });
+      };
+      addCandidate([2024, 2025]);
+      addCandidate([2028, 2029]);
+      years.forEach((year, idx) => {
+        addCandidate([year]);
+        if (years[idx + 1] !== undefined) addCandidate([year, years[idx + 1]]);
+      });
+      return [...byKey.values()];
+    }
+
+    function chooseCurrentShareWindow(candidates, targetCenter, options = {}) {
+      const minProjected = options.minProjected ?? 25;
+      const afterYear = options.afterYear;
+      const preferLatest = Boolean(options.preferLatest);
+      let valid = candidates.filter(candidate => candidate.total >= minProjected);
+      if (afterYear !== undefined) {
+        const afterCandidates = valid.filter(candidate => candidate.start > afterYear);
+        if (afterCandidates.length) valid = afterCandidates;
+      }
+      if (!valid.length && minProjected > 0) {
+        return chooseCurrentShareWindow(candidates, targetCenter, { ...options, minProjected: 0 });
+      }
+      if (!valid.length) return null;
+      return valid.sort((a, b) => {
+        const targetDelta = Math.abs(a.center - targetCenter) - Math.abs(b.center - targetCenter);
+        if (Math.abs(targetDelta) > 1e-9) return targetDelta;
+        return preferLatest ? b.end - a.end : a.start - b.start;
+      })[0];
+    }
+
+    function projectedShareChangeStats() {
+      const candidates = currentShareWindowCandidates();
+      const previous = chooseCurrentShareWindow(candidates, 2024.5);
+      const later = chooseCurrentShareWindow(candidates, 2028.5, {
+        afterYear: previous?.end,
+        preferLatest: true,
+      });
+      if (!previous || !later) {
+        return { byCode: new Map(), previousYears: previous?.years || [], laterYears: later?.years || [] };
+      }
+      const byCode = new Map();
+      const codes = new Set([
+        ...previous.stats.currentTotalsByCode.keys(),
+        ...later.stats.currentTotalsByCode.keys(),
+      ]);
+      codes.forEach(code => {
+        const previousStudents = previous.stats.currentTotalsByCode.get(code) || 0;
+        const laterStudents = later.stats.currentTotalsByCode.get(code) || 0;
+        const previousObserved = previous.stats.observedCurrentByCode.get(code) || 0;
+        const laterObserved = later.stats.observedCurrentByCode.get(code) || 0;
+        const previousShare = previous.stats.totalCurrentStudents > 0
+          ? 100 * previousStudents / previous.stats.totalCurrentStudents
+          : null;
+        const laterShare = later.stats.totalCurrentStudents > 0
+          ? 100 * laterStudents / later.stats.totalCurrentStudents
+          : null;
+        if (!Number.isFinite(Number(previousShare)) || !Number.isFinite(Number(laterShare))) return;
+        byCode.set(code, {
+          previous_projected_students: previousStudents,
+          later_projected_students: laterStudents,
+          previous_observed_profiles: previousObserved,
+          later_observed_profiles: laterObserved,
+          previous_share_pct: previousShare,
+          later_share_pct: laterShare,
+          share_change_pct: laterShare - previousShare,
+          later_coverage_pct: laterStudents > 0 ? Math.min(100, 100 * laterObserved / laterStudents) : null,
+        });
+      });
+      return {
+        byCode,
+        previousYears: previous.years,
+        laterYears: later.years,
+        previousTotalCurrentStudents: previous.stats.totalCurrentStudents,
+        laterTotalCurrentStudents: later.stats.totalCurrentStudents,
+      };
+    }
+
     function recentAlumniShareStats() {
       const rows = state.data.alumni_trend_by_major || [];
       const years = [...new Set(rows.map(row => Number(row.grad_year)).filter(Number.isFinite))]
@@ -9230,54 +9333,44 @@
     }
 
     function drawMajorMomentumPayBubble(id) {
-      const comparisonYears = currentStudentComparisonYears();
-      const {
-        currentTotalsByCode,
-        observedCurrentByCode,
-        totalCurrentStudents,
-      } = majorCurrentDemandStats({ years: comparisonYears });
-      const recent = recentAlumniShareStats();
+      const shareStats = projectedShareChangeStats();
       const premiumStats = salaryPremiumChangeStats();
-      if (!totalCurrentStudents || !recent.totalAlumni || !premiumStats.byCode.size) return noData(id);
+      if (!shareStats.byCode.size || !premiumStats.byCode.size) return noData(id);
       const rows = (state.data.top_majors || [])
         .map(row => {
           const code = String(row.code || '');
           const premiumChange = premiumStats.byCode.get(code);
-          const projectedStudents = currentTotalsByCode.get(code) || 0;
-          const observedProfiles = observedCurrentByCode.get(code) || 0;
-          const projectedSharePct = totalCurrentStudents > 0 ? 100 * projectedStudents / totalCurrentStudents : null;
-          const recentSharePct = recent.shareByCode.has(code)
-            ? recent.shareByCode.get(code)
-            : null;
+          const shareChange = shareStats.byCode.get(code);
           const salary = Number(row.median_salary || row.weighted_mean_salary || 0);
-          const coveragePct = projectedStudents > 0 ? Math.min(100, 100 * observedProfiles / projectedStudents) : null;
           return {
             ...row,
             code,
-            projected_students: projectedStudents,
-            observed_current_profiles: observedProfiles,
-            projected_share_pct: projectedSharePct,
-            recent_alumni_share_pct: recentSharePct,
-            share_change_pct: projectedSharePct !== null && recentSharePct !== null ? projectedSharePct - recentSharePct : null,
+            previous_projected_students: shareChange?.previous_projected_students,
+            later_projected_students: shareChange?.later_projected_students,
+            previous_observed_profiles: shareChange?.previous_observed_profiles,
+            later_observed_profiles: shareChange?.later_observed_profiles,
+            previous_share_pct: shareChange?.previous_share_pct,
+            later_share_pct: shareChange?.later_share_pct,
+            share_change_pct: shareChange?.share_change_pct,
             salary_value: salary,
             previous_salary_premium: premiumChange?.previous_premium,
             recent_salary_premium: premiumChange?.recent_premium,
             salary_premium_change: premiumChange?.premium_change,
-            current_coverage_pct: coveragePct,
+            current_coverage_pct: shareChange?.later_coverage_pct,
           };
         })
         .filter(row =>
           row.code
           && Number.isFinite(Number(row.share_change_pct))
           && Number.isFinite(Number(row.salary_premium_change))
-          && Number(row.projected_students || 0) > 0
+          && Number(row.later_projected_students || 0) > 0
         )
         .sort((a, b) => Math.abs(Number(b.share_change_pct || 0)) + Math.abs(Number(b.salary_premium_change || 0)) / 10000
           - (Math.abs(Number(a.share_change_pct || 0)) + Math.abs(Number(a.salary_premium_change || 0)) / 10000))
         .slice(0, topNFor(id));
       if (rows.length < 2) return noData(id);
-      const maxProjected = Math.max(1, ...rows.map(row => Number(row.projected_students || 0)));
-      const markerSizes = rows.map(row => 18 + 42 * Math.sqrt(Number(row.projected_students || 0) / maxProjected));
+      const maxProjected = Math.max(1, ...rows.map(row => Number(row.later_projected_students || 0)));
+      const markerSizes = rows.map(row => 18 + 42 * Math.sqrt(Number(row.later_projected_students || 0) / maxProjected));
       const xValues = rows.map(row => Number(row.share_change_pct || 0));
       const yValues = rows.map(row => Number(row.salary_premium_change || 0));
       const xAbs = Math.max(1, ...xValues.map(Math.abs));
@@ -9311,22 +9404,24 @@
           row.salary_value,
           row.salary_premium_change,
           signedMoney(row.salary_premium_change),
-          row.projected_students,
-          row.observed_current_profiles,
+          row.later_projected_students,
+          row.later_observed_profiles,
           row.current_coverage_pct,
-          row.projected_share_pct,
-          row.recent_alumni_share_pct,
+          row.later_share_pct,
+          row.previous_share_pct,
           row.share_change_pct,
           signedMoney(row.previous_salary_premium),
           signedMoney(row.recent_salary_premium),
+          row.previous_projected_students,
+          row.previous_observed_profiles,
         ]),
-        hovertemplate: `%{customdata[0]}<br>${activeHorizonLabel()} pay premium change: %{customdata[3]}<br>Previous premium: %{customdata[10]}<br>Recent premium: %{customdata[11]}<br>Share change: %{customdata[9]:+.1f} pts<br>Projected share: %{customdata[7]:.1f}%<br>Recent alumni share: %{customdata[8]:.1f}%<br>Projected students: %{customdata[4]:,.0f}<br>Observed current profiles: %{customdata[5]:,.0f}<br>Coverage: %{customdata[6]:.1f}%<extra></extra>`,
+        hovertemplate: `%{customdata[0]}<br>${activeHorizonLabel()} pay premium change: %{customdata[3]}<br>Previous premium: %{customdata[10]}<br>Recent premium: %{customdata[11]}<br>Projected share change: %{customdata[9]:+.1f} pts<br>Later projected share: %{customdata[7]:.1f}%<br>Earlier projected share: %{customdata[8]:.1f}%<br>Later projected students: %{customdata[4]:,.0f}<br>Earlier projected students: %{customdata[12]:,.0f}<br>Later observed profiles: %{customdata[5]:,.0f}<br>Coverage: %{customdata[6]:.1f}%<extra></extra>`,
       }], {
         ...layoutBase,
         height: 500,
         margin: { ...layoutBase.margin, l: 92, r: 92, t: 24, b: 78 },
         xaxis: {
-          title: 'Projected major-share change',
+          title: 'Later projected share minus earlier projected share',
           ticksuffix: ' pts',
           zeroline: true,
           zerolinecolor: '#9caabd',
@@ -9344,6 +9439,12 @@
           range: [-yAbs * 1.28, yAbs * 1.28],
           automargin: true,
         },
+        annotations: [
+          { text: 'Rising pay', x: 0.52, y: 0.98, xref: 'paper', yref: 'paper', showarrow: false, font: { color: 'rgba(102,119,145,0.58)', size: 12 }, xanchor: 'left', yanchor: 'top' },
+          { text: 'Falling pay', x: 0.52, y: 0.04, xref: 'paper', yref: 'paper', showarrow: false, font: { color: 'rgba(102,119,145,0.58)', size: 12 }, xanchor: 'left', yanchor: 'bottom' },
+          { text: 'Falling share', x: 0.02, y: 0.52, xref: 'paper', yref: 'paper', showarrow: false, font: { color: 'rgba(102,119,145,0.58)', size: 12 }, xanchor: 'left', yanchor: 'bottom' },
+          { text: 'Rising share', x: 0.98, y: 0.52, xref: 'paper', yref: 'paper', showarrow: false, font: { color: 'rgba(102,119,145,0.58)', size: 12 }, xanchor: 'right', yanchor: 'bottom' },
+        ],
         showlegend: false,
       }, plotConfig);
     }
