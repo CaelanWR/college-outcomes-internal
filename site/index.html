@@ -5313,7 +5313,8 @@
       return `<div class="card span-${span} ${options.compact ? 'compact-card' : ''}">${header}<div id="${id}" class="${bodyClass}"></div></div>`;
     }
 
-    function treemapCard(title, id, subtitle, path, kind, span = 6) {
+    function treemapCard(title, id, subtitle, path, kind, span = 6, options = {}) {
+      const showBack = options.showBack ?? Boolean((path || []).length);
       return `<div class="card treemap-card span-${span}">
         <div class="card-head">
           <div class="card-top">
@@ -5325,7 +5326,7 @@
               ${chartInfoControl(id, title)}
               ${topNControl(`${id}-top-n`)}
               ${chartDownloadControl(id)}
-              <button class="card-back ${(path || []).length ? '' : 'is-hidden'}" type="button" onclick="drillBack('${kind}')">Back</button>
+              <button class="card-back ${showBack ? '' : 'is-hidden'}" type="button" onclick="drillBack('${kind}')">Back</button>
             </div>
           </div>
         </div>
@@ -5359,15 +5360,23 @@
     }
 
     function drillBack(kind) {
-      if (kind === 'roleTree') state.roleTreePath = state.roleTreePath.slice(0, -1);
-      if (kind === 'industryTree') state.industryTreePath = state.industryTreePath.slice(0, -1);
+      if (kind === 'roleTree') {
+        if (state.roleTreePath.length) state.roleTreePath = state.roleTreePath.slice(0, -1);
+        else if (state.industryTreePath.length) state.industryTreePath = state.industryTreePath.slice(0, -1);
+      }
+      if (kind === 'industryTree') {
+        if (state.industryTreePath.length) state.industryTreePath = state.industryTreePath.slice(0, -1);
+        else if (state.roleTreePath.length) state.roleTreePath = state.roleTreePath.slice(0, -1);
+      }
       if (kind === 'destinationLeft') {
-        state.destinationLeftPath = state.destinationLeftPath.slice(0, -1);
+        if (state.destinationLeftPath.length) state.destinationLeftPath = state.destinationLeftPath.slice(0, -1);
+        else if (state.destinationRightPath.length) state.destinationRightPath = state.destinationRightPath.slice(0, -1);
         renderDestinations();
         return;
       }
       if (kind === 'destinationRight') {
-        state.destinationRightPath = state.destinationRightPath.slice(0, -1);
+        if (state.destinationRightPath.length) state.destinationRightPath = state.destinationRightPath.slice(0, -1);
+        else if (state.destinationLeftPath.length) state.destinationLeftPath = state.destinationLeftPath.slice(0, -1);
         renderDestinations();
         return;
       }
@@ -7012,10 +7021,11 @@
       const leftNodes = visibleHierarchyRows(leftContextRows, config.leftLevels, state.destinationLeftPath, 'destination-left-tree');
       const rightNodes = visibleHierarchyRows(rightContextRows, config.rightLevels, state.destinationRightPath, 'destination-right-tree');
       const sharedPayDomain = treemapPayDomain([...leftNodes, ...rightNodes]);
+      const destinationBackVisible = Boolean(state.destinationLeftPath.length || state.destinationRightPath.length);
       $('content').innerHTML = [
         destinationToolbar(),
-        treemapCard(config.leftTitle, 'destination-left-tree', destinationSubtitle(config.leftTitle, state.destinationLeftPath, config.rightTitle, state.destinationRightPath), state.destinationLeftPath, 'destinationLeft', 6),
-        treemapCard(config.rightTitle, 'destination-right-tree', destinationSubtitle(config.rightTitle, state.destinationRightPath, config.leftTitle, state.destinationLeftPath), state.destinationRightPath, 'destinationRight', 6),
+        treemapCard(config.leftTitle, 'destination-left-tree', destinationSubtitle(config.leftTitle, state.destinationLeftPath, config.rightTitle, state.destinationRightPath), state.destinationLeftPath, 'destinationLeft', 6, { showBack: destinationBackVisible }),
+        treemapCard(config.rightTitle, 'destination-right-tree', destinationSubtitle(config.rightTitle, state.destinationRightPath, config.leftTitle, state.destinationLeftPath), state.destinationRightPath, 'destinationRight', 6, { showBack: destinationBackVisible }),
       ].join('');
       drawHierarchyTreemap('destination-left-tree', leftContextRows, config.leftLevels, state.destinationLeftPath, node => {
         if (state.destinationLeftPath.length >= config.leftLevels.length) return;
@@ -7061,9 +7071,10 @@
         const industrySubtitle = state.roleTreePath.length
           ? `${hierarchyTrail(state.industryTreePath)}. Filtered by role: ${hierarchyTrail(state.roleTreePath)}`
           : `${hierarchyTrail(state.industryTreePath)}. Click an industry to zoom.`;
+        const roleBackVisible = Boolean(state.roleTreePath.length || state.industryTreePath.length);
         $('content').innerHTML = [
-          treemapCard('Role Treemap', 'role-tree', roleSubtitle, state.roleTreePath, 'roleTree', 6),
-          treemapCard('Industry Treemap', 'industry-tree', industrySubtitle, state.industryTreePath, 'industryTree', 6),
+          treemapCard('Role Treemap', 'role-tree', roleSubtitle, state.roleTreePath, 'roleTree', 6, { showBack: roleBackVisible }),
+          treemapCard('Industry Treemap', 'industry-tree', industrySubtitle, state.industryTreePath, 'industryTree', 6, { showBack: roleBackVisible }),
         ].join('');
         drawHierarchyTreemap('role-tree', roleContextRows, roleLevels, state.roleTreePath, node => {
           if (!node.drillable) return;
