@@ -733,6 +733,14 @@
       gap: 4px;
     }
 
+    .metric-strip {
+      grid-column: span 12;
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: clamp(14px, 1.25vw, 22px);
+      align-items: stretch;
+    }
+
     .metric strong {
       display: block;
       font-size: clamp(1.45rem, 2.6vw, 2rem);
@@ -5660,6 +5668,10 @@
       return `<div class="metric span-${span} ${extraClass}"><strong title="${escapeHtml(fullTitle)}">${escapeHtml(display)}</strong><span>${escapeHtml(label)}</span></div>`;
     }
 
+    function metricStrip(items) {
+      return (items || []).length ? `<div class="metric-strip">${items.join('')}</div>` : '';
+    }
+
     function currentStudentTotal() {
       return (state.data.current_student_trend || []).reduce((total, row) => total + Number(row.current_students || 0), 0);
     }
@@ -6520,9 +6532,10 @@
         metric('First employer retention 5 yrs', pct(mobility.first_employer_retention_5yr_pct), 3),
         ...(state.viewMode === 'snapshot' && hasHighUpsidePaths ? [metric('High-upside paths', num((career.superstars || []).length), 3)] : []),
       ];
+      const metricRow = metricStrip(metrics);
       if (state.viewMode === 'overtime') {
         $('content').innerHTML = [
-          ...metrics,
+          metricRow,
           card('Earnings Over the First 15 Years', 'career-earnings', 6, true),
           card(comparing ? 'Average Career Stage by Years Since Graduation' : 'Career Stage by Years Since Graduation', 'career-seniority', 6, true),
           ...(comparing ? [] : [
@@ -6543,7 +6556,7 @@
         }
       } else {
         $('content').innerHTML = [
-          ...metrics,
+          metricRow,
           ...(comparing
             ? (hasInternshipCompare ? [
               card(`${internshipRateTitle} Comparison`, 'career-internship-rates', 5, true, { topControl: true }),
