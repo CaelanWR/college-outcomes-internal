@@ -1105,6 +1105,37 @@ def _static_options() -> dict[str, Any]:
         con.close()
 
 
+def _cip_title_lookup(con: duckdb.DuckDBPyConnection, cip_col: str) -> dict[str, str]:
+    dataset = f"references/{cip_col}_titles"
+    title_col = f"{cip_col}_title"
+    if not _dataset_exists(dataset) or title_col not in _dataset_columns(dataset):
+        return {}
+    rows = _records_from_query(
+        con,
+        f"""
+        SELECT {cip_col} AS code, {title_col} AS title
+        FROM read_parquet(?)
+        WHERE {cip_col} IS NOT NULL
+          AND {title_col} IS NOT NULL
+        """,
+        [_dataset_glob(dataset)],
+    )
+    return {str(row["code"]): str(row["title"]) for row in rows if row.get("code") and row.get("title")}
+
+
+def _apply_cip_titles(con: duckdb.DuckDBPyConnection, rows: list[dict[str, Any]], cip_col: str) -> list[dict[str, Any]]:
+    titles = _cip_title_lookup(con, cip_col)
+    if not titles:
+        return rows
+    return [
+        {
+            **row,
+            "title": titles.get(str(row.get("code")), row.get("title") or row.get("code")),
+        }
+        for row in rows
+    ]
+
+
 @app.get("/api/health")
 def health() -> dict[str, Any]:
     manifest = _manifest()
@@ -1212,26 +1243,75 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
                 """,
                 [base_source, *params],
             )
-            majors = _records_from_query(
-                con,
-                f"""
-                WITH major_counts AS (
-                  SELECT
-                    {cip_col} AS code,
-                    MAX(major_title) AS title,
-                    ROUND(SUM(profile_weight), 2) AS alumni
-                  FROM option_cohort
-                  WHERE {cip_col} IS NOT NULL
-                  GROUP BY {cip_col}
-                )
-                SELECT code, COALESCE(title, code) AS title, alumni
-                FROM major_counts
-                WHERE alumni > ?
-                ORDER BY alumni DESC, title
-                LIMIT {limit}
-                """,
-                [MIN_CELL_WEIGHT],
+            compare_school_ids = list(dict.fromkeys(str(school) for school in filters.schools if str(school)))
+            comparable_school_compare = (
+                filters.compare_mode
+                and filters.compare_dimension == "school"
+                and len(compare_school_ids) >= 2
             )
+
+            def major_options_for(cip_column: str) -> list[dict[str, Any]]:
+                if comparable_school_compare:
+                    rows = _records_from_query(
+                        con,
+                        f"""
+                        WITH per_school AS (
+                          SELECT
+                            unitid,
+                            {cip_column} AS code,
+                            MAX(major_title) AS title,
+                            SUM(profile_weight) AS alumni
+                          FROM option_cohort
+                          WHERE {cip_column} IS NOT NULL
+                          GROUP BY unitid, {cip_column}
+                          HAVING SUM(profile_weight) > ?
+                        ),
+                        major_counts AS (
+                          SELECT
+                            code,
+                            MAX(title) AS title,
+                            ROUND(SUM(alumni), 2) AS alumni,
+                            COUNT(DISTINCT unitid) AS school_count,
+                            ROUND(MIN(alumni), 2) AS min_school_alumni
+                          FROM per_school
+                          GROUP BY code
+                        )
+                        SELECT code, COALESCE(title, code) AS title, alumni, school_count, min_school_alumni
+                        FROM major_counts
+                        WHERE school_count = ?
+                        ORDER BY alumni DESC, title
+                        LIMIT {limit}
+                        """,
+                        [MIN_CELL_WEIGHT, len(compare_school_ids)],
+                    )
+                else:
+                    rows = _records_from_query(
+                        con,
+                        f"""
+                        WITH major_counts AS (
+                          SELECT
+                            {cip_column} AS code,
+                            MAX(major_title) AS title,
+                            ROUND(SUM(profile_weight), 2) AS alumni
+                          FROM option_cohort
+                          WHERE {cip_column} IS NOT NULL
+                          GROUP BY {cip_column}
+                        )
+                        SELECT code, COALESCE(title, code) AS title, alumni
+                        FROM major_counts
+                        WHERE alumni > ?
+                        ORDER BY alumni DESC, title
+                        LIMIT {limit}
+                        """,
+                        [MIN_CELL_WEIGHT],
+                    )
+                return _apply_cip_titles(con, rows, cip_column)
+
+            major_option_cip_level = cip_col
+            majors = major_options_for(cip_col)
+            if comparable_school_compare and not majors and cip_col != "cip2":
+                major_option_cip_level = "cip2"
+                majors = major_options_for("cip2")
             demographics = {
                 "gender": [
                     row["value"]
@@ -1289,6 +1369,9 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
                     "data_version": _manifest().get("version"),
                     "min_cell_weight": MIN_CELL_WEIGHT,
                     "salary_min_weight": SALARY_MIN_WEIGHT,
+                    "major_option_cip_level": major_option_cip_level,
+                    "major_options_are_comparable": comparable_school_compare,
+                    "major_option_school_count": len(compare_school_ids) if comparable_school_compare else None,
                 },
             }
             _response_cache_set(cache_key, result)
