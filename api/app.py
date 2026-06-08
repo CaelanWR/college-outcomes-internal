@@ -5692,6 +5692,17 @@ def _career_graduate_value(con: duckdb.DuckDBPyConnection, filters: QueryRequest
             "timeline": [],
             "primary": {},
         }
+    grad_value_columns = _dataset_columns("work_facts/grad_value_summary")
+    degree_duration_expr = (
+        f"ROUND({_weighted_avg_expr('avg_degree_duration_years')}, 1)"
+        if "avg_degree_duration_years" in grad_value_columns
+        else "NULL"
+    )
+    missing_grad_start_expr = (
+        f"ROUND({_weighted_avg_expr('missing_grad_start_pct')}, 1)"
+        if "missing_grad_start_pct" in grad_value_columns
+        else "NULL"
+    )
     rows = _records_from_query(
         con,
         f"""
@@ -5712,7 +5723,9 @@ def _career_graduate_value(con: duckdb.DuckDBPyConnection, filters: QueryRequest
           ROUND({_weighted_avg_expr("seniority_lift")}, 2) AS seniority_lift,
           ROUND({_weighted_avg_expr("role_change_pct")}, 1) AS role_change_pct,
           ROUND({_weighted_avg_expr("industry_change_pct")}, 1) AS industry_change_pct,
-          ROUND({_weighted_avg_expr("employer_change_pct")}, 1) AS employer_change_pct
+          ROUND({_weighted_avg_expr("employer_change_pct")}, 1) AS employer_change_pct,
+          {degree_duration_expr} AS avg_degree_duration_years,
+          {missing_grad_start_expr} AS missing_grad_start_pct
         FROM read_parquet(?)
         {where_sql}
         GROUP BY years_after_degree

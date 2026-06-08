@@ -6986,7 +6986,9 @@
       const expected = row.expected_salary_growth_pct;
       const direction = lift >= 0 ? 'above' : 'below';
       const yearLabel = year ? `${year} years after the graduate degree` : 'after the graduate degree';
-      return `${yearLabel}, observed pay is ${money(Math.abs(lift))} ${direction} the benchmark path. Observed growth is ${pct(observed)} versus ${pct(expected)} expected.`;
+      const duration = Number(row.avg_degree_duration_years || 0);
+      const durationText = duration ? ` The shaded program period averages ${duration.toFixed(1)} years; the pre-degree point is before that period.` : '';
+      return `${yearLabel}, observed pay is ${money(Math.abs(lift))} ${direction} the benchmark path. Observed growth is ${pct(observed)} versus ${pct(expected)} expected.${durationText}`;
     }
 
     function drawGraduateValue(id) {
@@ -7039,14 +7041,16 @@
       if (!beforeSalary || !points.length) return noData(id);
       const selectedYear = Number(primary.years_after_degree || points[points.length - 1].year);
       const selectedPoint = points.find(point => point.year === selectedYear) || points[points.length - 1];
-      const xValues = [-1, 0, ...points.map(point => point.year)];
+      const degreeDuration = Math.max(0.5, Math.min(7, Number(primary.avg_degree_duration_years || 2)));
+      const preX = -degreeDuration;
+      const xValues = [preX, 0, ...points.map(point => point.year)];
       const tickVals = [...new Set(xValues)].sort((a, b) => a - b);
       const tickText = tickVals.map(value => {
-        if (value === -1) return 'Before';
+        if (value === preX) return 'Before program';
         if (value === 0) return 'Degree complete';
         return `${value} yr`;
       });
-      const expectedTiming = ['Before grad school', 'Degree completed', ...points.map(point => `${point.year} years after degree`)];
+      const expectedTiming = ['Before grad program', 'Degree completed', ...points.map(point => `${point.year} years after degree`)];
       const observedTiming = ['Degree completed', ...points.map(point => `${point.year} years after degree`)];
       const liftColor = Number(selectedPoint.lift || 0) >= 0 ? 'rgba(72,235,143,0.34)' : 'rgba(231,131,196,0.38)';
       Plotly.newPlot(id, [
@@ -7091,7 +7095,7 @@
           tickmode: 'array',
           tickvals: tickVals,
           ticktext: tickText,
-          range: [-1.25, Math.max(...tickVals) + 0.35],
+          range: [preX - 0.35, Math.max(...tickVals) + 0.35],
           zeroline: false,
           automargin: true,
         },
@@ -7104,7 +7108,7 @@
         },
         shapes: [{
           type: 'rect',
-          x0: -1,
+          x0: preX,
           x1: 0,
           y0: 0,
           y1: 1,
@@ -7126,11 +7130,11 @@
         }],
         annotations: [
           {
-            x: -0.5,
+            x: preX / 2,
             y: 1.02,
             xref: 'x',
             yref: 'paper',
-            text: 'Degree period',
+            text: `Graduate program · avg ${degreeDuration.toFixed(1)} yrs`,
             showarrow: false,
             font: { color: THEME.muted, size: 12 },
           },

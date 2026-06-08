@@ -1892,7 +1892,8 @@ GROUP BY benchmark_tier, pre_role, pre_industry, pre_seniority_group, pre_year_b
 def _grad_transition_stacked_source_sql() -> str:
     columns = """
         person_key, unitid, school_name, degree, cip2, cip4, major_title,
-        grad_year, cohort_band, years_after_degree, grad_plus_one_masters_flag,
+        grad_year, cohort_band, grad_date, grad_start_date, pre_anchor_date,
+        years_after_degree, grad_plus_one_masters_flag,
         missing_grad_start_flag, feeder_unitid, feeder_school, feeder_cip4, feeder_program,
         feeder_grad_year, years_since_feeder_degree, pre_year_bucket,
         pre_employer, post_employer, pre_role, post_role, pre_role_detail, post_role_detail,
@@ -1911,7 +1912,8 @@ def _grad_transition_stacked_source_sql() -> str:
     SELECT
         'ALL' AS cip_level,
         person_key, unitid, school_name, degree, cip2, 'ALL' AS cip4, 'All majors' AS major_title,
-        grad_year, cohort_band, years_after_degree, grad_plus_one_masters_flag,
+        grad_year, cohort_band, grad_date, grad_start_date, pre_anchor_date,
+        years_after_degree, grad_plus_one_masters_flag,
         missing_grad_start_flag, feeder_unitid, feeder_school, feeder_cip4, feeder_program,
         feeder_grad_year, years_since_feeder_degree, pre_year_bucket,
         pre_employer, post_employer, pre_role, post_role, pre_role_detail, post_role_detail,
@@ -2006,6 +2008,7 @@ WITH stacked AS (
         ROUND(100 * SUM(industry_changed_flag * transition_weight) / NULLIF(SUM(transition_weight), 0), 2) AS industry_change_pct,
         ROUND(100 * SUM(employer_changed_flag * transition_weight) / NULLIF(SUM(transition_weight), 0), 2) AS employer_change_pct,
         ROUND(100 * SUM(missing_grad_start_flag * transition_weight) / NULLIF(SUM(transition_weight), 0), 2) AS missing_grad_start_pct,
+        ROUND(SUM(GREATEST(0.25, DATEDIFF('day', pre_anchor_date, grad_date) / 365.25) * transition_weight) / NULLIF(SUM(transition_weight), 0), 2) AS avg_degree_duration_years,
         ANY_VALUE(benchmark_tier) AS primary_benchmark_tier
     FROM benchmarked
     GROUP BY unitid, school_name, degree, cip_level, cip4, major_title,
