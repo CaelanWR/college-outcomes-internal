@@ -6700,19 +6700,10 @@
           card(`Starting Salary Distribution (${salaryHorizon})`, 'salary-distribution', hasMajor ? 12 : 5, true, { horizonControl: true }),
         ];
         if (!hasMajor) cards.push(card(`Top Majors by Starting Salary (${salaryHorizon})`, 'top-major-salary', 12, true, { topControl: true, horizonControl: true }));
-        cards.push(card('Starting Salary Table', 'salary-table', 12));
         $('content').innerHTML = cards.join('');
         drawEarlyCareerEarnings('early-career-earnings');
         drawSalaryDistribution('salary-distribution');
         if (!hasMajor) drawMajorSalary('top-major-salary');
-        const alumniBase = Number(state.data.overview?.alumni || 0);
-        $('salary-table').innerHTML = table(['Major', 'Share of alumni', 'Salary coverage', 'Median salary', 'Mean salary'], state.data.top_majors || [], row => [
-          row.title,
-          alumniBase > 0 ? pct(100 * Number(row.alumni || 0) / alumniBase) : '—',
-          row.alumni ? pct(100 * Number(row.salary_weight || 0) / Number(row.alumni || 0)) : '—',
-          money(row.median_salary),
-          money(row.weighted_mean_salary)
-        ]);
       } else {
         const cards = [
           card('Median Salary at 1, 3, and 5 Years Post Grad', 'early-career-earnings', 5, true),
