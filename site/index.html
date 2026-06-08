@@ -1142,8 +1142,16 @@
     .graduate-transition-panel {
       display: grid;
       grid-template-columns: 1fr;
-      gap: 18px;
+      gap: 16px;
       align-items: start;
+    }
+
+    .graduate-transition-intro {
+      margin: 0;
+      color: var(--label);
+      font-size: 0.95rem;
+      line-height: 1.42;
+      font-weight: 780;
     }
 
     .graduate-transition-stats {
@@ -1199,40 +1207,78 @@
 
     .graduate-transition-list {
       display: grid;
-      gap: 12px;
+      gap: 10px;
     }
 
     .graduate-transition-row {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 12px;
-      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      padding: 11px 0 0;
+      border-top: 1px solid rgba(22,50,74,0.08);
+    }
+
+    .graduate-transition-row:first-child {
+      padding-top: 0;
+      border-top: 0;
+    }
+
+    .graduate-transition-flow {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      gap: 10px;
+      align-items: stretch;
       min-width: 0;
     }
 
-    .graduate-transition-label {
+    .graduate-transition-node {
+      border: 1px solid rgba(22,50,74,0.1);
+      border-radius: 12px;
+      background: rgba(247,250,252,0.72);
+      padding: 9px 10px;
       min-width: 0;
-      color: var(--ink);
-      font-weight: 850;
-      font-size: 0.86rem;
-      line-height: 1.25;
     }
 
-    .graduate-transition-label span {
+    .graduate-transition-node span {
       display: block;
       color: var(--muted);
-      font-weight: 800;
-      font-size: 0.76rem;
-      margin-top: 3px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      font-size: 0.62rem;
+      font-weight: 950;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
     }
 
-    .graduate-transition-metric {
+    .graduate-transition-node strong {
+      display: block;
+      color: var(--ink);
+      font-weight: 850;
+      font-size: 0.82rem;
+      line-height: 1.22;
+      overflow-wrap: anywhere;
+    }
+
+    .graduate-transition-arrow {
+      align-self: center;
+      color: var(--muted);
+      font-weight: 950;
+      font-size: 1rem;
+    }
+
+    .graduate-transition-detail {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 0.74rem;
+      font-weight: 850;
+      min-width: 0;
+    }
+
+    .graduate-transition-change {
       color: var(--label);
       font-weight: 900;
-      font-size: 0.8rem;
       white-space: nowrap;
       text-align: right;
     }
@@ -2933,7 +2979,9 @@
         grid-template-columns: 1fr;
       }
       .graduate-transition-row { grid-template-columns: minmax(0, 1fr); gap: 7px; }
-      .graduate-transition-metric { text-align: left; }
+      .graduate-transition-flow { grid-template-columns: 1fr; }
+      .graduate-transition-arrow { display: none; }
+      .graduate-transition-detail { align-items: flex-start; flex-direction: column; }
       .internship-panel,
       .internship-panel.with-conversions { grid-template-columns: 1fr; }
       select[multiple] { min-height: 92px; }
@@ -6914,7 +6962,7 @@
             ] : [])
             : [
               ...(hasGraduateValue ? [card('Graduate Value', 'career-graduate-value', 12, false, { export: false, compact: true })] : []),
-              ...(hasGraduateTransitions ? [card('Career Changes After Grad School', 'career-grad-transitions', 12, false, { export: false, compact: true })] : []),
+              ...(hasGraduateTransitions ? [card('Career Moves After Grad School', 'career-grad-transitions', 12, false, { export: false, compact: true })] : []),
               ...(hasCareerModels ? [card('Common Career Paths', 'career-models', 12, false, { topControl: true, export: false })] : []),
               ...(hasInternshipDetail ? [card('Internships That Became Jobs', 'career-internships', 12, false, { topControl: true, export: false })] : []),
             ]),
@@ -7110,11 +7158,21 @@
         const postLabel = row.post_label || 'Later path';
         return `
           <div class="graduate-transition-row" title="${escapeHtml(preLabel)} → ${escapeHtml(postLabel)}">
-            <div class="graduate-transition-label">
-              ${escapeHtml(legendLabel(preLabel, 32))} → ${escapeHtml(legendLabel(postLabel, 32))}
-              <span>${escapeHtml(pct(row.share_pct))} of transitions · ${escapeHtml(num(row.n_alumni))} alumni</span>
+            <div class="graduate-transition-flow">
+              <div class="graduate-transition-node">
+                <span>Before</span>
+                <strong>${escapeHtml(legendLabel(preLabel, 34))}</strong>
+              </div>
+              <div class="graduate-transition-arrow" aria-hidden="true">→</div>
+              <div class="graduate-transition-node">
+                <span>After</span>
+                <strong>${escapeHtml(legendLabel(postLabel, 34))}</strong>
+              </div>
             </div>
-            <div class="graduate-transition-metric" style="color:${color};">${escapeHtml(money(delta))}</div>
+            <div class="graduate-transition-detail">
+              <span>${escapeHtml(pct(row.share_pct))} of observed moves · ${escapeHtml(num(row.n_alumni))} alumni</span>
+              <span class="graduate-transition-change" style="color:${color};">${escapeHtml(money(delta))} avg pay change</span>
+            </div>
           </div>
         `;
       }).join('');
@@ -7132,29 +7190,34 @@
       const roles = transitions.roles || [];
       const industries = transitions.industries || [];
       const value = state.data.career?.graduate_value?.primary || {};
+      const transitionYear = value.years_after_degree
+        || roles.find(row => row.years_after_degree !== null && row.years_after_degree !== undefined)?.years_after_degree
+        || industries.find(row => row.years_after_degree !== null && row.years_after_degree !== undefined)?.years_after_degree;
+      const timingText = transitionYear ? `${transitionYear} years after the graduate degree` : 'after the graduate degree';
       const stats = Object.keys(value).length ? `
         <div class="graduate-transition-stats">
           <div class="graduate-transition-stat">
             <strong>${pct(value.role_change_pct)}</strong>
-            <span>Role changed</span>
+            <span>Changed role</span>
           </div>
           <div class="graduate-transition-stat">
             <strong>${pct(value.industry_change_pct)}</strong>
-            <span>Industry changed</span>
+            <span>Changed industry</span>
           </div>
           <div class="graduate-transition-stat">
             <strong>${pct(value.employer_change_pct)}</strong>
-            <span>Employer changed</span>
+            <span>Changed employer</span>
           </div>
         </div>
       ` : '';
       const groups = [
-        graduateTransitionRowsHtml(roles, 'Role moves'),
-        graduateTransitionRowsHtml(industries, 'Industry moves'),
+        graduateTransitionRowsHtml(roles, 'Common role paths'),
+        graduateTransitionRowsHtml(industries, 'Common industry paths'),
       ].filter(Boolean).join('');
       if (!stats && !groups) return noData(id);
       $(id).innerHTML = `
         <div class="graduate-transition-panel">
+          <p class="graduate-transition-intro">Among alumni with jobs observed before and ${escapeHtml(timingText)}, this shows how often they changed paths and the most common before-to-after moves.</p>
           ${stats}
           ${groups ? `<div class="graduate-transition-groups">${groups}</div>` : ''}
         </div>
