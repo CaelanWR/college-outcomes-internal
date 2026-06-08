@@ -1029,12 +1029,82 @@
       min-height: 0;
     }
 
-    .graduate-value-chart {
-      min-height: 420px;
+    .graduate-value-chart-shell {
       border: 1px solid var(--line);
       border-radius: 18px;
-      background: rgba(255,255,255,0.9);
+      background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(247,250,252,0.88));
       overflow: hidden;
+    }
+
+    .graduate-value-chart-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 15px 18px 0;
+      min-width: 0;
+    }
+
+    .graduate-value-legend,
+    .graduate-value-timeline {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .graduate-value-legend span,
+    .graduate-value-timeline span {
+      color: var(--label);
+      font-size: 0.76rem;
+      font-weight: 880;
+      white-space: nowrap;
+    }
+
+    .graduate-value-key {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .graduate-value-key::before {
+      content: '';
+      display: inline-block;
+      width: 34px;
+      height: 0;
+      border-top: 4px solid var(--green);
+      border-radius: 999px;
+    }
+
+    .graduate-value-key.is-expected::before {
+      border-top-color: rgba(45,66,106,0.44);
+      border-top-style: dashed;
+    }
+
+    .graduate-value-timeline {
+      justify-content: flex-end;
+    }
+
+    .graduate-value-timeline span {
+      color: var(--muted);
+    }
+
+    .graduate-value-timeline .is-program {
+      color: var(--label);
+      background: rgba(45,66,106,0.07);
+      border: 1px solid rgba(45,66,106,0.09);
+      border-radius: 999px;
+      padding: 6px 10px;
+    }
+
+    .graduate-value-timeline .is-complete {
+      color: var(--ink);
+    }
+
+    .graduate-value-chart {
+      min-height: 360px;
+      background: transparent;
     }
 
     .graduate-value-summary {
@@ -2978,6 +3048,12 @@
       .graduate-transition-groups {
         grid-template-columns: 1fr;
       }
+      .graduate-value-chart-top {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      .graduate-value-timeline { justify-content: flex-start; }
+      .graduate-value-chart { min-height: 320px; }
       .graduate-transition-row { grid-template-columns: minmax(0, 1fr); gap: 7px; }
       .graduate-transition-flow { grid-template-columns: 1fr; }
       .graduate-transition-arrow { display: none; }
@@ -6995,6 +7071,7 @@
       const graduateValue = state.data.career?.graduate_value || {};
       const row = graduateValue.primary || {};
       if (!graduateValue.available || !Object.keys(row).length) return noDataMessage(id, graduateValue.reason);
+      const degreeDuration = Math.max(0.5, Math.min(7, Number(row.avg_degree_duration_years || 2)));
       $(id).innerHTML = `
         <div class="graduate-value-panel">
           <div class="graduate-value-summary">
@@ -7015,7 +7092,20 @@
               <span>Seniority lift</span>
             </div>
           </div>
-          <div id="${id}-salary-path" class="graduate-value-chart"></div>
+          <div class="graduate-value-chart-shell">
+            <div class="graduate-value-chart-top">
+              <div class="graduate-value-legend" aria-hidden="true">
+                <span class="graduate-value-key is-expected">Expected bachelor-only path</span>
+                <span class="graduate-value-key is-observed">Observed after grad school</span>
+              </div>
+              <div class="graduate-value-timeline" aria-hidden="true">
+                <span>Before program</span>
+                <span class="is-program">Grad program · avg ${degreeDuration.toFixed(1)} yrs</span>
+                <span class="is-complete">Degree complete</span>
+              </div>
+            </div>
+            <div id="${id}-salary-path" class="graduate-value-chart"></div>
+          </div>
           <p class="graduate-value-note">${escapeHtml(graduateValueSentence(row))}</p>
         </div>
       `;
@@ -7053,15 +7143,20 @@
       const expectedTiming = ['Before grad program', 'Degree completed', ...points.map(point => `${point.year} years after degree`)];
       const observedTiming = ['Degree completed', ...points.map(point => `${point.year} years after degree`)];
       const liftColor = Number(selectedPoint.lift || 0) >= 0 ? 'rgba(72,235,143,0.34)' : 'rgba(231,131,196,0.38)';
+      const yValues = [beforeSalary, ...points.map(point => point.expected), ...points.map(point => point.observed)];
+      const yMin = Math.min(...yValues);
+      const yMax = Math.max(...yValues);
+      const yPad = Math.max(8000, (yMax - yMin) * 0.18);
       Plotly.newPlot(id, [
         {
           type: 'scatter',
           mode: 'lines+markers',
           name: 'Expected bachelor-only path',
+          showlegend: false,
           x: xValues,
           y: [beforeSalary, beforeSalary, ...points.map(point => point.expected)],
-          line: { color: 'rgba(45,66,106,0.46)', width: 4, dash: 'dash' },
-          marker: { color: 'rgba(45,66,106,0.58)', size: 7 },
+          line: { color: 'rgba(45,66,106,0.42)', width: 4, dash: 'dash' },
+          marker: { color: 'rgba(45,66,106,0.58)', size: 6 },
           customdata: expectedTiming,
           hovertemplate: '%{customdata}<br>Expected pay %{y:$,.0f}<extra></extra>',
         },
@@ -7069,6 +7164,7 @@
           type: 'scatter',
           mode: 'lines+markers',
           name: 'Observed after grad school',
+          showlegend: false,
           x: [0, ...points.map(point => point.year)],
           y: [beforeSalary, ...points.map(point => point.observed)],
           line: { color: THEME.green, width: 5 },
@@ -7088,22 +7184,27 @@
         },
       ], {
         ...layoutBase,
-        height: compactWindow() ? 390 : 430,
-        margin: { l: compactWindow() ? 62 : 82, r: 36, t: 24, b: 70 },
+        height: compactWindow() ? 340 : 370,
+        margin: { l: compactWindow() ? 58 : 76, r: 24, t: 14, b: 58 },
+        showlegend: false,
         xaxis: {
-          title: 'Career timing around graduate degree',
+          title: 'Career timing around degree completion',
           tickmode: 'array',
           tickvals: tickVals,
           ticktext: tickText,
           range: [preX - 0.35, Math.max(...tickVals) + 0.35],
           zeroline: false,
+          gridcolor: 'rgba(45,66,106,0.07)',
+          linecolor: 'rgba(45,66,106,0.28)',
           automargin: true,
         },
         yaxis: {
           title: 'Average salary',
           tickprefix: '$',
           tickformat: ',',
-          rangemode: 'tozero',
+          range: [Math.max(0, yMin - yPad), yMax + yPad],
+          gridcolor: 'rgba(45,66,106,0.07)',
+          linecolor: 'rgba(45,66,106,0.28)',
           automargin: true,
         },
         shapes: [{
@@ -7114,7 +7215,7 @@
           y1: 1,
           xref: 'x',
           yref: 'paper',
-          fillcolor: 'rgba(45,66,106,0.065)',
+          fillcolor: 'rgba(45,66,106,0.045)',
           line: { width: 0 },
           layer: 'below',
         }, {
@@ -7128,27 +7229,6 @@
           line: { color: 'rgba(45,66,106,0.22)', width: 2, dash: 'dot' },
           layer: 'below',
         }],
-        annotations: [
-          {
-            x: preX / 2,
-            y: 1.02,
-            xref: 'x',
-            yref: 'paper',
-            text: `Graduate program · avg ${degreeDuration.toFixed(1)} yrs`,
-            showarrow: false,
-            font: { color: THEME.muted, size: 12 },
-          },
-          {
-            x: 0,
-            y: 1.02,
-            xref: 'x',
-            yref: 'paper',
-            text: 'Degree complete',
-            showarrow: false,
-            font: { color: THEME.muted, size: 12 },
-          },
-        ],
-        legend: { orientation: 'h', y: 1.12, x: 0 },
       }, plotConfig);
     }
 
