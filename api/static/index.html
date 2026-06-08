@@ -3838,19 +3838,116 @@
       return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
     }
 
+    function schoolAliasTexts(row) {
+      const rawName = String(row?.name || '');
+      const name = rawName
+        .replace(/\bMain Campus\b/gi, '')
+        .replace(/\bCampus Immersion\b/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const aliases = new Set([rawName, name, row?.unitid || '']);
+      const normalized = searchNeedle(name);
+      const add = value => {
+        const text = String(value || '').trim();
+        if (text) aliases.add(text);
+      };
+      const ucMatch = normalized.match(/^university of california\s+(.+)$/);
+      if (ucMatch) {
+        const campus = ucMatch[1].replace(/\bmain campus\b/g, '').trim();
+        add(`UC ${campus}`);
+        add(`University of California ${campus}`);
+        if (campus === 'berkeley') {
+          add('Berkeley');
+          add('Cal');
+          add('Cal Berkeley');
+          add('UC Berkeley');
+        }
+        if (campus === 'los angeles') {
+          add('UCLA');
+          add('UC LA');
+        }
+        if (campus === 'san diego') add('UCSD');
+        if (campus === 'santa barbara') add('UCSB');
+        if (campus === 'santa cruz') add('UCSC');
+        if (campus === 'irvine') add('UCI');
+        if (campus === 'davis') add('UC Davis');
+      }
+      const aliasRules = [
+        [/massachusetts institute of technology/, ['MIT']],
+        [/georgia institute of technology/, ['Georgia Tech', 'GT']],
+        [/carnegie mellon/, ['CMU']],
+        [/new york university/, ['NYU']],
+        [/university of southern california/, ['USC']],
+        [/university of pennsylvania/, ['Penn', 'UPenn']],
+        [/pennsylvania state university/, ['Penn State', 'PSU']],
+        [/university of north carolina at chapel hill/, ['UNC', 'UNC Chapel Hill', 'Chapel Hill']],
+        [/university of virginia/, ['UVA', 'Virginia']],
+        [/university of washington.*seattle/, ['UW', 'UW Seattle', 'Washington Seattle']],
+        [/university of wisconsin.*madison/, ['UW Madison', 'Wisconsin', 'Wisconsin Madison']],
+        [/university of illinois.*urbana.*champaign/, ['UIUC', 'Illinois', 'Illinois Urbana Champaign']],
+        [/the university of texas at austin|university of texas at austin/, ['UT Austin', 'Texas Austin']],
+        [/texas a m university/, ['Texas A&M', 'TAMU']],
+        [/indiana university.*bloomington/, ['IU', 'IU Bloomington', 'Indiana Bloomington']],
+        [/purdue university/, ['Purdue']],
+        [/rutgers university.*new brunswick/, ['Rutgers', 'Rutgers New Brunswick']],
+        [/florida international university/, ['FIU']],
+        [/california polytechnic state university.*san luis obispo/, ['Cal Poly', 'Cal Poly SLO']],
+        [/san jose state university/, ['SJSU', 'San Jose State']],
+      ];
+      aliasRules.forEach(([pattern, values]) => {
+        if (pattern.test(normalized)) values.forEach(add);
+      });
+      return [...aliases].filter(Boolean);
+    }
+
+    function schoolSearchAliases(row) {
+      if (!row) return [];
+      if (!row._searchAliases) {
+        Object.defineProperty(row, '_searchAliases', {
+          value: schoolAliasTexts(row).map(searchNeedle).filter(Boolean),
+          enumerable: false,
+          configurable: true,
+        });
+      }
+      return row._searchAliases;
+    }
+
     function schoolSearchHaystack(row) {
-      return searchNeedle(`${row?.name || ''} ${row?.unitid || ''}`);
+      return schoolSearchAliases(row).join(' ');
+    }
+
+    function schoolSearchScore(row, query) {
+      const needle = searchNeedle(query);
+      if (!needle) return 0;
+      const aliases = schoolSearchAliases(row);
+      const parts = needle.split(/\s+/).filter(Boolean);
+      const alumniBoost = Math.min(35, Math.log10(Math.max(1, Number(row?.alumni || 0))) * 8);
+      let best = -1;
+      aliases.forEach(alias => {
+        if (!alias) return;
+        let score = -1;
+        if (alias === needle) score = 1000;
+        else if (alias.startsWith(needle)) score = 850;
+        else if (alias.split(' ').some(token => token === needle)) score = 740;
+        else if (alias.includes(needle)) score = 620;
+        else if (parts.every(part => alias.includes(part))) score = 500;
+        if (score > best) best = score;
+      });
+      return best < 0 ? -1 : best + alumniBoost;
     }
 
     function schoolMatchesSearch(row, query) {
-      const needle = searchNeedle(query);
-      if (!needle) return true;
-      const haystack = schoolSearchHaystack(row);
-      return needle.split(/\s+/).every(part => haystack.includes(part));
+      return !searchNeedle(query) || schoolSearchScore(row, query) >= 0;
     }
 
     function filteredSchools(rows, query) {
-      return (rows || []).filter(row => schoolMatchesSearch(row, query));
+      const needle = searchNeedle(query);
+      if (!needle) return rows || [];
+      return (rows || [])
+        .map((row, index) => ({ row, index, score: schoolSearchScore(row, query) }))
+        .filter(item => item.score >= 0)
+        .sort((a, b) => b.score - a.score || String(a.row.name || '').localeCompare(String(b.row.name || '')) || a.index - b.index)
+        .map(item => item.row);
     }
 
     function renderSchoolSearchOptions(rows) {
@@ -3881,7 +3978,7 @@
       const query = $('school-search')?.value || '';
       state.schoolSearchQuery = query;
       const normalizedQuery = searchNeedle(query);
-      const exact = rows.find(row => searchNeedle(row.name) === normalizedQuery || String(row.unitid) === query.trim());
+      const exact = rows.find(row => schoolSearchAliases(row).includes(normalizedQuery) || String(row.unitid) === query.trim());
       const fallback = commitFirst ? filteredSchools(rows, query)[0] : null;
       const match = exact || fallback;
       if (!match) {
@@ -3917,6 +4014,7 @@
       selectedCountLabel = '',
       searchKey = '',
       searchPlaceholder = '',
+      searchRows = null,
     }) {
       const picker = $(pickerId);
       if (!picker) return;
@@ -3926,10 +4024,10 @@
       const query = searchKey ? String(state[searchKey] || '') : '';
       const queryNeedle = searchNeedle(query);
       const visibleRows = query
-        ? availableRows.filter(row => {
+        ? (searchRows ? searchRows(availableRows, query) : availableRows.filter(row => {
           const haystack = searchNeedle(getLabel(row));
           return queryNeedle.split(/\s+/).every(part => haystack.includes(part));
-        })
+        }))
         : availableRows;
       const count = selectedValues($(selectId)).length;
       const maxReached = Number.isFinite(maxSelections) && count >= maxSelections;
@@ -3996,6 +4094,7 @@
         selectedCountLabel: `${num(totalSelected)} of ${MAX_COMPARE_SCHOOLS} schools selected`,
         searchKey: 'compareSchoolSearchQuery',
         searchPlaceholder: 'Search comparison schools...',
+        searchRows: filteredSchools,
       });
     }
 
