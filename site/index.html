@@ -3745,6 +3745,16 @@
       return `classes of ${cleanYears[0]}-${cleanYears[cleanYears.length - 1]}`;
     }
 
+    function compactYearsLabel(years, fallback = '') {
+      const cleanYears = [...new Set((years || []).map(Number).filter(Number.isFinite))].sort((a, b) => a - b);
+      if (!cleanYears.length) return fallback;
+      if (cleanYears.length === 1) return String(cleanYears[0]);
+      if (cleanYears.length === 2 && cleanYears[1] === cleanYears[0] + 1) {
+        return `${cleanYears[0]}/${String(cleanYears[1]).slice(-2)}`;
+      }
+      return `${cleanYears[0]}-${cleanYears[cleanYears.length - 1]}`;
+    }
+
     function currentStudentYears() {
       return [...new Set((state.data.current_student_trend_by_major || [])
         .map(row => Number(row.grad_year))
@@ -3779,6 +3789,15 @@
         ? `pay ${yearSpanLabel(premium.previousYears)} to ${yearSpanLabel(premium.recentYears)}`
         : 'pay change';
       return `${payLabel}; share ${projectedShareChangePeriodLabel()}`;
+    }
+
+    function majorMomentumAxisLabels() {
+      const premium = salaryPremiumChangeStats();
+      const share = projectedShareChangeStats();
+      return {
+        x: `Projected major share change (${compactYearsLabel(share.laterYears, '2028/29')})`,
+        y: `New grad pay change (${compactYearsLabel(premium.recentYears, '2024/25')})`,
+      };
     }
 
     function currentFilters(extra = {}) {
@@ -9302,8 +9321,16 @@
         baselineByYear.get(year).push(row);
       });
       const salaryYears = [...baselineByYear.keys()].sort((a, b) => a - b);
-      const recentYears = salaryYears.slice(-5);
-      const previousYears = salaryYears.slice(Math.max(0, salaryYears.length - 10), Math.max(0, salaryYears.length - 5));
+      const availableYearSet = new Set(salaryYears);
+      let recentYears = [2024, 2025].filter(year => availableYearSet.has(year));
+      if (!recentYears.length) recentYears = salaryYears.slice(-2);
+      const recentStart = Math.min(...recentYears);
+      let previousYears = salaryYears
+        .filter(year => year < recentStart)
+        .slice(-Math.max(1, recentYears.length));
+      if (!previousYears.length && salaryYears.length > recentYears.length) {
+        previousYears = salaryYears.slice(0, salaryYears.length - recentYears.length).slice(-recentYears.length);
+      }
       if (!recentYears.length || !previousYears.length) {
         return { byCode: new Map(), recentYears, previousYears };
       }
@@ -9385,6 +9412,7 @@
       const xAbs = Math.max(1, ...xValues.map(Math.abs));
       const yAbs = Math.max(1000, ...yValues.map(value => Math.abs(value)));
       const periodLabel = majorMomentumPayPeriodLabel();
+      const axisLabels = majorMomentumAxisLabels();
       const labelCount = Math.min(4, rows.length);
       const labeledRows = new Set(
         [...rows]
@@ -9397,13 +9425,15 @@
           .map(row => row.code)
       );
       const trendLine = (() => {
-        const n = xValues.length;
-        if (n < 3) return null;
-        const xMean = xValues.reduce((total, value) => total + value, 0) / n;
-        const yMean = yValues.reduce((total, value) => total + value, 0) / n;
-        const denominator = xValues.reduce((total, value) => total + ((value - xMean) ** 2), 0);
+        if (xValues.length < 3) return null;
+        const weights = rows.map(row => Math.max(0, Number(row.later_projected_students || 0)));
+        const weightTotal = weights.reduce((total, value) => total + value, 0);
+        if (!Number.isFinite(weightTotal) || weightTotal <= 0) return null;
+        const xMean = xValues.reduce((total, value, idx) => total + value * weights[idx], 0) / weightTotal;
+        const yMean = yValues.reduce((total, value, idx) => total + value * weights[idx], 0) / weightTotal;
+        const denominator = xValues.reduce((total, value, idx) => total + weights[idx] * ((value - xMean) ** 2), 0);
         if (!Number.isFinite(denominator) || denominator <= 0.0001) return null;
-        const slope = xValues.reduce((total, value, idx) => total + ((value - xMean) * (yValues[idx] - yMean)), 0) / denominator;
+        const slope = xValues.reduce((total, value, idx) => total + weights[idx] * ((value - xMean) * (yValues[idx] - yMean)), 0) / denominator;
         const intercept = yMean - slope * xMean;
         const x0 = -xAbs * 1.18;
         const x1 = xAbs * 1.18;
@@ -9471,7 +9501,7 @@
         height: 500,
         margin: { ...layoutBase.margin, l: 92, r: 92, t: 24, b: 78 },
         xaxis: {
-          title: 'Later projected share minus earlier projected share',
+          title: axisLabels.x,
           ticksuffix: ' pts',
           zeroline: true,
           zerolinecolor: '#9caabd',
@@ -9480,7 +9510,7 @@
           automargin: true,
         },
         yaxis: {
-          title: `Change in pay premium vs school average (${activeHorizonLabel(true)})`,
+          title: axisLabels.y,
           tickprefix: '$',
           tickformat: '~s',
           zeroline: true,
