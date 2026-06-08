@@ -1371,6 +1371,18 @@
     .control-years .segmented, .control-view .segmented { flex-wrap: nowrap; }
     .control-years .btn, .control-view .btn { white-space: nowrap; }
 
+    .school-picker-stack {
+      display: grid;
+      gap: 6px;
+      width: 100%;
+    }
+
+    .school-search-input {
+      background:
+        linear-gradient(90deg, rgba(72,235,143,0.10), transparent 34%),
+        rgba(255,255,255,0.92);
+    }
+
     .advanced-toggle { margin-left: auto; }
     .advanced-panel {
       display: none;
@@ -2250,6 +2262,25 @@
       text-transform: uppercase;
     }
 
+    .compare-picker-title {
+      flex: 0 0 auto;
+    }
+
+    .compare-picker-search {
+      flex: 1 1 220px;
+      min-height: 34px;
+      max-width: 360px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background:
+        linear-gradient(90deg, rgba(73,200,255,0.12), transparent 42%),
+        rgba(255,255,255,0.86);
+      font-size: 0.82rem;
+      font-weight: 800;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+
     .compare-picker-clear {
       border: 0;
       background: transparent;
@@ -2696,7 +2727,11 @@
     <div class="controls-main" id="filters">
       <div class="control control-grow">
         <label>School</label>
-        <select id="school-select"></select>
+        <div class="school-picker-stack">
+          <input id="school-search" class="school-search-input" list="school-search-options" placeholder="Search schools..." autocomplete="off" />
+          <datalist id="school-search-options"></datalist>
+          <select id="school-select"></select>
+        </div>
       </div>
       <div class="control control-degree">
         <label>Degree</label>
@@ -2979,6 +3014,8 @@
       destinationRightPath: [],
       topNByChart: {},
       appliedAdvanced: null,
+      schoolSearchQuery: '',
+      compareSchoolSearchQuery: '',
       loading: false,
       pendingRefresh: null,
       dashboardCache: new Map(),
@@ -3322,6 +3359,7 @@
       clearTimeout(compareWarmupTimer);
       const previousAdvanced = state.appliedAdvanced ? { ...state.appliedAdvanced } : null;
       state.lastCompareWarmupKey = '';
+      state.compareSchoolSearchQuery = '';
       Array.from($('compare-school-select').options).forEach(opt => { opt.selected = false; });
       Array.from($('compare-major-select').options).forEach(opt => { opt.selected = false; });
       $('cip-level-select').value = 'cip4';
@@ -3640,6 +3678,68 @@
       rows.forEach(row => select.appendChild(option(getLabel(row), getValue(row), selectedValuesSet.has(String(getValue(row))))));
     }
 
+    function searchNeedle(value) {
+      return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    }
+
+    function schoolSearchHaystack(row) {
+      return searchNeedle(`${row?.name || ''} ${row?.unitid || ''}`);
+    }
+
+    function schoolMatchesSearch(row, query) {
+      const needle = searchNeedle(query);
+      if (!needle) return true;
+      const haystack = schoolSearchHaystack(row);
+      return needle.split(/\s+/).every(part => haystack.includes(part));
+    }
+
+    function filteredSchools(rows, query) {
+      return (rows || []).filter(row => schoolMatchesSearch(row, query));
+    }
+
+    function renderSchoolSearchOptions(rows) {
+      const list = $('school-search-options');
+      if (!list) return;
+      const matches = filteredSchools(rows, state.schoolSearchQuery).slice(0, 30);
+      list.innerHTML = matches
+        .map(row => `<option value="${escapeHtml(row.name || '')}" label="${escapeHtml(num(row.alumni || 0))} alumni"></option>`)
+        .join('');
+    }
+
+    function renderSchoolSelectOptions(rows, selectedUnitid = '') {
+      const allRows = rows || [];
+      const selected = allRows.find(row => String(row.unitid) === String(selectedUnitid)) || allRows[0] || null;
+      const selectedValue = selected ? String(selected.unitid) : '';
+      const query = state.schoolSearchQuery || '';
+      let visibleRows = filteredSchools(allRows, query);
+      if (selected && !visibleRows.some(row => String(row.unitid) === selectedValue)) {
+        visibleRows = [selected, ...visibleRows];
+      }
+      populateSelect($('school-select'), visibleRows, row => row.name, row => row.unitid, new Set([selectedValue]));
+      if (selectedValue) $('school-select').value = selectedValue;
+      renderSchoolSearchOptions(allRows);
+    }
+
+    function selectSchoolFromSearch(commitFirst = false) {
+      const rows = state.options?.schools || [];
+      const query = $('school-search')?.value || '';
+      state.schoolSearchQuery = query;
+      const normalizedQuery = searchNeedle(query);
+      const exact = rows.find(row => searchNeedle(row.name) === normalizedQuery || String(row.unitid) === query.trim());
+      const fallback = commitFirst ? filteredSchools(rows, query)[0] : null;
+      const match = exact || fallback;
+      if (!match) {
+        renderSchoolSelectOptions(rows, $('school-select')?.value || '');
+        return false;
+      }
+      state.schoolSearchQuery = '';
+      $('school-search').value = '';
+      renderSchoolSelectOptions(rows, String(match.unitid));
+      clearDashboardCache();
+      refresh({ reloadOptions: true, resetDrill: true });
+      return true;
+    }
+
     function comparePickerLabel(label, maxLength = 44) {
       return legendLabel(String(label || ''), maxLength);
     }
@@ -3659,12 +3759,22 @@
       baseLabel = '',
       maxSelections = Infinity,
       selectedCountLabel = '',
+      searchKey = '',
+      searchPlaceholder = '',
     }) {
       const picker = $(pickerId);
       if (!picker) return;
       const safeRows = rows || [];
       const selectedRows = safeRows.filter(row => selectedSet.has(String(getValue(row))));
       const availableRows = safeRows.filter(row => !selectedSet.has(String(getValue(row))));
+      const query = searchKey ? String(state[searchKey] || '') : '';
+      const queryNeedle = searchNeedle(query);
+      const visibleRows = query
+        ? availableRows.filter(row => {
+          const haystack = searchNeedle(getLabel(row));
+          return queryNeedle.split(/\s+/).every(part => haystack.includes(part));
+        })
+        : availableRows;
       const count = selectedValues($(selectId)).length;
       const maxReached = Number.isFinite(maxSelections) && count >= maxSelections;
       const baseMarkup = baseLabel
@@ -3684,12 +3794,13 @@
         : `<div class="compare-empty">${escapeHtml(emptyText)}</div>`;
       picker.innerHTML = `
         <div class="compare-picker-head">
-          <span>${escapeHtml(selectedCountLabel || `${num(count)} selected`)}</span>
+          <span class="compare-picker-title">${escapeHtml(selectedCountLabel || `${num(count)} selected`)}</span>
+          ${searchKey ? `<input class="compare-picker-search" data-compare-search="${escapeHtml(searchKey)}" placeholder="${escapeHtml(searchPlaceholder || 'Filter list...')}" value="${escapeHtml(query)}" autocomplete="off" />` : ''}
           <button type="button" class="compare-picker-clear" ${clearAttr}>Clear</button>
         </div>
         <div class="compare-picker-body">
           <div class="compare-options">
-            ${availableRows.length ? availableRows.map(row => {
+            ${visibleRows.length ? visibleRows.map(row => {
               const value = String(getValue(row));
               const label = getLabel(row);
               return `
@@ -3697,7 +3808,7 @@
                   <span>${escapeHtml(comparePickerLabel(label, 58))}</span>
                 </button>
               `;
-            }).join('') : '<div class="compare-empty">Everything available is selected.</div>'}
+            }).join('') : `<div class="compare-empty">${query ? 'No matches. Try another search.' : 'Everything available is selected.'}</div>`}
           </div>
           <div class="compare-selected">
             <div class="compare-selected-title">${escapeHtml(selectedTitle)}</div>
@@ -3727,6 +3838,8 @@
         baseLabel: currentSchool?.name || '',
         maxSelections: Math.max(0, MAX_COMPARE_SCHOOLS - (currentUnitid ? 1 : 0)),
         selectedCountLabel: `${num(totalSelected)} of ${MAX_COMPARE_SCHOOLS} schools selected`,
+        searchKey: 'compareSchoolSearchQuery',
+        searchPlaceholder: 'Search comparison schools...',
       });
     }
 
@@ -3748,7 +3861,10 @@
 
     function populateStaticControls(options) {
       const defaultSchool = options.schools.find(s => /Columbia University in the City of New York/i.test(s.name)) || options.schools[0];
-      const existingPrimary = $('school-select').value || defaultSchool?.unitid || '';
+      const currentPrimary = $('school-select').value || '';
+      const existingPrimary = options.schools.some(row => String(row.unitid) === String(currentPrimary))
+        ? currentPrimary
+        : defaultSchool?.unitid || '';
       let savedCompare = [];
       try {
         savedCompare = JSON.parse(storage.getItem('outcomes.compareSchools') || '[]');
@@ -3757,7 +3873,7 @@
       }
       const currentCompare = selectedValues($('compare-school-select')).map(String);
       const existingCompare = new Set(trimCompareSchools(currentCompare.length ? currentCompare : savedCompare, String(existingPrimary)));
-      populateSelect($('school-select'), options.schools, s => s.name, s => s.unitid, new Set([String(existingPrimary)]));
+      renderSchoolSelectOptions(options.schools, existingPrimary);
       populateSelect($('compare-school-select'), options.schools, s => s.name, s => s.unitid, existingCompare);
       renderCompareSchoolPicker(options.schools || [], existingCompare);
 
@@ -9669,9 +9785,25 @@
         refresh({ resetDrill: true });
       });
 
+      $('school-search').addEventListener('input', () => {
+        state.schoolSearchQuery = $('school-search').value || '';
+        renderSchoolSelectOptions(state.options?.schools || [], $('school-select')?.value || '');
+      });
+      $('school-search').addEventListener('change', () => selectSchoolFromSearch(false));
+      $('school-search').addEventListener('keydown', event => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        selectSchoolFromSearch(true);
+      });
+
       ['school-select', 'degree-select'].forEach(id => {
         $(id).addEventListener('change', () => {
-          if (id === 'school-select') clearDashboardCache();
+          if (id === 'school-select') {
+            state.schoolSearchQuery = '';
+            if ($('school-search')) $('school-search').value = '';
+            renderSchoolSelectOptions(state.options?.schools || [], $('school-select')?.value || '');
+            clearDashboardCache();
+          }
           refresh({ reloadOptions: true, resetDrill: true });
         });
       });
@@ -9700,6 +9832,17 @@
           setHiddenSelectValue('compare-school-select', value, Boolean(add));
         }
         refreshCompareSchoolPicker();
+      });
+      $('compare-school-picker').addEventListener('input', event => {
+        const search = event.target.closest('[data-compare-search]');
+        if (!search) return;
+        state[search.dataset.compareSearch] = search.value || '';
+        renderCompareSchoolPicker(state.options?.schools || [], new Set(selectedValues($('compare-school-select'))));
+        const next = document.querySelector(`[data-compare-search="${search.dataset.compareSearch}"]`);
+        if (next) {
+          next.focus();
+          next.setSelectionRange(next.value.length, next.value.length);
+        }
       });
       $('compare-major-picker').addEventListener('click', event => {
         const add = event.target.closest('[data-add-compare-major]');
