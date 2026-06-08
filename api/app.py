@@ -29,6 +29,8 @@ MIN_CELL_WEIGHT = float(os.environ.get("MIN_CELL_WEIGHT", "0"))
 SALARY_MIN_WEIGHT = float(os.environ.get("SALARY_MIN_WEIGHT", "0"))
 EMPLOYER_ROW_MIN_WEIGHT = float(os.environ.get("EMPLOYER_ROW_MIN_WEIGHT", str(MIN_CELL_WEIGHT)))
 GEOGRAPHY_ROW_MIN_WEIGHT = float(os.environ.get("GEOGRAPHY_ROW_MIN_WEIGHT", str(MIN_CELL_WEIGHT)))
+GRAD_VALUE_MIN_WEIGHT = float(os.environ.get("GRAD_VALUE_MIN_WEIGHT", str(max(MIN_CELL_WEIGHT, 5))))
+GRAD_TRANSITION_ROW_MIN_WEIGHT = float(os.environ.get("GRAD_TRANSITION_ROW_MIN_WEIGHT", str(max(MIN_CELL_WEIGHT, 5))))
 DESTINATION_HIERARCHY_MIN_WEIGHT = float(os.environ.get("DESTINATION_HIERARCHY_MIN_WEIGHT", "3"))
 SALARY_DISTRIBUTION_BUCKETS = int(os.environ.get("SALARY_DISTRIBUTION_BUCKETS", "32"))
 INTERNSHIP_RATE_START_YEAR = int(os.environ.get("OUTCOMES_INTERNSHIP_RATE_START_YEAR", "2020"))
@@ -45,6 +47,9 @@ CAREER_WORK_DATASETS = [
     "annual_employers",
     "employer_tenure",
     "mobility",
+    "grad_value_summary",
+    "grad_role_transitions",
+    "grad_industry_transitions",
     "career_archetypes",
     "internship_summary",
     "internship_employers",
@@ -87,6 +92,15 @@ VISIBLE_DEGREE_ORDER = [
     "Research Doctorate",
     "Professional Doctorate",
 ]
+GRADUATE_VALUE_DEGREES = {
+    "Plus-One Masters",
+    "Masters",
+    "MBA",
+    "LAW",
+    "MD",
+    *RESEARCH_DOCTORATE_VALUES,
+    *PROFESSIONAL_DOCTORATE_VALUES,
+}
 CIP_COLUMNS = {"cip2", "cip4", "cip6"}
 HORIZON_ORDER = {"1yr": 1, "5yr": 5, "10yr": 10, "early_2025": 0}
 SAME_SCHOOL_EMPLOYER_FILTER = """
@@ -2131,7 +2145,9 @@ def _current_student_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest
         """
         SELECT
           grad_year,
-          ROUND(SUM(profile_weight)) AS current_students
+          ROUND(SUM(profile_weight)) AS current_students,
+          COUNT(DISTINCT person_key) AS observed_current_profiles,
+          ROUND(LEAST(100.0, 100.0 * COUNT(DISTINCT person_key) / NULLIF(SUM(profile_weight), 0)), 1) AS current_coverage_pct
         FROM current_slice
         WHERE grad_year IS NOT NULL
         GROUP BY grad_year
@@ -2160,7 +2176,8 @@ def _current_student_trend_by_major(con: duckdb.DuckDBPyConnection, filters: Que
             {cip_col} AS code,
             COALESCE(MAX(major_title), {cip_col}) AS title,
             grad_year,
-            SUM(profile_weight) AS current_students
+            SUM(profile_weight) AS current_students,
+            COUNT(DISTINCT person_key) AS observed_current_profiles
           FROM current_slice
           WHERE grad_year IS NOT NULL
             AND {cip_col} IS NOT NULL
@@ -2169,7 +2186,8 @@ def _current_student_trend_by_major(con: duckdb.DuckDBPyConnection, filters: Que
         totals AS (
           SELECT
             grad_year,
-            SUM(profile_weight) AS total_current_students
+            SUM(profile_weight) AS total_current_students,
+            COUNT(DISTINCT person_key) AS total_observed_current_profiles
           FROM current_major_total_slice
           WHERE grad_year IS NOT NULL
             AND {cip_col} IS NOT NULL
@@ -2180,7 +2198,11 @@ def _current_student_trend_by_major(con: duckdb.DuckDBPyConnection, filters: Que
           b.title,
           b.grad_year,
           ROUND(b.current_students, 2) AS current_students,
+          b.observed_current_profiles,
           ROUND(t.total_current_students, 2) AS total_current_students,
+          t.total_observed_current_profiles,
+          ROUND(LEAST(100.0, 100.0 * b.observed_current_profiles / NULLIF(b.current_students, 0)), 1) AS current_coverage_pct,
+          ROUND(LEAST(100.0, 100.0 * t.total_observed_current_profiles / NULLIF(t.total_current_students, 0)), 1) AS total_current_coverage_pct,
           ROUND(100.0 * b.current_students / NULLIF(t.total_current_students, 0), 2) AS share_pct
         FROM by_year b
         JOIN totals t USING (grad_year)
@@ -4077,13 +4099,21 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
             con,
             f"""
             WITH by_major AS (
-              SELECT grad_year, {cip_col} AS code, MAX(major_title) AS title, SUM(profile_weight) AS n
+              SELECT
+                grad_year,
+                {cip_col} AS code,
+                MAX(major_title) AS title,
+                SUM(profile_weight) AS n,
+                COUNT(DISTINCT person_key) AS observed_current_profiles
               FROM current_slice
               WHERE {cip_col} IN ({placeholders}) AND grad_year IS NOT NULL
               GROUP BY grad_year, {cip_col}
             ),
             totals AS (
-              SELECT grad_year, SUM(profile_weight) AS total_n
+              SELECT
+                grad_year,
+                SUM(profile_weight) AS total_n,
+                COUNT(DISTINCT person_key) AS total_observed_current_profiles
               FROM {current_denominator_source}
               WHERE grad_year IS NOT NULL
               GROUP BY grad_year
@@ -4093,7 +4123,11 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
               b.code,
               COALESCE(b.title, b.code) AS title,
               ROUND(b.n, 2) AS n,
+              b.observed_current_profiles,
               ROUND(t.total_n, 2) AS total_n,
+              t.total_observed_current_profiles,
+              ROUND(LEAST(100.0, 100.0 * b.observed_current_profiles / NULLIF(b.n, 0)), 1) AS current_coverage_pct,
+              ROUND(LEAST(100.0, 100.0 * t.total_observed_current_profiles / NULLIF(t.total_n, 0)), 1) AS total_current_coverage_pct,
               ROUND(100.0 * b.n / NULLIF(t.total_n, 0), 2) AS share_pct
             FROM by_major b
             JOIN totals t USING (grad_year)
@@ -4402,6 +4436,63 @@ def _geography_all_alumni(con: duckdb.DuckDBPyConnection, filters: QueryRequest)
         LIMIT {limit}
         """,
         [GEOGRAPHY_ROW_MIN_WEIGHT],
+    )
+
+
+def _geography_all_alumni_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    limit = min(_safe_limit(filters.top_n), 5)
+    location_expr = _location_label_expr()
+    return _records_from_query(
+        con,
+        f"""
+        WITH eligible AS (
+          SELECT
+            grad_year,
+            {location_expr} AS location,
+            profile_weight
+          FROM cohort_slice
+          WHERE grad_year IS NOT NULL
+            AND COALESCE(location, city) IS NOT NULL
+            AND LOWER(COALESCE(location, city)) NOT IN ('empty', 'unknown')
+        ),
+        top_locations AS (
+          SELECT
+            location,
+            SUM(profile_weight) AS total_n
+          FROM eligible
+          GROUP BY location
+          HAVING SUM(profile_weight) > ?
+          ORDER BY total_n DESC
+          LIMIT {limit}
+        ),
+        by_year AS (
+          SELECT
+            e.grad_year,
+            e.location,
+            SUM(e.profile_weight) AS n
+          FROM eligible e
+          JOIN top_locations t USING (location)
+          GROUP BY e.grad_year, e.location
+        ),
+        totals AS (
+          SELECT grad_year, SUM(profile_weight) AS total_n
+          FROM eligible
+          GROUP BY grad_year
+        )
+        SELECT
+          b.grad_year,
+          b.location,
+          ROUND(b.n, 2) AS n,
+          NULL AS salary_weight,
+          ROUND(100.0 * b.n / NULLIF(t.total_n, 0), 2) AS share_pct,
+          NULL AS weighted_mean_salary,
+          NULL AS median_salary
+        FROM by_year b
+        JOIN totals t USING (grad_year)
+        WHERE b.n > ?
+        ORDER BY b.location, b.grad_year
+        """,
+        [GEOGRAPHY_ROW_MIN_WEIGHT, GEOGRAPHY_ROW_MIN_WEIGHT],
     )
 
 
@@ -5119,6 +5210,9 @@ def _demographics(con: duckdb.DuckDBPyConnection) -> dict[str, list[dict[str, An
 
 
 def _postgrad_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    aggregate_rows = _postgrad_trend_from_aggregates(con, filters)
+    if aggregate_rows is not None:
+        return aggregate_rows
     limit = min(_safe_limit(filters.top_n), 8)
     return _records_from_query(
         con,
@@ -5165,7 +5259,216 @@ def _postgrad_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> li
     )
 
 
+def _postgrad_aggregate_supported(filters: QueryRequest) -> bool:
+    if filters.degree != "Bachelors":
+        return False
+    if filters.cip_level == "cip6":
+        return False
+    if filters.demographics.gender or filters.demographics.race_ethnicity:
+        return False
+    if filters.postgrad.later_degree_type or filters.postgrad.no_further_education is not None:
+        return False
+    return (
+        _dataset_exists("aggregate_facts/postgrad")
+        and _dataset_exists("aggregate_facts/postgrad_flows")
+        and _dataset_exists("aggregate_facts/postgrad_destinations")
+    )
+
+
+def _postgrad_aggregate_where(filters: QueryRequest, alias: str = "") -> tuple[str, list[Any]]:
+    prefix = f"{alias}." if alias else ""
+    clauses: list[str] = []
+    params: list[Any] = []
+    if filters.schools:
+        _append_in_clause(clauses, params, f"{prefix}unitid", [str(school) for school in filters.schools])
+    if filters.grad_years:
+        placeholders = ",".join(["?"] * len(filters.grad_years))
+        clauses.append(f"{prefix}cohort_year IN ({placeholders})")
+        params.extend(filters.grad_years)
+    if filters.majors:
+        major_col = f"{prefix}undergrad_cip2" if filters.cip_level == "cip2" else f"{prefix}undergrad_cip4"
+        _append_in_clause(clauses, params, major_col, filters.majors)
+    return ("WHERE " + " AND ".join(clauses), params) if clauses else ("", params)
+
+
+def _postgrad_trend_from_aggregates(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]] | None:
+    if not _postgrad_aggregate_supported(filters):
+        return None
+    limit = min(_safe_limit(filters.top_n), 8)
+    where_sql, params = _postgrad_aggregate_where(filters)
+    return _records_from_query(
+        con,
+        f"""
+        WITH flow_base AS (
+          SELECT cohort_year AS grad_year, postgrad_degree AS degree_type, SUM(n_users) AS n
+          FROM read_parquet(?)
+          {where_sql}
+          GROUP BY cohort_year, postgrad_degree
+        ),
+        totals AS (
+          SELECT cohort_year AS grad_year, SUM(total_bachelors) AS total_n, SUM(has_later_degree) AS later_n
+          FROM read_parquet(?)
+          {where_sql}
+          GROUP BY cohort_year
+        ),
+        eligible AS (
+          SELECT grad_year, degree_type, n FROM flow_base
+          UNION ALL
+          SELECT grad_year, 'No further education' AS degree_type, GREATEST(0, total_n - later_n) AS n
+          FROM totals
+        ),
+        top_paths AS (
+          SELECT degree_type, SUM(n) AS total_n
+          FROM eligible
+          GROUP BY degree_type
+          HAVING SUM(n) > ?
+          ORDER BY CASE WHEN degree_type = 'No further education' THEN 1 ELSE 0 END, total_n DESC
+          LIMIT {limit}
+        )
+        SELECT
+          e.grad_year,
+          e.degree_type,
+          ROUND(e.n, 2) AS n,
+          ROUND(100.0 * e.n / NULLIF(t.total_n, 0), 2) AS share_pct
+        FROM eligible e
+        JOIN top_paths p USING (degree_type)
+        JOIN totals t USING (grad_year)
+        WHERE e.n > ?
+        ORDER BY e.degree_type, e.grad_year
+        """,
+        [_dataset_glob("aggregate_facts/postgrad_flows"), *params, _dataset_glob("aggregate_facts/postgrad"), *params, MIN_CELL_WEIGHT, MIN_CELL_WEIGHT],
+    )
+
+
+def _postgrad_from_aggregates(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any] | None:
+    if not _postgrad_aggregate_supported(filters):
+        return None
+    limit = _safe_limit(filters.top_n)
+    where_sql, params = _postgrad_aggregate_where(filters)
+    flows = _records_from_query(
+        con,
+        f"""
+        WITH degree_flows AS (
+          SELECT postgrad_degree AS degree_type, SUM(n_users) AS n
+          FROM read_parquet(?)
+          {where_sql}
+          GROUP BY postgrad_degree
+        ),
+        totals AS (
+          SELECT SUM(total_bachelors) AS total_n, SUM(has_later_degree) AS later_n
+          FROM read_parquet(?)
+          {where_sql}
+        ),
+        combined AS (
+          SELECT degree_type, n FROM degree_flows
+          UNION ALL
+          SELECT 'No further education' AS degree_type, GREATEST(0, total_n - later_n) AS n FROM totals
+        )
+        SELECT
+          degree_type,
+          ROUND(n, 2) AS n,
+          ROUND(100.0 * n / NULLIF((SELECT total_n FROM totals), 0), 2) AS share_pct
+        FROM combined
+        WHERE n > ?
+        ORDER BY CASE WHEN degree_type = 'No further education' THEN 1 ELSE 0 END, n DESC
+        LIMIT {limit}
+        """,
+        [_dataset_glob("aggregate_facts/postgrad_flows"), *params, _dataset_glob("aggregate_facts/postgrad"), *params, MIN_CELL_WEIGHT],
+    )
+    no_further_flow = next((row for row in flows if str(row.get("degree_type", "")).strip().lower().startswith("no further")), None)
+    flows = [row for row in flows if not str(row.get("degree_type", "")).strip().lower().startswith("no further")]
+    selected = filters.selected_postgrad_degree
+    if not selected:
+        selected = next((row["degree_type"] for row in flows), None)
+
+    schools: list[dict[str, Any]] = []
+    programs: list[dict[str, Any]] = []
+    if selected and selected != "No further education":
+        selected_values = _postgrad_detail_degree_values(selected)
+        placeholders = ",".join(["?"] * len(selected_values))
+        dest_where_sql, dest_params = _postgrad_aggregate_where(filters)
+        school_filter_sql = ""
+        school_filter_params: list[Any] = []
+        if filters.selected_postgrad_program:
+            school_filter_sql = "AND COALESCE(NULLIF(postgrad_cip_title, ''), NULLIF(postgrad_cip_code, ''), 'Unknown') = ?"
+            school_filter_params.append(filters.selected_postgrad_program)
+        schools = _records_from_query(
+            con,
+            f"""
+            WITH degree_slice AS (
+              SELECT postgrad_school, n
+              FROM read_parquet(?)
+              {dest_where_sql}
+                {"AND" if dest_where_sql else "WHERE"} postgrad_degree IN ({placeholders})
+                {school_filter_sql}
+            ),
+            denom AS (
+              SELECT SUM(n) AS total_n FROM degree_slice
+            )
+            SELECT
+              postgrad_school AS label,
+              ROUND(SUM(n)) AS n,
+              ROUND(100.0 * SUM(n) / NULLIF((SELECT total_n FROM denom), 0), 1) AS share_pct
+            FROM degree_slice
+            WHERE postgrad_school IS NOT NULL AND postgrad_school <> ''
+            GROUP BY postgrad_school
+            HAVING SUM(n) > ?
+            ORDER BY SUM(n) DESC
+            LIMIT {limit}
+            """,
+            [_dataset_glob("aggregate_facts/postgrad_destinations"), *dest_params, *selected_values, *school_filter_params, MIN_CELL_WEIGHT],
+        )
+        if _postgrad_show_program_detail(selected):
+            program_filter_sql = ""
+            program_filter_params: list[Any] = []
+            if filters.selected_postgrad_school:
+                program_filter_sql = "AND postgrad_school = ?"
+                program_filter_params.append(filters.selected_postgrad_school)
+            programs = _records_from_query(
+                con,
+                f"""
+                WITH degree_slice AS (
+                  SELECT COALESCE(NULLIF(postgrad_cip_title, ''), NULLIF(postgrad_cip_code, ''), 'Unknown') AS program_label, n
+                  FROM read_parquet(?)
+                  {dest_where_sql}
+                    {"AND" if dest_where_sql else "WHERE"} postgrad_degree IN ({placeholders})
+                    {program_filter_sql}
+                ),
+                denom AS (
+                  SELECT SUM(n) AS total_n FROM degree_slice
+                )
+                SELECT
+                  program_label AS label,
+                  ROUND(SUM(n)) AS n,
+                  ROUND(100.0 * SUM(n) / NULLIF((SELECT total_n FROM denom), 0), 1) AS share_pct
+                FROM degree_slice
+                WHERE program_label IS NOT NULL AND program_label <> ''
+                GROUP BY program_label
+                HAVING SUM(n) > ?
+                ORDER BY SUM(n) DESC
+                LIMIT {limit}
+                """,
+                [_dataset_glob("aggregate_facts/postgrad_destinations"), *dest_params, *selected_values, *program_filter_params, MIN_CELL_WEIGHT],
+            )
+    return {
+        "flows": flows,
+        "no_further": no_further_flow,
+        "no_further_share_pct": no_further_flow.get("share_pct") if no_further_flow else None,
+        "selected_degree": selected,
+        "detail_degree": _postgrad_detail_degree_label(selected),
+        "selected_school": filters.selected_postgrad_school,
+        "selected_program": filters.selected_postgrad_program,
+        "show_program_detail": _postgrad_show_program_detail(selected),
+        "schools": schools,
+        "programs": programs,
+        "feeders": _feeder_schools(con, filters),
+    }
+
+
 def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
+    aggregate_result = _postgrad_from_aggregates(con, filters)
+    if aggregate_result is not None:
+        return aggregate_result
     limit = _safe_limit(filters.top_n)
 
     flows = _records_from_query(
@@ -5192,9 +5495,11 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
         """,
         [MIN_CELL_WEIGHT],
     )
+    no_further_flow = next((row for row in flows if str(row.get("degree_type", "")).strip().lower().startswith("no further")), None)
+    flows = [row for row in flows if not str(row.get("degree_type", "")).strip().lower().startswith("no further")]
     selected = filters.selected_postgrad_degree
     if not selected:
-        selected = next((row["degree_type"] for row in flows if row["degree_type"] != "No further education"), None)
+        selected = next((row["degree_type"] for row in flows), None)
     schools: list[dict[str, Any]] = []
     programs: list[dict[str, Any]] = []
     if selected and selected != "No further education":
@@ -5268,6 +5573,8 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
             )
     return {
         "flows": flows,
+        "no_further": no_further_flow,
+        "no_further_share_pct": no_further_flow.get("share_pct") if no_further_flow else None,
         "selected_degree": selected,
         "detail_degree": _postgrad_detail_degree_label(selected),
         "selected_school": filters.selected_postgrad_school,
@@ -5322,6 +5629,250 @@ def _career_archetypes(con: duckdb.DuckDBPyConnection, filters: QueryRequest) ->
         """,
         [_work_source_for_filters("career_archetypes", filters), *params, MIN_CELL_WEIGHT],
     )
+
+
+def _graduate_value_degree_values(filters: QueryRequest) -> list[str]:
+    values = _degree_values(filters.degree)
+    if not values:
+        return []
+    if any(value in GRADUATE_VALUE_DEGREES for value in values):
+        return values
+    return []
+
+
+def _graduate_value_where(filters: QueryRequest) -> tuple[str, list[Any], list[str]]:
+    degree_values = _graduate_value_degree_values(filters)
+    clauses: list[str] = []
+    params: list[Any] = []
+    _append_in_clause(clauses, params, "unitid", filters.schools)
+    _append_in_clause(clauses, params, "degree", degree_values)
+    if filters.majors and filters.cip_level == "cip4":
+        clauses.append("UPPER(cip_level) = 'CIP4'")
+        _append_in_clause(clauses, params, "cip4", filters.majors)
+    else:
+        clauses.append("UPPER(cip_level) = 'ALL'")
+    _append_in_clause(clauses, params, "grad_year", filters.grad_years)
+    return (" WHERE " + " AND ".join(clauses)) if clauses else "", params, degree_values
+
+
+def _weighted_avg_expr(column: str, weight: str = "n_alumni") -> str:
+    return (
+        f"SUM(COALESCE({column}, 0) * {weight}) "
+        f"/ NULLIF(SUM(CASE WHEN {column} IS NOT NULL THEN {weight} ELSE 0 END), 0)"
+    )
+
+
+def _career_graduate_value(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
+    if not _work_dataset_exists("grad_value_summary"):
+        return {
+            "available": False,
+            "reason": "Graduate value facts are not present in this data bundle.",
+            "timeline": [],
+            "primary": {},
+        }
+    if filters.compare_mode:
+        return {
+            "available": False,
+            "reason": "Graduate value is currently shown for a single selected graduate-program slice.",
+            "timeline": [],
+            "primary": {},
+        }
+    if filters.postgrad.later_degree_type or filters.postgrad.no_further_education is not None:
+        return {
+            "available": False,
+            "reason": "Graduate value facts are already graduate-program outcomes and do not support an additional further-education filter.",
+            "timeline": [],
+            "primary": {},
+        }
+    where_sql, params, degree_values = _graduate_value_where(filters)
+    if not degree_values:
+        return {
+            "available": False,
+            "reason": "Graduate value is only shown for graduate degree pages. The current export does not yet carry undergraduate feeder-major fields for this fact table.",
+            "timeline": [],
+            "primary": {},
+        }
+    rows = _records_from_query(
+        con,
+        f"""
+        SELECT
+          years_after_degree,
+          ROUND(SUM(n_alumni)) AS n_alumni,
+          ROUND(SUM(raw_n)) AS raw_n,
+          ROUND({_weighted_avg_expr("avg_salary_before")}) AS avg_salary_before,
+          ROUND({_weighted_avg_expr("avg_salary_after")}) AS avg_salary_after,
+          ROUND({_weighted_avg_expr("expected_salary_after")}) AS expected_salary_after,
+          ROUND({_weighted_avg_expr("salary_lift_dollars")}) AS salary_lift_dollars,
+          ROUND({_weighted_avg_expr("observed_salary_growth_pct")}, 1) AS observed_salary_growth_pct,
+          ROUND({_weighted_avg_expr("expected_salary_growth_pct")}, 1) AS expected_salary_growth_pct,
+          ROUND({_weighted_avg_expr("salary_lift_pct")}, 1) AS salary_lift_pct,
+          ROUND({_weighted_avg_expr("avg_seniority_before")}, 2) AS avg_seniority_before,
+          ROUND({_weighted_avg_expr("avg_seniority_after")}, 2) AS avg_seniority_after,
+          ROUND({_weighted_avg_expr("observed_seniority_delta")}, 2) AS observed_seniority_delta,
+          ROUND({_weighted_avg_expr("seniority_lift")}, 2) AS seniority_lift,
+          ROUND({_weighted_avg_expr("role_change_pct")}, 1) AS role_change_pct,
+          ROUND({_weighted_avg_expr("industry_change_pct")}, 1) AS industry_change_pct,
+          ROUND({_weighted_avg_expr("employer_change_pct")}, 1) AS employer_change_pct
+        FROM read_parquet(?)
+        {where_sql}
+        GROUP BY years_after_degree
+        HAVING SUM(n_alumni) > ?
+        ORDER BY years_after_degree
+        """,
+        [_work_source_for_filters("grad_value_summary", filters), *params, GRAD_VALUE_MIN_WEIGHT],
+    )
+    if not rows:
+        return {
+            "available": False,
+            "reason": "No graduate value rows meet the current school, degree, major, and cohort filters.",
+            "timeline": [],
+            "primary": {},
+        }
+    preferred_years = [5, 3, 1, 10]
+    primary = next(
+        (
+            row
+            for year in preferred_years
+            for row in rows
+            if int(row.get("years_after_degree") or -1) == year
+        ),
+        rows[-1],
+    )
+    return {
+        "available": True,
+        "degree_values": degree_values,
+        "timeline": rows,
+        "primary": primary,
+        "scope": "graduate_program",
+    }
+
+
+def _career_graduate_transition_rows(
+    con: duckdb.DuckDBPyConnection,
+    filters: QueryRequest,
+    dataset: str,
+    pre_column: str,
+    post_column: str,
+) -> list[dict[str, Any]]:
+    if not _work_dataset_exists(dataset):
+        return []
+    where_sql, params, degree_values = _graduate_value_where(filters)
+    if not degree_values:
+        return []
+    limit = _safe_limit(filters.top_n)
+    return _records_from_query(
+        con,
+        f"""
+        WITH eligible AS (
+          SELECT
+            years_after_degree,
+            {pre_column} AS pre_label,
+            {post_column} AS post_label,
+            n_alumni,
+            raw_n,
+            avg_salary_before,
+            avg_salary_after,
+            avg_seniority_before,
+            avg_seniority_after
+          FROM read_parquet(?)
+          {where_sql}
+            {"AND" if where_sql else "WHERE"} {pre_column} IS NOT NULL
+            AND {post_column} IS NOT NULL
+            AND TRIM({pre_column}) <> ''
+            AND TRIM({post_column}) <> ''
+        ),
+        year_totals AS (
+          SELECT years_after_degree, SUM(n_alumni) AS total_n
+          FROM eligible
+          GROUP BY years_after_degree
+        ),
+        selected_year AS (
+          SELECT years_after_degree
+          FROM year_totals
+          ORDER BY
+            CASE
+              WHEN years_after_degree = 5 THEN 0
+              WHEN years_after_degree = 3 THEN 1
+              WHEN years_after_degree = 1 THEN 2
+              WHEN years_after_degree = 10 THEN 3
+              ELSE 4
+            END,
+            total_n DESC
+          LIMIT 1
+        ),
+        grouped AS (
+          SELECT
+            e.years_after_degree,
+            e.pre_label,
+            e.post_label,
+            SUM(e.n_alumni) AS n_alumni,
+            SUM(e.raw_n) AS raw_n,
+            {_weighted_avg_expr("e.avg_salary_before", "e.n_alumni")} AS avg_salary_before,
+            {_weighted_avg_expr("e.avg_salary_after", "e.n_alumni")} AS avg_salary_after,
+            {_weighted_avg_expr("e.avg_seniority_before", "e.n_alumni")} AS avg_seniority_before,
+            {_weighted_avg_expr("e.avg_seniority_after", "e.n_alumni")} AS avg_seniority_after
+          FROM eligible e
+          JOIN selected_year y
+            ON e.years_after_degree = y.years_after_degree
+          GROUP BY e.years_after_degree, e.pre_label, e.post_label
+        )
+        SELECT
+          years_after_degree,
+          pre_label,
+          post_label,
+          ROUND(n_alumni) AS n_alumni,
+          ROUND(raw_n) AS raw_n,
+          ROUND(100.0 * n_alumni / NULLIF(SUM(n_alumni) OVER (), 0), 1) AS share_pct,
+          ROUND(avg_salary_before) AS avg_salary_before,
+          ROUND(avg_salary_after) AS avg_salary_after,
+          ROUND(avg_salary_after - avg_salary_before) AS salary_delta,
+          ROUND(avg_seniority_before, 2) AS avg_seniority_before,
+          ROUND(avg_seniority_after, 2) AS avg_seniority_after,
+          ROUND(avg_seniority_after - avg_seniority_before, 2) AS seniority_delta
+        FROM grouped
+        WHERE n_alumni > ?
+        ORDER BY n_alumni DESC
+        LIMIT {limit}
+        """,
+        [_work_source_for_filters(dataset, filters), *params, GRAD_TRANSITION_ROW_MIN_WEIGHT],
+    )
+
+
+def _career_graduate_transitions(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
+    if filters.compare_mode:
+        return {
+            "available": False,
+            "reason": "Graduate transition maps are currently shown for a single selected graduate-program slice.",
+            "roles": [],
+            "industries": [],
+        }
+    if filters.postgrad.later_degree_type or filters.postgrad.no_further_education is not None:
+        return {
+            "available": False,
+            "reason": "Graduate transition maps do not support an additional further-education filter.",
+            "roles": [],
+            "industries": [],
+        }
+    if not _graduate_value_degree_values(filters):
+        return {
+            "available": False,
+            "reason": "Graduate transition maps are only shown for graduate degree pages in the current export.",
+            "roles": [],
+            "industries": [],
+        }
+    role_rows = _career_graduate_transition_rows(con, filters, "grad_role_transitions", "pre_role", "post_role")
+    industry_rows = _career_graduate_transition_rows(
+        con,
+        filters,
+        "grad_industry_transitions",
+        "pre_industry",
+        "post_industry",
+    )
+    return {
+        "available": bool(role_rows or industry_rows),
+        "roles": role_rows,
+        "industries": industry_rows,
+    }
 
 
 def _career_earnings(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
@@ -5432,6 +5983,7 @@ def _career_internships(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -
     if not _work_dataset_exists("internship_summary"):
         return {
             "available": False,
+            "reason": "Internship facts are not present in this data bundle. Re-run the platform export to create work_facts/internship_*.",
             "summary": {},
             "rates": [],
             "employer_comparison": [],
@@ -5444,6 +5996,7 @@ def _career_internships(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -
     if _work_postgrad_unsupported(filters, "internship_summary"):
         return {
             "available": False,
+            "reason": "Internship facts in this bundle do not support the active further-education filter.",
             "summary": {},
             "rates": [],
             "employer_comparison": [],
@@ -5618,6 +6171,8 @@ def _career_internship_conversions(con: duckdb.DuckDBPyConnection, filters: Quer
         return []
     source = _base_source_for_filters(filters)
     if not source:
+        return []
+    if "internship_flag" not in _dataset_columns("base_fact"):
         return []
     where_sql, params = _where(filters, include_horizon=False, include_postgrad=True)
     same_school_filter = _same_school_employer_filter(filters)
@@ -6208,6 +6763,8 @@ def _career(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, 
         "earnings": _career_earnings(con, filters),
         "archetypes": _career_archetypes(con, filters),
         "superstars": _career_superstars(con, filters),
+        "graduate_value": _career_graduate_value(con, filters),
+        "graduate_transitions": _career_graduate_transitions(con, filters),
         "internships": _career_internships(con, filters),
         "seniority": _career_seniority(con, filters),
         "average_seniority": _career_average_seniority(con, filters),
@@ -6264,12 +6821,15 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                         "current_student_trend": _current_student_trend(con, filters),
                         "school_comparison": _school_comparison(con, filters),
                         "top_majors": _top_majors(con, filters),
+                        "current_student_trend_by_major": _current_student_trend_by_major(con, filters),
+                        "alumni_trend_by_major": _alumni_trend_by_major(con, filters),
                         "major_trend": _major_trend(con, filters, filters.include_current_students),
                         "employers": _employers(con, filters),
                         "employer_trend": _employer_trend(con, filters),
                         "geography": _geography(con, filters),
                         "geography_all_alumni": _geography_all_alumni(con, filters),
                         "geography_trend": _geography_trend(con, filters),
+                        "geography_all_alumni_trend": _geography_all_alumni_trend(con, filters),
                         "roles": _roles(con, filters),
                         "role_trend": _role_trend(con, filters),
                         "destination_trend": _destination_trend(con, filters),
@@ -6309,6 +6869,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                         return result
                     if tab == "overview":
                         result["current_student_trend_by_major"] = _current_student_trend_by_major(con, filters)
+                        result["alumni_trend_by_major"] = _alumni_trend_by_major(con, filters)
                         result["career"] = {"earnings": _career_earnings(con, filters)}
                     if view_mode == "overtime" and tab == "overview":
                         result["alumni_trend_by_major"] = _alumni_trend_by_major(con, filters)
@@ -6562,6 +7123,8 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                 result["role_summary"] = _overview_role_summary(con)
                 if view_mode == "snapshot":
                     result["top_majors"] = _top_majors(con, filters)
+                    result["current_student_trend_by_major"] = _current_student_trend_by_major(con, filters)
+                    result["alumni_trend_by_major"] = _alumni_trend_by_major(con, filters)
                     result["employers"] = _employers(con, filters)
                     result["geography"] = _geography(con, filters)
                     result["geography_all_alumni"] = _geography_all_alumni(con, filters)
@@ -6593,6 +7156,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                 result["geography_all_alumni"] = _geography_all_alumni(con, filters)
                 if view_mode == "overtime":
                     result["geography_trend"] = _geography_trend(con, filters)
+                    result["geography_all_alumni_trend"] = _geography_all_alumni_trend(con, filters)
                 return result
 
             if tab == "destinations":

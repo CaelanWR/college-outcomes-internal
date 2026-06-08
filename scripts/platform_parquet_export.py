@@ -184,14 +184,43 @@ def _copy_aggregate_facts(out_dir: Path, aggregate_dir: Path) -> dict:
     return written
 
 
+def education_later_date_sql(alias: str) -> str:
+    """Observed later-education date, allowing in-progress programs with no end date."""
+    education_columns = globals().get("EDUCATION_COLUMNS", set())
+    education_column_names = {str(c).lower() for c in education_columns}
+    if "startdate" in education_column_names:
+        return f"COALESCE({alias}.enddate, {alias}.startdate)"
+    return f"{alias}.enddate"
+
+
+def postgrad_degree_label_sql(alias: str = "e") -> str:
+    """Postgrad degree labels for platform export, with professional CIPs first."""
+    alias = alias.strip()
+    doctor_cip = degree_cip_sql(alias)
+    return f"""
+    CASE
+        WHEN {alias}.degree = 'Master' THEN 'Masters'
+        WHEN {alias}.degree = 'MBA' THEN 'MBA'
+        WHEN {alias}.degree = 'Doctor' AND LEFT(COALESCE({doctor_cip}, ''), 2) = '22' THEN 'LAW'
+        WHEN {alias}.degree = 'Doctor' AND LEFT(COALESCE({doctor_cip}, ''), 5) = '51.12' THEN 'MD'
+        WHEN {alias}.degree = 'Doctor' AND {alias}.ipeds_awlevel IN ('17') THEN 'PhD'
+        WHEN {alias}.degree = 'Doctor' AND {alias}.ipeds_awlevel IN ('18', '09', '9', '10', '11') THEN 'Professional Doctorate'
+        WHEN {alias}.degree = 'Doctor' AND {alias}.ipeds_awlevel IN ('19') THEN 'Other Doctorate'
+        WHEN {alias}.degree = 'Doctor' THEN 'Doctorate'
+        ELSE {alias}.degree
+    END
+    """.strip()
+
+
 def plus_one_masters_flag_sql(later_alias: str, origin_alias: str) -> str:
     """Bachelor-to-master continuation at the same school within one academic year."""
+    later_date = education_later_date_sql(later_alias)
     return f"""
         CASE
             WHEN {origin_alias}.degree = 'Bachelors'
              AND {later_alias}.degree = 'Master'
              AND CAST({later_alias}.unitid AS VARCHAR) = CAST({origin_alias}.unitid AS VARCHAR)
-             AND DATEDIFF('day', {origin_alias}.grad_date, {later_alias}.enddate) BETWEEN 1 AND 366
+             AND DATEDIFF('day', {origin_alias}.grad_date, {later_date}) BETWEEN 1 AND 366
             THEN 1
             ELSE 0
         END
@@ -205,6 +234,212 @@ def postgrad_degree_with_plus_one_sql(later_alias: str, origin_alias: str) -> st
             ELSE {postgrad_degree_label_sql(later_alias)}
         END
     """
+
+
+def _postgrad_raw_bachelors_cte_sql() -> str:
+    education_columns = globals().get("EDUCATION_COLUMNS", set())
+    education_column_names = {str(c).lower() for c in education_columns}
+    weight_col = next(
+        (
+            col
+            for col in [
+                "education_weight",
+                "profile_weight",
+                "individual_weight",
+                "representation_weight",
+                "universe_weight",
+                "final_weight",
+            ]
+            if col in education_column_names
+        ),
+        None,
+    )
+    weight_expr = f"GREATEST(0.0, COALESCE(e.{weight_col}, 1.0))" if weight_col else "1.0"
+    return f"""
+raw_bachelors AS (
+    SELECT DISTINCT
+        e.user_id,
+        CAST(e.unitid AS VARCHAR) AS unitid,
+        e.ipeds_name,
+        YEAR(e.enddate) AS cohort_year,
+        CASE
+            WHEN YEAR(e.enddate) BETWEEN 2005 AND 2009 THEN '2005-2009'
+            WHEN YEAR(e.enddate) BETWEEN 2010 AND 2014 THEN '2010-2014'
+            WHEN YEAR(e.enddate) BETWEEN 2015 AND 2019 THEN '2015-2019'
+            WHEN YEAR(e.enddate) BETWEEN 2020 AND 2025 THEN '2020-2025'
+        END AS cohort_band,
+        LEFT({assigned_cip4_sql('e')}, 2) AS undergrad_cip2,
+        {assigned_cip4_sql('e')} AS undergrad_cip4,
+        {assigned_cip4_sql('e')} AS undergrad_cip_code,
+        {assigned_cip_title_sql('e')} AS undergrad_cip_title,
+        e.enddate AS grad_date,
+        CAST({weight_expr} AS DOUBLE) AS education_weight
+    FROM {EDUCATION_CIP} e
+    WHERE e.unitid IN ({UNITID_SQL})
+      AND e.degree = 'Bachelor'
+      AND e.enddate IS NOT NULL
+      AND YEAR(e.enddate) BETWEEN 2005 AND 2025
+      AND {assigned_cip4_sql('e')} IS NOT NULL
+)
+"""
+
+
+def _postgrad_later_education_cte_sql(base_cte: str = "raw_bachelors") -> str:
+    later_date = education_later_date_sql("e2")
+    return f"""
+later_edu AS (
+    SELECT
+        b.*,
+        {postgrad_degree_label_sql('e2')} AS postgrad_degree,
+        e2.ipeds_name AS postgrad_school,
+        LEFT({assigned_cip4_sql('e2')}, 2) AS postgrad_cip2,
+        {assigned_cip4_sql('e2')} AS postgrad_cip4,
+        {assigned_cip4_sql('e2')} AS postgrad_cip_code,
+        {assigned_cip_title_sql('e2')} AS postgrad_cip_title,
+        YEAR({later_date}) AS postgrad_year,
+        DATEDIFF('day', b.grad_date, {later_date}) / 365.25 AS years_to_postgrad,
+        ROW_NUMBER() OVER (
+            PARTITION BY b.user_id, b.unitid, b.cohort_year, b.undergrad_cip4
+            ORDER BY {later_date} ASC
+        ) AS edu_rank
+    FROM {base_cte} b
+    JOIN {EDUCATION_CIP} e2
+      ON b.user_id = e2.user_id
+     AND (e2.degree IN ('Master', 'MBA') OR e2.degree LIKE 'Doctor%')
+     AND {later_date} > b.grad_date
+)
+"""
+
+
+def _postgrad_aggregate_queries() -> dict[str, str]:
+    base_cte = _postgrad_raw_bachelors_cte_sql()
+    later_cte = _postgrad_later_education_cte_sql()
+    common_ctes = f"WITH {base_cte},\n{later_cte}"
+    postgrad = f"""
+{common_ctes}
+SELECT
+    b.unitid,
+    MAX(b.ipeds_name) AS ipeds_name,
+    b.cohort_year,
+    b.cohort_band,
+    b.undergrad_cip2,
+    b.undergrad_cip4,
+    b.undergrad_cip_code,
+    MAX(b.undergrad_cip_title) AS undergrad_cip_title,
+    ROUND(SUM(b.education_weight), 0) AS total_bachelors,
+    COUNT(DISTINCT b.user_id) AS raw_total_bachelors,
+    ROUND(SUM(CASE WHEN le.user_id IS NOT NULL THEN b.education_weight ELSE 0 END), 0) AS has_later_degree,
+    COUNT(DISTINCT CASE WHEN le.user_id IS NOT NULL THEN b.user_id END) AS raw_has_later_degree,
+    ROUND(SUM(CASE WHEN le.postgrad_degree = 'Masters' THEN b.education_weight ELSE 0 END), 0) AS masters_count,
+    ROUND(SUM(CASE WHEN le.postgrad_degree = 'MBA' THEN b.education_weight ELSE 0 END), 0) AS mba_count,
+    ROUND(SUM(CASE WHEN le.postgrad_degree = 'LAW' THEN b.education_weight ELSE 0 END), 0) AS law_count,
+    ROUND(SUM(CASE WHEN le.postgrad_degree = 'MD' THEN b.education_weight ELSE 0 END), 0) AS md_count,
+    ROUND(SUM(CASE WHEN le.postgrad_degree = 'PhD' THEN b.education_weight ELSE 0 END), 0) AS phd_count,
+    ROUND(SUM(CASE WHEN le.postgrad_degree = 'Professional Doctorate' THEN b.education_weight ELSE 0 END), 0) AS professional_doctorate_count,
+    ROUND(SUM(CASE WHEN le.postgrad_degree = 'Other Doctorate' THEN b.education_weight ELSE 0 END), 0) AS other_doctorate_count,
+    ROUND(SUM(CASE WHEN le.postgrad_degree IN ('PhD', 'LAW', 'MD', 'Professional Doctorate', 'Other Doctorate', 'Doctorate') THEN b.education_weight ELSE 0 END), 0) AS doctor_count,
+    ROUND(100.0 * SUM(CASE WHEN le.user_id IS NOT NULL THEN b.education_weight ELSE 0 END) / NULLIF(SUM(b.education_weight), 0), 1) AS later_degree_pct
+FROM raw_bachelors b
+LEFT JOIN later_edu le
+  ON b.user_id = le.user_id
+ AND b.unitid = le.unitid
+ AND b.cohort_year = le.cohort_year
+ AND b.undergrad_cip4 = le.undergrad_cip4
+ AND le.edu_rank = 1
+GROUP BY b.unitid, b.cohort_year, b.cohort_band,
+         b.undergrad_cip2, b.undergrad_cip4, b.undergrad_cip_code
+HAVING total_bachelors >= 1
+"""
+    flows = f"""
+{common_ctes},
+first_flow AS (
+    SELECT * FROM later_edu WHERE edu_rank = 1
+),
+base_totals AS (
+    SELECT
+        unitid,
+        cohort_year,
+        undergrad_cip2,
+        undergrad_cip4,
+        undergrad_cip_code,
+        SUM(education_weight) AS weighted_total_bachelors,
+        COUNT(DISTINCT user_id) AS raw_total_bachelors
+    FROM raw_bachelors
+    GROUP BY unitid, cohort_year, undergrad_cip2, undergrad_cip4, undergrad_cip_code
+)
+SELECT
+    f.unitid,
+    f.ipeds_name,
+    f.cohort_year,
+    f.cohort_band,
+    f.undergrad_cip2,
+    f.undergrad_cip4,
+    f.undergrad_cip_code,
+    f.undergrad_cip_title,
+    f.postgrad_degree,
+    ROUND(SUM(f.education_weight), 0) AS n_users,
+    COUNT(DISTINCT f.user_id) AS raw_n_users,
+    ROUND(SUM(f.years_to_postgrad * f.education_weight) / NULLIF(SUM(f.education_weight), 0), 2) AS avg_years_to_postgrad,
+    ROUND(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY f.years_to_postgrad), 2) AS median_years_to_postgrad,
+    ROUND(t.weighted_total_bachelors, 0) AS total_bachelors,
+    t.raw_total_bachelors,
+    ROUND(SUM(f.education_weight) / NULLIF(t.weighted_total_bachelors, 0) * 100, 2) AS flow_pct
+FROM first_flow f
+JOIN base_totals t
+  ON f.unitid = t.unitid
+ AND f.cohort_year = t.cohort_year
+ AND f.undergrad_cip2 = t.undergrad_cip2
+ AND f.undergrad_cip4 = t.undergrad_cip4
+ AND f.undergrad_cip_code = t.undergrad_cip_code
+GROUP BY f.unitid, f.ipeds_name, f.cohort_year, f.cohort_band,
+         f.undergrad_cip2, f.undergrad_cip4, f.undergrad_cip_code, f.undergrad_cip_title,
+         f.postgrad_degree, t.weighted_total_bachelors, t.raw_total_bachelors
+HAVING n_users >= 1
+"""
+    destinations = f"""
+{common_ctes}
+SELECT
+    le.unitid,
+    le.ipeds_name,
+    le.cohort_year,
+    le.cohort_band,
+    le.undergrad_cip2,
+    le.undergrad_cip4,
+    le.undergrad_cip_code,
+    le.undergrad_cip_title,
+    le.postgrad_degree,
+    le.postgrad_school,
+    le.postgrad_cip2,
+    le.postgrad_cip4,
+    le.postgrad_cip_code,
+    le.postgrad_cip_title,
+    ROUND(SUM(le.education_weight), 0) AS n,
+    COUNT(DISTINCT le.user_id) AS raw_n,
+    ROUND(SUM(le.years_to_postgrad * le.education_weight) / NULLIF(SUM(le.education_weight), 0), 2) AS avg_years_to_postgrad
+FROM later_edu le
+WHERE le.edu_rank = 1
+GROUP BY le.unitid, le.ipeds_name, le.cohort_year, le.cohort_band,
+         le.undergrad_cip2, le.undergrad_cip4, le.undergrad_cip_code, le.undergrad_cip_title,
+         le.postgrad_degree, le.postgrad_school, le.postgrad_cip2, le.postgrad_cip4, le.postgrad_cip_code, le.postgrad_cip_title
+HAVING n >= 1
+"""
+    return {
+        "postgrad": postgrad,
+        "postgrad_flows": flows,
+        "postgrad_destinations": destinations,
+    }
+
+
+def _write_postgrad_aggregate_facts(aggregate_dir: Path, written: dict) -> None:
+    print("Regenerating education-native postgrad aggregate facts...")
+    for fact_name, query in _postgrad_aggregate_queries().items():
+        info = _write_query_file_parts(sfClient, query, aggregate_dir / fact_name)
+        written[fact_name] = {
+            "path": str((aggregate_dir / fact_name).relative_to(aggregate_dir.parent)),
+            **info,
+            "notes": "Education-native further-education fact regenerated during platform export with startdate fallback for in-progress later degrees.",
+        }
+        print(f"  aggregate_facts/{fact_name}: {info['rows']:,} rows")
 
 
 def feeder_bachelor_education_cte_sql(base_cte: str) -> str:
@@ -245,6 +480,7 @@ def _platform_base_sql() -> str:
         "CLIENT_STANDARD.REVELIO_INTERNAL.STANDARD_202303_INDIVIDUAL_USER",
     )
 
+    later_date = education_later_date_sql("e2")
     return f"""
 CREATE OR REPLACE TABLE {SCRATCH}.SCHOOL_OUTCOMES_PLATFORM_BASE AS
 WITH cpi_u AS (
@@ -504,12 +740,12 @@ later_edu AS (
         e2.ipeds_name AS later_school,
         {assigned_cip4_sql('e2')} AS later_cip4,
         {assigned_cip_title_sql('e2')} AS later_program,
-        YEAR(e2.enddate) AS later_grad_year,
-        DATEDIFF('day', o.grad_date, e2.enddate) / 365.25 AS years_to_later_degree,
+        YEAR({later_date}) AS later_grad_year,
+        DATEDIFF('day', o.grad_date, {later_date}) / 365.25 AS years_to_later_degree,
         {plus_one_masters_flag_sql('e2', 'o')} AS plus_one_masters_flag,
         ROW_NUMBER() OVER (
             PARTITION BY o.user_id, o.unitid, o.degree, o.grad_year, o.cip4
-            ORDER BY e2.enddate ASC
+            ORDER BY {later_date} ASC
         ) AS later_rank
     FROM (
         SELECT DISTINCT user_id, unitid, degree, grad_year, cip4, grad_date
@@ -518,7 +754,7 @@ later_edu AS (
     JOIN {EDUCATION_CIP} e2
       ON o.user_id = e2.user_id
      AND (e2.degree IN ('Master', 'MBA') OR e2.degree LIKE 'Doctor%')
-     AND e2.enddate > o.grad_date
+     AND {later_date} > o.grad_date
 ),
 {feeder_bachelor_education_cte_sql('outcomes')},
 enriched AS (
@@ -917,6 +1153,7 @@ recent_global_cip4_calibration AS (
 
 
 def _work_later_education_cte_sql(base_cte: str = "grad_years") -> str:
+    later_date = education_later_date_sql("e2")
     return f"""
 later_edu AS (
     SELECT
@@ -929,21 +1166,21 @@ later_edu AS (
         e2.ipeds_name AS later_school,
         {assigned_cip4_sql('e2')} AS later_cip4,
         {assigned_cip_title_sql('e2')} AS later_program,
-        YEAR(e2.enddate) AS later_grad_year,
-        DATEDIFF('day', o.grad_date, e2.enddate) / 365.25 AS years_to_later_degree,
+        YEAR({later_date}) AS later_grad_year,
+        DATEDIFF('day', o.grad_date, {later_date}) / 365.25 AS years_to_later_degree,
         {plus_one_masters_flag_sql('e2', 'o')} AS plus_one_masters_flag,
         ROW_NUMBER() OVER (
             PARTITION BY o.user_id, o.unitid, o.degree, o.grad_year, o.cip4
-            ORDER BY e2.enddate ASC
+            ORDER BY {later_date} ASC
         ) AS later_rank
     FROM (
         SELECT DISTINCT user_id, unitid, degree, grad_year, cip4, grad_date
         FROM {base_cte}
     ) o
     JOIN {EDUCATION_CIP} e2
-      ON o.user_id = e2.user_id
+     ON o.user_id = e2.user_id
      AND (e2.degree IN ('Master', 'MBA') OR e2.degree LIKE 'Doctor%')
-     AND e2.enddate > o.grad_date
+     AND {later_date} > o.grad_date
 )
 """
 
@@ -2115,6 +2352,378 @@ WHERE employer_rank <= {WORK_TOP_N_PER_GROUP}
 """
 
 
+INTERNSHIP_START_YEAR = 2020
+INTERNSHIP_END_YEAR = 2025
+INTERNSHIP_TOP_N_PER_GROUP = 50
+
+
+def _position_column_map() -> dict[str, str]:
+    columns = globals().get("POSITION_COLUMNS", {})
+    if isinstance(columns, dict):
+        return {str(key).lower(): str(value) for key, value in columns.items()}
+    return {str(column).lower(): str(column) for column in columns}
+
+
+def _position_column(candidates: list[str]) -> str | None:
+    column_map = _position_column_map()
+    for candidate in candidates:
+        match = column_map.get(candidate.lower())
+        if match:
+            return match
+    return None
+
+
+def _internship_signal_sql(alias: str = "p") -> str:
+    flag_col = _position_column([
+        "internship_flag",
+        "is_internship",
+        "is_intern",
+        "intern_flag",
+        "pregrad_internship_flag",
+        "student_internship_flag",
+    ])
+    if flag_col:
+        value = f"LOWER(TRIM(TO_VARCHAR({alias}.{flag_col})))"
+        return f"({value} IN ('1', 'true', 't', 'yes', 'y'))"
+
+    text_parts = [f"COALESCE({alias}.title_raw, '')"]
+    for column in [
+        _position_column(["role_k50_v3"]),
+        _position_column(["role_k150_v3"]),
+        _position_column(["role_k500_v3"]),
+    ]:
+        if column:
+            text_parts.append(f"COALESCE({alias}.{column}, '')")
+    text_expr = "LOWER(" + " || ' ' || ".join(text_parts) + ")"
+    return f"""
+        (
+            REGEXP_LIKE({text_expr}, '(^|[^a-z])(intern|internship|summer analyst|summer associate|co[- ]?op)([^a-z]|$)')
+            AND NOT REGEXP_LIKE({text_expr}, 'international|internal medicine|internist')
+        )
+    """
+
+
+def _internship_base_sql() -> str:
+    return f"""
+CREATE OR REPLACE TABLE {SCRATCH}.SCHOOL_OUTCOMES_INTERNSHIP_BASE AS
+WITH cpi_u AS (
+    {_work_cpi_sql()}
+),
+{_recent_calibration_ctes_sql()},
+grads AS (
+    SELECT
+        g.user_id,
+        SHA2(TO_VARCHAR(g.user_id), 256) AS person_key,
+        CAST(g.unitid AS VARCHAR) AS unitid,
+        g.ipeds_name AS school_name,
+        g.degree,
+        g.cip2,
+        g.cip4,
+        g.cip6,
+        g.cip_title AS major_title,
+        g.cohort_year AS grad_year,
+        g.cohort_band,
+        g.grad_date,
+        CASE
+            WHEN g.cohort_year >= 2023 AND g.calibration_ipeds_completions IS NULL
+            THEN COALESCE(rsc.ipeds_calibration_weight, rgc.ipeds_calibration_weight, g.ipeds_calibration_weight, 1.0)
+            ELSE COALESCE(g.ipeds_calibration_weight, 1.0)
+        END AS education_weight
+    FROM {SCRATCH}.SCHOOL_GRADS_CALIBRATED g
+    LEFT JOIN recent_school_cip4_calibration rsc
+      ON CAST(g.unitid AS VARCHAR) = rsc.unitid
+     AND g.degree = rsc.degree
+     AND g.cip4 = rsc.cip4
+    LEFT JOIN recent_global_cip4_calibration rgc
+      ON g.degree = rgc.degree
+     AND g.cip4 = rgc.cip4
+    WHERE g.cohort_year BETWEEN {INTERNSHIP_START_YEAR} AND {INTERNSHIP_END_YEAR}
+),
+{_work_later_education_cte_sql('grads')},
+internship_positions AS (
+    SELECT
+        g.*,
+        le.later_degree_type,
+        le.later_school,
+        le.later_cip4,
+        le.later_program,
+        le.later_grad_year,
+        le.years_to_later_degree,
+        COALESCE(le.plus_one_masters_flag, 0) AS plus_one_masters_flag,
+        CASE WHEN le.user_id IS NULL THEN 1 ELSE 0 END AS no_further_education_flag,
+        CASE
+            WHEN LOWER(COALESCE(p.ultimate_parent_company_name, '')) = 'government of the united states of america'
+                 AND NULLIF(p.company_name, '') IS NOT NULL
+            THEN p.company_name
+            ELSE COALESCE(NULLIF(p.ultimate_parent_company_name, ''), NULLIF(p.company_name, ''), 'Unknown')
+        END AS employer,
+        COALESCE(NULLIF(p.role_k50_v3, ''), 'Unknown') AS role,
+        COALESCE(NULLIF(p.role_k150_v3, ''), 'Unknown') AS role_detail,
+        COALESCE(NULLIF(p.rics_k50, ''), 'Unknown') AS industry,
+        COALESCE(NULLIF(p.rics_k200, ''), 'Unknown') AS industry_detail,
+        COALESCE(NULLIF(p.metro_area, ''), NULLIF(p.state, ''), NULLIF(p.country, ''), 'Unknown') AS location,
+        p.metro_area,
+        p.city,
+        p.state,
+        p.country,
+        p.salary AS salary_nominal,
+        CASE
+            WHEN p.salary IS NOT NULL AND cpi.cpi_u_avg IS NOT NULL
+            THEN ROUND(p.salary * {SALARY_REAL_BASE_CPI} / cpi.cpi_u_avg, 0)
+            ELSE NULL
+        END AS salary,
+        p.startdate AS internship_start,
+        p.enddate AS internship_end,
+        GREATEST(0.0, {position_weight_sql('p')}) AS position_weight,
+        GREATEST(0.0, {position_weight_sql('p')}) * COALESCE(g.education_weight, 1.0) AS final_weight
+    FROM grads g
+    JOIN {POSITION_TABLE} p
+      ON g.user_id = p.user_id
+     AND p.startdate BETWEEN DATEADD('year', -3, g.grad_date) AND DATEADD('month', 6, g.grad_date)
+     AND p.startdate <= CURRENT_DATE()
+     AND {_internship_signal_sql('p')}
+     AND DATEDIFF('day', p.startdate, COALESCE(p.enddate, DATEADD('month', 3, p.startdate))) >= 14
+    LEFT JOIN cpi_u cpi
+      ON LEAST(YEAR(p.startdate), 2025) = cpi.cpi_year
+    LEFT JOIN later_edu le
+      ON g.user_id = le.user_id
+     AND g.unitid = le.unitid
+     AND g.degree = le.degree
+     AND g.grad_year = le.grad_year
+     AND COALESCE(g.cip4, '') = COALESCE(le.cip4, '')
+     AND le.later_rank = 1
+)
+SELECT *
+FROM internship_positions
+"""
+
+
+def _internship_grads_stacked_sql() -> str:
+    return f"""
+    SELECT
+        SHA2(TO_VARCHAR(g.user_id), 256) AS person_key,
+        CAST(g.unitid AS VARCHAR) AS unitid,
+        g.ipeds_name AS school_name,
+        g.degree,
+        'CIP4' AS cip_level,
+        g.cip4,
+        g.cip_title AS major_title,
+        g.cohort_year AS grad_year,
+        g.cohort_band,
+        COALESCE(le.later_degree_type, '') AS later_degree_type,
+        CASE WHEN le.user_id IS NULL THEN 1 ELSE 0 END AS no_further_education_flag,
+        CASE
+            WHEN g.cohort_year >= 2023 AND g.calibration_ipeds_completions IS NULL
+            THEN COALESCE(rsc.ipeds_calibration_weight, rgc.ipeds_calibration_weight, g.ipeds_calibration_weight, 1.0)
+            ELSE COALESCE(g.ipeds_calibration_weight, 1.0)
+        END AS education_weight
+    FROM {SCRATCH}.SCHOOL_GRADS_CALIBRATED g
+    LEFT JOIN recent_school_cip4_calibration rsc
+      ON CAST(g.unitid AS VARCHAR) = rsc.unitid
+     AND g.degree = rsc.degree
+     AND g.cip4 = rsc.cip4
+    LEFT JOIN recent_global_cip4_calibration rgc
+      ON g.degree = rgc.degree
+     AND g.cip4 = rgc.cip4
+    LEFT JOIN later_edu le
+      ON g.user_id = le.user_id
+     AND CAST(g.unitid AS VARCHAR) = le.unitid
+     AND g.degree = le.degree
+     AND g.cohort_year = le.grad_year
+     AND COALESCE(g.cip4, '') = COALESCE(le.cip4, '')
+     AND le.later_rank = 1
+    WHERE g.cohort_year BETWEEN {INTERNSHIP_START_YEAR} AND {INTERNSHIP_END_YEAR}
+      AND g.cip4 IS NOT NULL
+    UNION ALL
+    SELECT
+        SHA2(TO_VARCHAR(g.user_id), 256) AS person_key,
+        CAST(g.unitid AS VARCHAR) AS unitid,
+        g.ipeds_name AS school_name,
+        g.degree,
+        'ALL' AS cip_level,
+        'ALL' AS cip4,
+        'All majors' AS major_title,
+        g.cohort_year AS grad_year,
+        g.cohort_band,
+        COALESCE(le.later_degree_type, '') AS later_degree_type,
+        CASE WHEN le.user_id IS NULL THEN 1 ELSE 0 END AS no_further_education_flag,
+        CASE
+            WHEN g.cohort_year >= 2023 AND g.calibration_ipeds_completions IS NULL
+            THEN COALESCE(rsc.ipeds_calibration_weight, rgc.ipeds_calibration_weight, g.ipeds_calibration_weight, 1.0)
+            ELSE COALESCE(g.ipeds_calibration_weight, 1.0)
+        END AS education_weight
+    FROM {SCRATCH}.SCHOOL_GRADS_CALIBRATED g
+    LEFT JOIN recent_school_cip4_calibration rsc
+      ON CAST(g.unitid AS VARCHAR) = rsc.unitid
+     AND g.degree = rsc.degree
+     AND g.cip4 = rsc.cip4
+    LEFT JOIN recent_global_cip4_calibration rgc
+      ON g.degree = rgc.degree
+     AND g.cip4 = rgc.cip4
+    LEFT JOIN later_edu le
+      ON g.user_id = le.user_id
+     AND CAST(g.unitid AS VARCHAR) = le.unitid
+     AND g.degree = le.degree
+     AND g.cohort_year = le.grad_year
+     AND COALESCE(g.cip4, '') = COALESCE(le.cip4, '')
+     AND le.later_rank = 1
+    WHERE g.cohort_year BETWEEN {INTERNSHIP_START_YEAR} AND {INTERNSHIP_END_YEAR}
+"""
+
+
+def _internship_positions_stacked_sql(extra_cols: str = "") -> str:
+    extra = f", {extra_cols}" if extra_cols else ""
+    return f"""
+    SELECT
+        person_key, unitid, school_name, degree,
+        'CIP4' AS cip_level, cip4, major_title,
+        grad_year, cohort_band,
+        COALESCE(later_degree_type, '') AS later_degree_type,
+        COALESCE(no_further_education_flag, 0) AS no_further_education_flag,
+        salary, education_weight, final_weight{extra}
+    FROM {SCRATCH}.SCHOOL_OUTCOMES_INTERNSHIP_BASE
+    WHERE cip4 IS NOT NULL
+    UNION ALL
+    SELECT
+        person_key, unitid, school_name, degree,
+        'ALL' AS cip_level, 'ALL' AS cip4, 'All majors' AS major_title,
+        grad_year, cohort_band,
+        COALESCE(later_degree_type, '') AS later_degree_type,
+        COALESCE(no_further_education_flag, 0) AS no_further_education_flag,
+        salary, education_weight, final_weight{extra}
+    FROM {SCRATCH}.SCHOOL_OUTCOMES_INTERNSHIP_BASE
+"""
+
+
+def _internship_summary_query() -> str:
+    return f"""
+WITH {_recent_calibration_ctes_sql()},
+grad_years AS (
+    SELECT DISTINCT user_id, unitid, degree, cohort_year AS grad_year, cip4, grad_date
+    FROM {SCRATCH}.SCHOOL_GRADS_CALIBRATED
+    WHERE cohort_year BETWEEN {INTERNSHIP_START_YEAR} AND {INTERNSHIP_END_YEAR}
+),
+{_work_later_education_cte_sql('grad_years')},
+grads AS (
+    {_internship_grads_stacked_sql()}
+),
+intern_positions AS (
+    {_internship_positions_stacked_sql()}
+),
+intern_people AS (
+    SELECT
+        unitid, school_name, degree, cip_level, cip4, major_title,
+        grad_year, cohort_band, later_degree_type, no_further_education_flag,
+        person_key,
+        MAX(education_weight) AS intern_weight,
+        SUM(final_weight) AS internship_position_weight,
+        COUNT(*) AS raw_internship_positions
+    FROM intern_positions
+    GROUP BY unitid, school_name, degree, cip_level, cip4, major_title,
+        grad_year, cohort_band, later_degree_type, no_further_education_flag, person_key
+),
+grad_grouped AS (
+    SELECT
+        unitid, school_name, degree, cip_level, cip4, major_title,
+        grad_year, cohort_band, later_degree_type, no_further_education_flag,
+        SUM(education_weight) AS n_alumni,
+        COUNT(DISTINCT person_key) AS raw_alumni
+    FROM grads
+    GROUP BY unitid, school_name, degree, cip_level, cip4, major_title,
+        grad_year, cohort_band, later_degree_type, no_further_education_flag
+),
+intern_grouped AS (
+    SELECT
+        unitid, school_name, degree, cip_level, cip4, major_title,
+        grad_year, cohort_band, later_degree_type, no_further_education_flag,
+        SUM(intern_weight) AS n_interns,
+        COUNT(DISTINCT person_key) AS raw_interns,
+        SUM(internship_position_weight) AS internship_positions,
+        SUM(raw_internship_positions) AS raw_internship_positions
+    FROM intern_people
+    GROUP BY unitid, school_name, degree, cip_level, cip4, major_title,
+        grad_year, cohort_band, later_degree_type, no_further_education_flag
+)
+SELECT
+    g.unitid,
+    g.school_name,
+    g.degree,
+    g.cip_level,
+    g.cip4,
+    g.major_title,
+    g.grad_year,
+    g.cohort_band,
+    g.later_degree_type,
+    g.no_further_education_flag,
+    ROUND(g.n_alumni, 0) AS n_alumni,
+    g.raw_alumni,
+    ROUND(COALESCE(i.n_interns, 0), 0) AS n_interns,
+    COALESCE(i.raw_interns, 0) AS raw_interns,
+    ROUND(COALESCE(i.internship_positions, 0), 0) AS internship_positions,
+    COALESCE(i.raw_internship_positions, 0) AS raw_internship_positions
+FROM grad_grouped g
+LEFT JOIN intern_grouped i
+  ON g.unitid = i.unitid
+ AND g.degree = i.degree
+ AND g.cip_level = i.cip_level
+ AND g.cip4 = i.cip4
+ AND g.grad_year = i.grad_year
+ AND g.later_degree_type = i.later_degree_type
+ AND g.no_further_education_flag = i.no_further_education_flag
+WHERE g.n_alumni >= 1
+"""
+
+
+def _internship_category_query(category_expr: str, category_alias: str) -> str:
+    return f"""
+WITH stacked AS (
+    {_internship_positions_stacked_sql(f"COALESCE(NULLIF({category_expr}, ''), 'Unknown') AS {category_alias}")}
+),
+grouped AS (
+    SELECT
+        unitid, school_name, degree, cip_level, cip4, major_title,
+        grad_year, cohort_band, later_degree_type, no_further_education_flag,
+        {category_alias},
+        ROUND(SUM(final_weight), 0) AS n_internship_positions,
+        COUNT(*) AS raw_n,
+        ROUND(SUM(CASE WHEN salary IS NOT NULL THEN salary * final_weight ELSE 0 END) /
+              NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0), 0) AS mean_salary
+    FROM stacked
+    WHERE {category_alias} <> 'Unknown'
+    GROUP BY unitid, school_name, degree, cip_level, cip4, major_title,
+        grad_year, cohort_band, later_degree_type, no_further_education_flag, {category_alias}
+),
+totals AS (
+    SELECT unitid, degree, cip_level, cip4, grad_year, later_degree_type, no_further_education_flag,
+           SUM(n_internship_positions) AS total_n
+    FROM grouped
+    GROUP BY unitid, degree, cip_level, cip4, grad_year, later_degree_type, no_further_education_flag
+),
+ranked AS (
+    SELECT
+        g.*,
+        ROUND(100 * g.n_internship_positions / NULLIF(t.total_n, 0), 2) AS share_pct,
+        ROW_NUMBER() OVER (
+            PARTITION BY g.unitid, g.degree, g.cip_level, g.cip4, g.grad_year,
+                g.later_degree_type, g.no_further_education_flag
+            ORDER BY g.n_internship_positions DESC, {category_alias}
+        ) AS category_rank
+    FROM grouped g
+    JOIN totals t
+      ON g.unitid = t.unitid
+     AND g.degree = t.degree
+     AND g.cip_level = t.cip_level
+     AND g.cip4 = t.cip4
+     AND g.grad_year = t.grad_year
+     AND g.later_degree_type = t.later_degree_type
+     AND g.no_further_education_flag = t.no_further_education_flag
+)
+SELECT *
+FROM ranked
+WHERE category_rank <= {INTERNSHIP_TOP_N_PER_GROUP}
+"""
+
+
 def _write_work_history_facts(platform_dir: Path) -> dict:
     """Build medium-weight career trajectory facts without exporting raw position history."""
     work_dir = platform_dir / "work_facts"
@@ -2127,6 +2736,8 @@ def _write_work_history_facts(platform_dir: Path) -> dict:
         cur.execute(_work_annual_base_sql())
         print("Creating post-graduation position base in Snowflake...")
         cur.execute(_work_position_base_sql())
+        print("Creating internship position base in Snowflake...")
+        cur.execute(_internship_base_sql())
         print("Creating graduate transition base in Snowflake...")
         cur.execute(_grad_transition_base_sql())
         print("Creating graduate transition benchmark in Snowflake...")
@@ -2144,6 +2755,11 @@ def _write_work_history_facts(platform_dir: Path) -> dict:
         "annual_geography": _work_category_query("annual_geography", "location", "location"),
         "mobility": _work_mobility_query(),
         "employer_tenure": _work_employer_tenure_query(),
+        "internship_summary": _internship_summary_query(),
+        "internship_employers": _internship_category_query("employer", "employer"),
+        "internship_roles": _internship_category_query("role", "role"),
+        "internship_industries": _internship_category_query("industry", "industry"),
+        "internship_geography": _internship_category_query("location", "location"),
         "grad_value_summary": _grad_value_summary_query(),
         "grad_role_transitions": _grad_transition_category_query("role"),
         "grad_industry_transitions": _grad_transition_category_query("industry"),
@@ -2195,6 +2811,7 @@ def run_platform_parquet_export(platform_out_dir: Path | None = None) -> dict:
     print(f"  current_students_fact: {current_students_info['rows']:,} rows")
 
     aggregate_facts = _copy_aggregate_facts(out_dir, platform_dir / "aggregate_facts")
+    _write_postgrad_aggregate_facts(platform_dir / "aggregate_facts", aggregate_facts)
     print(f"  aggregate facts: {len(aggregate_facts):,}")
 
     work_facts = _write_work_history_facts(platform_dir)
