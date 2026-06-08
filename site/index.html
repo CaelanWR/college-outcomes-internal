@@ -6478,7 +6478,7 @@
         $('content').innerHTML = [
           card('Comparison Snapshot', 'compare-overview-stats', 12, false, { export: false, compact: true }),
           card('Career Earnings After Graduation by Major', 'compare-career-earnings', 12, true),
-          card(`Projected Major Mix: Size and Coverage (${majorShareChangePeriodLabel()})`, 'compare-alumni', 6, true, { topControl: true }),
+          card('Projected Major Mix', 'compare-alumni', 6, true, { topControl: true }),
           card(`Median Salary by Major (${salaryHorizon})`, 'compare-salary', 6, true, { topControl: true, horizonControl: true }),
         ].join('');
         drawCompareOverviewStats('compare-overview-stats');
@@ -9070,20 +9070,15 @@
       const changeValues = rows.map(row => Number(row.projected_change_pct || 0));
       const maxAbsChange = Math.max(...changeValues.map(Math.abs), 1);
       const signedPct = value => `${Number(value) >= 0 ? '+' : ''}${Number(value).toFixed(1)} pts`;
-      const projectionLabel = row => {
-        const projected = Number(row.current_students || 0);
-        const coverage = row.current_coverage_pct;
-        const coverageText = Number.isFinite(Number(coverage)) ? `cov ${Number(coverage).toFixed(0)}%` : 'cov n/a';
-        return `${signedPct(row.projected_change_pct)} | proj ${num(projected)} | ${coverageText}`;
-      };
       const traces = [{
         type: 'bar',
         orientation: 'h',
         name: 'Projected change',
         y,
         x: rows.map(row => row.projected_change_pct),
-        text: rows.map(projectionLabel),
+        text: rows.map(row => signedPct(row.projected_change_pct)),
         textposition: 'outside',
+        textfont: { size: 12, color: '#2D426A' },
         cliponaxis: false,
         customdata: rows.map(row => [
           majorName(row),
@@ -9103,7 +9098,12 @@
         },
         hovertemplate: `%{customdata[0]}<br>${majorShareChangePeriodLabel()}<br>Share change: %{customdata[5]:+.1f} pts<br>Projected class share: %{customdata[2]:.1f}%<br>Recent alumni share: %{customdata[4]:.1f}%<br>Projected students: %{customdata[1]:,.0f}<br>Observed current profiles: %{customdata[6]:,.0f}<br>Coverage behind projection: %{customdata[7]:.1f}%<br>Recent alumni: %{customdata[3]:,.0f}<extra></extra>`,
       }];
-      const layout = horizontalBarLayout(id, rows.map(row => ({ label: majorName(row) })), '', { rightMargin: 210 });
+      const layout = horizontalBarLayout(id, rows.map(row => ({ label: majorName(row) })), '', {
+        leftMargin: compactWindow() ? 230 : 330,
+        rightMargin: compactWindow() ? 86 : 128,
+        height: Math.max(380, 210 + rows.length * 64),
+        yAutoMargin: false,
+      });
       Plotly.newPlot(id, traces, {
         ...layout,
         xaxis: {
