@@ -5401,6 +5401,7 @@ def _career_earnings_from_base(con: duckdb.DuckDBPyConnection, filters: QueryReq
 def _career_internships(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
     if not _work_dataset_exists("internship_summary"):
         return {
+            "available": False,
             "summary": {},
             "rates": [],
             "employer_comparison": [],
@@ -5412,6 +5413,7 @@ def _career_internships(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -
         }
     if _work_postgrad_unsupported(filters, "internship_summary"):
         return {
+            "available": False,
             "summary": {},
             "rates": [],
             "employer_comparison": [],
@@ -5563,6 +5565,7 @@ def _career_internships(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -
         )
 
     return {
+        "available": True,
         "summary": summary,
         "rates": rates,
         "employer_comparison": employer_comparison,

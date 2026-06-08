@@ -6301,14 +6301,34 @@
     function renderCareer() {
       const career = state.data.career || {};
       const mobility = career.mobility || {};
-      const internshipSummary = career.internships?.summary || {};
+      const internships = career.internships || {};
+      const internshipSummary = internships.summary || {};
+      const hasInternshipSummary = Boolean(
+        internships.available
+        && (
+          Number(internshipSummary.n_alumni || 0) > 0
+          || Number(internshipSummary.n_interns || 0) > 0
+          || internshipSummary.internship_rate_pct !== null && internshipSummary.internship_rate_pct !== undefined
+        )
+      );
+      const hasInternshipDetail = Boolean(
+        hasInternshipSummary
+        || (internships.employers || []).length
+        || (internships.roles || []).length
+        || (internships.industries || []).length
+        || (internships.conversions || []).length
+      );
+      const hasInternshipCompare = Boolean(
+        (internships.rates || []).length
+        || (internships.employer_comparison || []).length
+      );
       const internshipWindowLabel = internshipSummary.rate_window
         ? `classes of ${internshipSummary.rate_window}`
         : 'recent classes';
       const internshipRateTitle = `Internship Rate (${internshipWindowLabel})`;
       const comparing = state.selectionMode === 'compare' || state.selectionMode === 'major_compare';
       const metrics = comparing ? [] : [
-        metric(internshipRateTitle, pct(internshipSummary.internship_rate_pct), 3),
+        ...(hasInternshipSummary ? [metric(internshipRateTitle, pct(internshipSummary.internship_rate_pct), 3)] : []),
         metric('Avg employers by 5 yrs', mobility.avg_employers_5yr ?? '—', 3),
         metric('First employer retention 5 yrs', pct(mobility.first_employer_retention_5yr_pct), 3),
         metric('Superstar paths', num((career.superstars || []).length), 3),
@@ -6321,7 +6341,7 @@
           ...(comparing ? [] : [
             card('Employer Share by Years After Graduation', 'career-employer-share', 12, true, { topControl: true }),
           ]),
-          ...(comparing ? [
+          ...(comparing && hasInternshipCompare ? [
             card(`${internshipRateTitle} Comparison`, 'career-internship-rates', 5, true, { topControl: true }),
             card('Recent Top Internship Companies by Comparison', 'career-internship-employers', 7, true, { topControl: true }),
           ] : []),
@@ -6330,29 +6350,31 @@
         if (comparing) drawCareerAverageSeniority('career-seniority');
         else drawCareerSeniority('career-seniority');
         if (!comparing) drawCareerEmployerShare('career-employer-share');
-        if (comparing) {
+        if (comparing && hasInternshipCompare) {
           drawCareerInternshipRates('career-internship-rates');
           drawCareerInternshipEmployers('career-internship-employers');
         }
       } else {
         $('content').innerHTML = [
           ...metrics,
-          ...(comparing ? [
-            card(`${internshipRateTitle} Comparison`, 'career-internship-rates', 5, true, { topControl: true }),
-            card('Recent Top Internship Companies by Comparison', 'career-internship-employers', 7, true, { topControl: true }),
-          ] : [
-            card('Employer Pay and Progression', 'career-employer-tenure', 6, true, { topControl: true }),
-            card('Superstar Alumni Paths', 'career-superstars', 6, false, { topControl: true, export: false }),
-            card('Internships That Became Jobs', 'career-internships', 12, false, { topControl: true, export: false }),
-          ]),
+          ...(comparing
+            ? (hasInternshipCompare ? [
+              card(`${internshipRateTitle} Comparison`, 'career-internship-rates', 5, true, { topControl: true }),
+              card('Recent Top Internship Companies by Comparison', 'career-internship-employers', 7, true, { topControl: true }),
+            ] : [])
+            : [
+              card('Employer Pay and Progression', 'career-employer-tenure', 6, true, { topControl: true }),
+              card('Superstar Alumni Paths', 'career-superstars', 6, false, { topControl: true, export: false }),
+              ...(hasInternshipDetail ? [card('Internships That Became Jobs', 'career-internships', 12, false, { topControl: true, export: false })] : []),
+            ]),
         ].join('');
-        if (comparing) {
+        if (comparing && hasInternshipCompare) {
           drawCareerInternshipRates('career-internship-rates');
           drawCareerInternshipEmployers('career-internship-employers');
         } else {
           drawCareerEmployerTenure('career-employer-tenure');
           drawCareerSuperstars('career-superstars');
-          drawCareerInternships('career-internships');
+          if (hasInternshipDetail) drawCareerInternships('career-internships');
         }
       }
     }
