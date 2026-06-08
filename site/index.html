@@ -1003,6 +1003,7 @@
       display: block;
       font-size: 0.98rem;
       color: var(--ink);
+      overflow-wrap: anywhere;
     }
 
     .career-model-stats span {
@@ -1012,6 +1013,106 @@
       font-weight: 900;
       letter-spacing: 0.04em;
       text-transform: uppercase;
+    }
+
+    .graduate-value-panel {
+      display: grid;
+      grid-template-columns: 0.95fr 1.15fr;
+      gap: 18px;
+      align-items: stretch;
+      min-height: 300px;
+    }
+
+    .graduate-value-hero {
+      border-radius: 24px;
+      background:
+        radial-gradient(circle at 84% 14%, rgba(72,235,143,0.18), transparent 30%),
+        linear-gradient(150deg, var(--navy-dark), var(--navy));
+      color: white;
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      box-shadow: 0 18px 34px rgba(45,66,106,0.18);
+    }
+
+    .graduate-value-hero strong {
+      display: block;
+      font-size: clamp(2.05rem, 4vw, 4.3rem);
+      line-height: 0.95;
+      letter-spacing: -0.04em;
+    }
+
+    .graduate-value-hero span {
+      display: block;
+      margin-top: 8px;
+      color: rgba(255,255,255,0.78);
+      font-size: 0.78rem;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .graduate-value-hero p {
+      margin: 18px 0 0;
+      color: rgba(255,255,255,0.84);
+      font-size: 0.95rem;
+      line-height: 1.35;
+      font-weight: 750;
+    }
+
+    .graduate-value-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      align-content: stretch;
+    }
+
+    .graduate-value-stat {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255,255,255,0.82);
+      padding: 14px;
+      min-width: 0;
+    }
+
+    .graduate-value-stat strong {
+      display: block;
+      color: var(--ink);
+      font-size: 1.24rem;
+      line-height: 1.05;
+    }
+
+    .graduate-value-stat span {
+      display: block;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.7rem;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .graduate-value-stat.wide {
+      grid-column: span 3;
+    }
+
+    .graduate-value-bar {
+      position: relative;
+      height: 12px;
+      margin-top: 12px;
+      border-radius: 999px;
+      background: rgba(151,164,185,0.22);
+      overflow: hidden;
+    }
+
+    .graduate-value-bar i {
+      position: absolute;
+      inset: 0 auto 0 0;
+      display: block;
+      width: var(--bar-width, 0%);
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--green), var(--sky));
     }
 
     .internship-panel {
@@ -2624,6 +2725,9 @@
       .metric, .card { padding: 18px; }
       .salary-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .career-model-grid { grid-template-columns: 1fr; }
+      .graduate-value-panel { grid-template-columns: 1fr; }
+      .graduate-value-grid { grid-template-columns: 1fr; }
+      .graduate-value-stat.wide { grid-column: span 1; }
       .internship-panel,
       .internship-panel.with-conversions { grid-template-columns: 1fr; }
       select[multiple] { min-height: 92px; }
@@ -3010,6 +3114,7 @@
       destinationLeftType: destinationTypeInitial.leftType,
       destinationRightType: destinationTypeInitial.rightType,
       destinationHorizon: storage.getItem('outcomes.destinationHorizon') || 'all',
+      geographyHorizon: storage.getItem('outcomes.geographyHorizon') || 'all',
       destinationLeftPath: [],
       destinationRightPath: [],
       topNByChart: {},
@@ -3050,6 +3155,10 @@
       { value: '1yr', label: '1 yr' },
       { value: '5yr', label: '5 yr' },
       { value: '10yr', label: '10 yr' },
+    ];
+    const GEOGRAPHY_HORIZON_OPTIONS = [
+      { value: 'all', label: 'All grads' },
+      ...HORIZON_OPTIONS,
     ];
     const REQUEST_TOP_N = Math.max(...TOP_N_OPTIONS);
     const DASHBOARD_CACHE_LIMIT = 120;
@@ -3446,6 +3555,34 @@
         'early_2025': compact ? '2025 early' : '2025 early earnings',
       };
       return labels[horizon] || horizon;
+    }
+
+    function yearSpanLabel(years, fallback = 'selected years') {
+      const cleanYears = [...new Set((years || []).map(Number).filter(Number.isFinite))].sort((a, b) => a - b);
+      if (!cleanYears.length) return fallback;
+      if (cleanYears.length === 1) return `class of ${cleanYears[0]}`;
+      return `classes of ${cleanYears[0]}-${cleanYears[cleanYears.length - 1]}`;
+    }
+
+    function currentStudentYears() {
+      return [...new Set((state.data.current_student_trend_by_major || [])
+        .map(row => Number(row.grad_year))
+        .filter(Number.isFinite))]
+        .sort((a, b) => a - b);
+    }
+
+    function currentStudentComparisonYears() {
+      const years = currentStudentYears();
+      return years.length ? [years[years.length - 1]] : [];
+    }
+
+    function currentStudentYearSpanLabel(years = currentStudentComparisonYears()) {
+      return yearSpanLabel(years, 'projected classes');
+    }
+
+    function majorShareChangePeriodLabel() {
+      const recent = recentAlumniShareStats();
+      return `${yearSpanLabel(recent.years, 'recent alumni classes')} to ${currentStudentYearSpanLabel(currentStudentComparisonYears())}`;
     }
 
     function currentFilters(extra = {}) {
@@ -5276,6 +5413,28 @@
       return `<span class="chart-horizon-control" aria-label="Years after graduation">${buttons}</span>`;
     }
 
+    function geographyHorizonControl() {
+      const current = state.geographyHorizon || 'all';
+      const buttons = GEOGRAPHY_HORIZON_OPTIONS.map(option => (
+        `<button type="button" data-geography-horizon="${option.value}" class="${option.value === current ? 'active' : ''}">${option.label}</button>`
+      )).join('');
+      return `<span class="chart-horizon-control" aria-label="Geography years out">${buttons}</span>`;
+    }
+
+    function geographyHorizonLabel(compact = false) {
+      if ((state.geographyHorizon || 'all') === 'all') return compact ? 'All grads' : 'All graduates';
+      return activeHorizonLabel(compact);
+    }
+
+    function geographySharedToolbar() {
+      return `
+        <div class="shared-chart-toolbar span-12">
+          <span class="shared-chart-toolbar-label">City outcomes for</span>
+          ${geographyHorizonControl()}
+        </div>
+      `;
+    }
+
     function sharedHorizonToolbar(label = 'Years after graduation') {
       return `
         <div class="shared-chart-toolbar span-12">
@@ -5720,37 +5879,49 @@
       }
 
       if (state.viewMode === 'snapshot') {
-        $('content').innerHTML = [
+        const showSchoolMajorHeatmap = state.selectionMode === 'compare' && getSelectedMajors(activeAdvancedControls()).length !== 1;
+        const cards = [
           card('Comparison Snapshot', 'compare-overview-stats', 12, false, { export: false, compact: true }),
           card(`Career Earnings After Graduation by ${entity}`, 'compare-career-earnings', 12, true),
-          card('Top Majors by School', 'school-major-heatmap', 12, true, { topControl: true }),
           card(`Alumni Count by ${entity}`, 'compare-alumni', 7, true, { topControl: state.selectionMode === 'major_compare' }),
           card(`${entity} Comparison Table`, 'compare-table', 5, true),
-        ].join('');
+        ];
+        if (showSchoolMajorHeatmap) {
+          cards.splice(2, 0, card('Top Majors by School', 'school-major-heatmap', 12, true, { topControl: true }));
+        }
+        $('content').innerHTML = cards.join('');
         drawCompareOverviewStats('compare-overview-stats');
         drawCareerEarnings('compare-career-earnings');
-        drawSchoolComparisonHeatmap('school-major-heatmap', state.data.school_major_comparison || [], {
-          yTitle: 'Major',
-          labelTransform: label => legendLabel(label, 34),
-          hoverLabel: 'Major share',
-        });
+        if (showSchoolMajorHeatmap) {
+          drawSchoolComparisonHeatmap('school-major-heatmap', state.data.school_major_comparison || [], {
+            yTitle: 'Major',
+            labelTransform: label => legendLabel(label, 34),
+            hoverLabel: 'Major share',
+          });
+        }
         drawCompareAlumni('compare-alumni');
         drawCompareTable('compare-table');
       } else {
-        $('content').innerHTML = [
+        const showSchoolMajorHeatmap = state.selectionMode === 'compare' && getSelectedMajors(activeAdvancedControls()).length !== 1;
+        const cards = [
           card('Comparison Snapshot', 'compare-overview-stats', 12, false, { export: false, compact: true }),
           card(`Career Earnings After Graduation by ${entity}`, 'compare-career-earnings', 12, true),
-          card('Top Majors by School', 'school-major-heatmap', 12, true, { topControl: true }),
           card(`Alumni Trend by ${entity}`, 'compare-alumni-trend', 7, true, { topControl: state.selectionMode === 'major_compare' }),
           card(`${entity} Comparison Table`, 'compare-table', 5, true),
-        ].join('');
+        ];
+        if (showSchoolMajorHeatmap) {
+          cards.splice(2, 0, card('Top Majors by School', 'school-major-heatmap', 12, true, { topControl: true }));
+        }
+        $('content').innerHTML = cards.join('');
         drawCompareOverviewStats('compare-overview-stats');
         drawCareerEarnings('compare-career-earnings');
-        drawSchoolComparisonHeatmap('school-major-heatmap', state.data.school_major_comparison || [], {
-          yTitle: 'Major',
-          labelTransform: label => legendLabel(label, 34),
-          hoverLabel: 'Major share',
-        });
+        if (showSchoolMajorHeatmap) {
+          drawSchoolComparisonHeatmap('school-major-heatmap', state.data.school_major_comparison || [], {
+            yTitle: 'Major',
+            labelTransform: label => legendLabel(label, 34),
+            hoverLabel: 'Major share',
+          });
+        }
         drawCompareAlumniTrend('compare-alumni-trend');
         drawCompareTable('compare-table');
       }
@@ -5767,21 +5938,17 @@
             card(`Salary Distributions by Major (${salaryHorizon})`, 'compare-salary-distribution', 12, true, { topControl: true, horizonControl: true }),
             card(`Median Salary by Major (${salaryHorizon})`, 'compare-salary', 6, true, { topControl: true, horizonControl: true }),
             card(`Salary vs Later Education (${salaryHorizon})`, 'major-compare-scatter', 6, true, { horizonControl: true }),
-            card('Major Salary Table', 'compare-table', 12),
           ].join('');
           drawCompareSalaryDistribution('compare-salary-distribution');
           drawMajorCompareSalary('compare-salary');
           drawMajorCompareOutcomeScatter('major-compare-scatter');
-          drawMajorCompareTable('compare-table');
         } else {
           $('content').innerHTML = [
             card(`Salary Trend by Major (${salaryHorizon})`, 'compare-salary-trend', 7, true, { topControl: true, horizonControl: true }),
             card(`Salary Distributions by Major (${salaryHorizon})`, 'compare-salary-distribution', 5, true, { topControl: true, horizonControl: true }),
-            card('Major Salary Table', 'compare-table', 12),
           ].join('');
           drawCompareSalaryTrend('compare-salary-trend');
           drawCompareSalaryDistribution('compare-salary-distribution');
-          drawMajorCompareTable('compare-table');
         }
         return;
       }
@@ -5839,8 +6006,8 @@
         }
         const concentration = state.data.major_concentration || {};
         $('content').innerHTML = [
-          card('City Share by Major', 'major-geo-heatmap', 8, true, { topControl: true }),
-          card('Distinctive City vs All Majors', 'major-geo-concentration', 4, true),
+          card('City Share by Major', 'major-geo-heatmap', 12, true, { topControl: true }),
+          card('Distinctive City vs All Majors', 'major-geo-concentration', 12, false),
           card('City Concentration by Major', 'major-city-concentration', 12, true),
         ].join('');
         drawMajorComparisonHeatmap('major-geo-heatmap', state.data.major_geography_comparison || [], {
@@ -5985,7 +6152,7 @@
         $('content').innerHTML = [
           card('Comparison Snapshot', 'compare-overview-stats', 12, false, { export: false, compact: true }),
           card('Career Earnings After Graduation by Major', 'compare-career-earnings', 12, true),
-          card('Projected Change in Major Share', 'compare-alumni', 6, true, { topControl: true }),
+          card(`Projected Major Mix: Size and Coverage (${majorShareChangePeriodLabel()})`, 'compare-alumni', 6, true, { topControl: true }),
           card(`Median Salary by Major (${salaryHorizon})`, 'compare-salary', 6, true, { topControl: true, horizonControl: true }),
         ].join('');
         drawCompareOverviewStats('compare-overview-stats');
@@ -6184,14 +6351,17 @@
     function renderOverview() {
       const o = state.data.overview || {};
       if (state.viewMode === 'snapshot') {
+        const hasMajor = Boolean($('major-select')?.value);
         $('content').innerHTML = [
           ...overviewMetrics(o),
           card('Top Majors in Current Slice', 'overview-major-bars', 6, true, { topControl: true }),
           card('Top Career Employers', 'employer-bars', 6, true, { topControl: true }),
+          ...(!hasMajor ? [card(`Major Pay Premium vs Projected Share Change (${majorShareChangePeriodLabel()})`, 'major-momentum-pay', 12, true, { topControl: true, horizonControl: true })] : []),
           card('Top Cities by Alumni Share', 'overview-geo', 12, false, { topControl: true }),
         ].join('');
         drawTopMajorsVolume('overview-major-bars');
         drawEmployerBars('employer-bars');
+        if (!hasMajor) drawMajorMomentumPayBubble('major-momentum-pay');
         drawGeo('overview-geo', 'share_pct', state.data.geography_all_alumni || state.data.geography || []);
       } else {
         $('content').innerHTML = [
@@ -6311,6 +6481,8 @@
       const career = state.data.career || {};
       const mobility = career.mobility || {};
       const internships = career.internships || {};
+      const graduateValue = career.graduate_value || {};
+      const graduateTransitions = career.graduate_transitions || {};
       const internshipSummary = internships.summary || {};
       const hasInternshipSummary = Boolean(
         internships.available
@@ -6336,11 +6508,17 @@
         : 'recent classes';
       const internshipRateTitle = `Internship Rate (${internshipWindowLabel})`;
       const comparing = state.selectionMode === 'compare' || state.selectionMode === 'major_compare';
+      const hasGraduateValue = Boolean(graduateValue.available && graduateValue.primary && Object.keys(graduateValue.primary).length);
+      const hasRoleTransitions = Boolean(graduateTransitions.available && (graduateTransitions.roles || []).length);
+      const hasIndustryTransitions = Boolean(graduateTransitions.available && (graduateTransitions.industries || []).length);
+      const hasCareerModels = Boolean((career.archetypes || []).length);
+      const hasHighUpsidePaths = Boolean((career.superstars || []).length);
       const metrics = comparing ? [] : [
         ...(hasInternshipSummary ? [metric(internshipRateTitle, pct(internshipSummary.internship_rate_pct), 3)] : []),
+        ...(hasGraduateValue ? [metric('Grad school salary lift', money(graduateValue.primary.salary_lift_dollars), 3)] : []),
         metric('Avg employers by 5 yrs', mobility.avg_employers_5yr ?? '—', 3),
         metric('First employer retention 5 yrs', pct(mobility.first_employer_retention_5yr_pct), 3),
-        metric('Superstar paths', num((career.superstars || []).length), 3),
+        ...(state.viewMode === 'snapshot' && hasHighUpsidePaths ? [metric('High-upside paths', num((career.superstars || []).length), 3)] : []),
       ];
       if (state.viewMode === 'overtime') {
         $('content').innerHTML = [
@@ -6372,8 +6550,12 @@
               card('Recent Top Internship Companies by Comparison', 'career-internship-employers', 7, true, { topControl: true }),
             ] : [])
             : [
+              ...(hasGraduateValue ? [card('Graduate Value', 'career-graduate-value', 12, false, { export: false })] : []),
+              ...(hasRoleTransitions ? [card('Graduate Role Transitions', 'career-grad-role-transitions', 6, true)] : []),
+              ...(hasIndustryTransitions ? [card('Graduate Industry Transitions', 'career-grad-industry-transitions', 6, true)] : []),
+              ...(hasCareerModels ? [card('Common Career Paths', 'career-models', 12, false, { topControl: true, export: false })] : []),
               card('Employer Pay and Progression', 'career-employer-tenure', 6, true, { topControl: true }),
-              card('Superstar Alumni Paths', 'career-superstars', 6, false, { topControl: true, export: false }),
+              ...(hasHighUpsidePaths ? [card('High-Upside Alumni Paths', 'career-superstars', 6, false, { topControl: true, export: false })] : []),
               ...(hasInternshipDetail ? [card('Internships That Became Jobs', 'career-internships', 12, false, { topControl: true, export: false })] : []),
             ]),
         ].join('');
@@ -6381,11 +6563,138 @@
           drawCareerInternshipRates('career-internship-rates');
           drawCareerInternshipEmployers('career-internship-employers');
         } else {
+          if (hasGraduateValue) drawGraduateValue('career-graduate-value');
+          if (hasRoleTransitions) drawGraduateTransitionMap('career-grad-role-transitions', 'roles');
+          if (hasIndustryTransitions) drawGraduateTransitionMap('career-grad-industry-transitions', 'industries');
+          if (hasCareerModels) drawCareerModels('career-models');
           drawCareerEmployerTenure('career-employer-tenure');
-          drawCareerSuperstars('career-superstars');
+          if (hasHighUpsidePaths) drawCareerSuperstars('career-superstars');
           if (hasInternshipDetail) drawCareerInternships('career-internships');
         }
       }
+    }
+
+    function graduateValueSentence(row) {
+      const year = Number(row.years_after_degree || 0);
+      const lift = Number(row.salary_lift_dollars || 0);
+      const observed = row.observed_salary_growth_pct;
+      const expected = row.expected_salary_growth_pct;
+      const direction = lift >= 0 ? 'above' : 'below';
+      const yearLabel = year ? `${year} years after the graduate degree` : 'after the graduate degree';
+      return `${yearLabel}, observed pay is ${money(Math.abs(lift))} ${direction} the benchmark path. Observed growth is ${pct(observed)} versus ${pct(expected)} expected.`;
+    }
+
+    function drawGraduateValue(id) {
+      const graduateValue = state.data.career?.graduate_value || {};
+      const row = graduateValue.primary || {};
+      if (!graduateValue.available || !Object.keys(row).length) return noDataMessage(id, graduateValue.reason);
+      const maxChange = Math.max(
+        1,
+        Number(row.role_change_pct || 0),
+        Number(row.industry_change_pct || 0),
+        Number(row.employer_change_pct || 0),
+      );
+      const changeStat = (label, value) => {
+        const width = Math.max(2, Math.min(100, (Number(value || 0) / maxChange) * 100));
+        return `
+          <div class="graduate-value-stat">
+            <strong>${pct(value)}</strong>
+            <span>${escapeHtml(label)}</span>
+            <div class="graduate-value-bar"><i style="--bar-width:${width}%"></i></div>
+          </div>
+        `;
+      };
+      $(id).innerHTML = `
+        <div class="graduate-value-panel">
+          <div class="graduate-value-hero">
+            <strong>${money(row.salary_lift_dollars)}</strong>
+            <span>Lift above benchmark</span>
+            <p>${escapeHtml(graduateValueSentence(row))}</p>
+          </div>
+          <div class="graduate-value-grid">
+            <div class="graduate-value-stat">
+              <strong>${money(row.avg_salary_before)}</strong>
+              <span>Salary before</span>
+            </div>
+            <div class="graduate-value-stat">
+              <strong>${money(row.expected_salary_after)}</strong>
+              <span>Expected after</span>
+            </div>
+            <div class="graduate-value-stat">
+              <strong>${money(row.avg_salary_after)}</strong>
+              <span>Observed after</span>
+            </div>
+            <div class="graduate-value-stat">
+              <strong>${pct(row.observed_salary_growth_pct)}</strong>
+              <span>Observed growth</span>
+            </div>
+            <div class="graduate-value-stat">
+              <strong>${pct(row.expected_salary_growth_pct)}</strong>
+              <span>Expected growth</span>
+            </div>
+            <div class="graduate-value-stat">
+              <strong>${Number(row.seniority_lift || 0).toFixed(2)}</strong>
+              <span>Seniority lift</span>
+            </div>
+            ${changeStat('Role changed', row.role_change_pct)}
+            ${changeStat('Industry changed', row.industry_change_pct)}
+            ${changeStat('Employer changed', row.employer_change_pct)}
+          </div>
+        </div>
+      `;
+    }
+
+    function drawGraduateTransitionMap(id, kind) {
+      const rows = ((state.data.career?.graduate_transitions || {})[kind] || []).slice(0, topNFor(id));
+      if (!rows.length) return noData(id);
+      const preLabels = [...new Set(rows.map(row => row.pre_label).filter(Boolean))];
+      const postLabels = [...new Set(rows.map(row => row.post_label).filter(Boolean))];
+      const labels = [
+        ...preLabels.map(label => `Before: ${legendLabel(label, 28)}`),
+        ...postLabels.map(label => `After: ${legendLabel(label, 28)}`),
+      ];
+      const postOffset = preLabels.length;
+      const salaryDeltas = rows.map(row => Number(row.salary_delta || 0)).filter(Number.isFinite);
+      const maxAbsDelta = Math.max(1, ...salaryDeltas.map(value => Math.abs(value)));
+      const linkColor = value => {
+        const alpha = 0.28 + (Math.min(1, Math.abs(Number(value || 0)) / maxAbsDelta) * 0.42);
+        if (Number(value || 0) > 0) return `rgba(72, 169, 112, ${alpha})`;
+        if (Number(value || 0) < 0) return `rgba(230, 91, 122, ${alpha})`;
+        return 'rgba(93, 159, 213, 0.32)';
+      };
+      const year = rows.find(row => row.years_after_degree !== null && row.years_after_degree !== undefined)?.years_after_degree;
+      Plotly.newPlot(id, [{
+        type: 'sankey',
+        arrangement: 'snap',
+        node: {
+          pad: 14,
+          thickness: 16,
+          line: { color: 'rgba(45,66,106,0.18)', width: 0.8 },
+          label: labels,
+          color: labels.map((_, idx) => idx < postOffset ? 'rgba(72,175,244,0.72)' : 'rgba(72,235,143,0.72)'),
+        },
+        link: {
+          source: rows.map(row => preLabels.indexOf(row.pre_label)),
+          target: rows.map(row => postOffset + postLabels.indexOf(row.post_label)),
+          value: rows.map(row => Math.max(0.1, Number(row.n_alumni || 0))),
+          color: rows.map(row => linkColor(row.salary_delta)),
+          customdata: rows.map(row => [row.pre_label, row.post_label, row.share_pct, row.salary_delta, row.seniority_delta, row.n_alumni]),
+          hovertemplate: '%{customdata[0]} → %{customdata[1]}<br>%{customdata[2]:.1f}% of transitions<br>Pay change %{customdata[3]:$,.0f}<br>Stage change %{customdata[4]:+.2f}<extra></extra>',
+        },
+      }], {
+        ...layoutBase,
+        height: 470,
+        margin: { ...layoutBase.margin, l: 10, r: 10, t: 22, b: 42 },
+        annotations: year ? [{
+          text: `${year} years after graduate degree`,
+          xref: 'paper',
+          yref: 'paper',
+          x: 0.5,
+          y: -0.06,
+          showarrow: false,
+          font: { color: THEME.muted, size: 12 },
+        }] : [],
+      }, plotConfig);
     }
 
     function drawCareerEarnings(id) {
@@ -6735,17 +7044,17 @@
       if (growth >= 1.8) return 'Fast earnings growth';
       if (seniority >= 6) return 'Senior leadership path';
       if (salary >= 220000) return 'High-earning path';
-      return 'Superstar outcome';
+      return 'High-upside outcome';
     }
 
     function drawCareerSuperstars(id) {
       const rows = (state.data.career?.superstars || []).slice(0, topNFor(id));
-      if (!rows.length) return drawCareerModels(id);
+      if (!rows.length) return noData(id);
       $(id).innerHTML = `
         <div class="career-model-grid">
           ${rows.map((row, idx) => `
             <div class="career-model-card">
-              <h4>Anonymous superstar ${idx + 1}</h4>
+              <h4>High-upside path ${idx + 1}</h4>
               <div class="career-model-subtitle">${escapeHtml([row.major_title, row.grad_year ? `Class of ${row.grad_year}` : ''].filter(Boolean).join(' · '))}</div>
               <div class="career-model-path">
                 <div class="career-model-step"><span>1 year</span>${escapeHtml(careerStep(row.employer_1yr, row.role_1yr))}</div>
@@ -6874,6 +7183,8 @@
 
     function renderGeography() {
       const salaryHorizon = activeHorizonLabel();
+      const geoHorizon = state.geographyHorizon || 'all';
+      const geoHorizonLabel = geographyHorizonLabel();
       if (state.viewMode === 'snapshot') {
         $('content').innerHTML = [
           card('Top Cities by Alumni Share (All Alumni)', 'geo-share', 7, true, { topControl: true }),
@@ -6882,18 +7193,29 @@
         drawGeo('geo-share', 'share_pct', state.data.geography_all_alumni || state.data.geography || []);
         drawGeo('geo-salary', 'median_salary');
       } else {
+        const allGrads = geoHorizon === 'all';
+        const trendRows = allGrads ? (state.data.geography_all_alumni_trend || []) : (state.data.geography_trend || []);
         $('content').innerHTML = [
-          sharedHorizonToolbar('New grad years after graduation'),
-          card(`New Grad City Share Over Time (${salaryHorizon})`, 'geo-share-trend', 7, true, { topControl: true }),
-          card(`Current City Earnings (${salaryHorizon})`, 'geo-salary', 5, true, { topControl: true }),
+          geographySharedToolbar(),
+          card(
+            allGrads ? 'City Share Over Time (All grads)' : `New Grad City Share Over Time (${geoHorizonLabel})`,
+            'geo-share-trend',
+            allGrads ? 12 : 7,
+            true,
+            { topControl: true },
+          ),
+          ...(allGrads
+            ? [card('Top Cities by Alumni Share (All Alumni)', 'geo-share', 12, true, { topControl: true })]
+            : [card(`Current City Earnings (${salaryHorizon})`, 'geo-salary', 5, true, { topControl: true })]),
         ].join('');
-        drawTrendLines('geo-share-trend', state.data.geography_trend || [], 'location', 'share_pct', {
+        drawTrendLines('geo-share-trend', trendRows, 'location', 'share_pct', {
           yTitle: 'Share of alumni',
           suffix: '%',
           hover: '%{y:.1f}%',
           labelTransform: titleCase,
         });
-        drawGeo('geo-salary', 'median_salary');
+        if (allGrads) drawGeo('geo-share', 'share_pct', state.data.geography_all_alumni || state.data.geography || []);
+        else drawGeo('geo-salary', 'median_salary');
       }
     }
 
@@ -7478,7 +7800,8 @@
         x: currentRows.map(r => r.grad_year),
         y: currentRows.map(r => r.current_students),
         marker: { color: 'rgba(93, 218, 147, 0.72)' },
-        hovertemplate: 'Class of %{x}<br>%{y:,.0f} current students<extra></extra>',
+        customdata: currentRows.map(r => [r.observed_current_profiles, r.current_coverage_pct]),
+        hovertemplate: 'Class of %{x}<br>%{y:,.0f} projected students<br>%{customdata[0]:,.0f} observed profiles<br>%{customdata[1]:.1f}% coverage<extra></extra>',
       });
       Plotly.newPlot(id, traces, {
         ...layoutBase,
@@ -8306,7 +8629,14 @@
     }
 
     function drawMajorCompareAlumni(id) {
-      const { currentTotalsByCode, totalCurrentStudents } = majorCurrentDemandStats();
+      const comparisonYears = currentStudentComparisonYears();
+      const {
+        currentTotalsByCode,
+        observedCurrentByCode,
+        totalCurrentStudents,
+        totalObservedCurrentProfiles,
+      } = majorCurrentDemandStats({ years: comparisonYears });
+      const recent = recentAlumniShareStats();
       const hasCurrentStudents = totalCurrentStudents > 0;
       if (!hasCurrentStudents) {
         $(id).innerHTML = '<div class="empty">No projected current-student data for this major comparison.</div>';
@@ -8315,14 +8645,26 @@
       const rows = (state.data.major_comparison || [])
         .filter(row => row.alumni_share_pct || currentTotalsByCode.has(String(row.code)))
         .map(row => {
+          const code = String(row.code);
           const currentStudents = currentTotalsByCode.get(String(row.code)) || 0;
+          const observedCurrentProfiles = observedCurrentByCode.get(String(row.code)) || 0;
+          const currentCoveragePct = currentStudents > 0
+            ? Math.min(100, 100 * observedCurrentProfiles / currentStudents)
+            : null;
           const currentSharePct = 100 * currentStudents / totalCurrentStudents;
-          const alumniSharePct = Number(row.alumni_share_pct || 0);
+          const recentAlumni = recent.alumniByCode.get(code);
+          const alumniSharePct = recent.shareByCode.has(code)
+            ? recent.shareByCode.get(code)
+            : Number(row.alumni_share_pct || 0);
           const projectedChangePct = Number(currentSharePct || 0) - alumniSharePct;
           return {
             ...row,
+            recent_alumni: recentAlumni ?? row.alumni,
             current_students: currentStudents || null,
+            observed_current_profiles: observedCurrentProfiles || null,
+            current_coverage_pct: currentCoveragePct,
             current_share_pct: currentSharePct,
+            recent_alumni_share_pct: alumniSharePct,
             projected_change_pct: projectedChangePct,
             display_change_pct: Math.abs(projectedChangePct),
           };
@@ -8336,35 +8678,45 @@
       const changeValues = rows.map(row => Number(row.projected_change_pct || 0));
       const maxAbsChange = Math.max(...changeValues.map(Math.abs), 1);
       const signedPct = value => `${Number(value) >= 0 ? '+' : ''}${Number(value).toFixed(1)} pts`;
+      const projectionLabel = row => {
+        const projected = Number(row.current_students || 0);
+        const coverage = row.current_coverage_pct;
+        const coverageText = Number.isFinite(Number(coverage)) ? `cov ${Number(coverage).toFixed(0)}%` : 'cov n/a';
+        return `${signedPct(row.projected_change_pct)} | proj ${num(projected)} | ${coverageText}`;
+      };
       const traces = [{
         type: 'bar',
         orientation: 'h',
         name: 'Projected change',
         y,
         x: rows.map(row => row.projected_change_pct),
-        text: rows.map(row => signedPct(row.projected_change_pct)),
+        text: rows.map(projectionLabel),
         textposition: 'outside',
         cliponaxis: false,
         customdata: rows.map(row => [
           majorName(row),
           row.current_students,
           row.current_share_pct,
-          row.alumni,
-          row.alumni_share_pct,
+          row.recent_alumni,
+          row.recent_alumni_share_pct,
           row.projected_change_pct,
+          row.observed_current_profiles,
+          row.current_coverage_pct,
+          totalObservedCurrentProfiles,
+          totalCurrentStudents,
         ]),
         marker: {
           color: rows.map(row => Number(row.projected_change_pct || 0) >= 0 ? '#5bd58f' : '#e66386'),
           line: { color: '#fff', width: 1.2 },
         },
-        hovertemplate: '%{customdata[0]}<br>Projected change: %{customdata[5]:+.1f} pts<br>Projected share: %{customdata[2]:.1f}%<br>Alumni share: %{customdata[4]:.1f}%<br>Projected students: %{customdata[1]:,.0f}<extra></extra>',
+        hovertemplate: `%{customdata[0]}<br>${majorShareChangePeriodLabel()}<br>Share change: %{customdata[5]:+.1f} pts<br>Projected class share: %{customdata[2]:.1f}%<br>Recent alumni share: %{customdata[4]:.1f}%<br>Projected students: %{customdata[1]:,.0f}<br>Observed current profiles: %{customdata[6]:,.0f}<br>Coverage behind projection: %{customdata[7]:.1f}%<br>Recent alumni: %{customdata[3]:,.0f}<extra></extra>`,
       }];
-      const layout = horizontalBarLayout(id, rows.map(row => ({ label: majorName(row) })), '%', { rightMargin: 118 });
+      const layout = horizontalBarLayout(id, rows.map(row => ({ label: majorName(row) })), '', { rightMargin: 210 });
       Plotly.newPlot(id, traces, {
         ...layout,
         xaxis: {
           ...layout.xaxis,
-          title: 'Projected change in share of class',
+          title: 'Projected class share minus recent alumni share',
           ticksuffix: ' pts',
           zeroline: true,
           zerolinecolor: '#a9b4c4',
@@ -8375,20 +8727,177 @@
       }, plotConfig);
     }
 
-    function majorCurrentDemandStats() {
+    function majorCurrentDemandStats(options = {}) {
+      const allowedYears = options.years && options.years.length
+        ? new Set(options.years.map(year => String(year)))
+        : null;
       const currentTotalsByCode = new Map();
+      const observedCurrentByCode = new Map();
       const currentTotalsByYear = new Map();
+      const observedTotalsByYear = new Map();
       (state.data.current_student_trend_by_major || []).forEach(row => {
+        const year = String(row.grad_year || '');
+        if (allowedYears && !allowedYears.has(year)) return;
         const code = String(row.code || row.title || '');
         if (!code) return;
         currentTotalsByCode.set(code, (currentTotalsByCode.get(code) || 0) + Number(row.current_students || 0));
-        const year = String(row.grad_year || '');
+        observedCurrentByCode.set(code, (observedCurrentByCode.get(code) || 0) + Number(row.observed_current_profiles || 0));
         if (year && row.total_current_students !== null && row.total_current_students !== undefined) {
           currentTotalsByYear.set(year, Math.max(Number(row.total_current_students || 0), currentTotalsByYear.get(year) || 0));
         }
+        if (year && row.total_observed_current_profiles !== null && row.total_observed_current_profiles !== undefined) {
+          observedTotalsByYear.set(year, Math.max(Number(row.total_observed_current_profiles || 0), observedTotalsByYear.get(year) || 0));
+        }
       });
       const totalCurrentStudents = [...currentTotalsByYear.values()].reduce((total, value) => total + Number(value || 0), 0);
-      return { currentTotalsByCode, totalCurrentStudents };
+      const totalObservedCurrentProfiles = [...observedTotalsByYear.values()].reduce((total, value) => total + Number(value || 0), 0);
+      return {
+        currentTotalsByCode,
+        observedCurrentByCode,
+        totalCurrentStudents,
+        totalObservedCurrentProfiles,
+      };
+    }
+
+    function recentAlumniShareStats() {
+      const rows = state.data.alumni_trend_by_major || [];
+      const years = [...new Set(rows.map(row => Number(row.grad_year)).filter(Number.isFinite))]
+        .sort((a, b) => a - b)
+        .slice(-5);
+      const yearSet = new Set(years.map(String));
+      const alumniByCode = new Map();
+      const totalsByYear = new Map();
+      rows.forEach(row => {
+        const year = String(row.grad_year || '');
+        if (!yearSet.has(year)) return;
+        const code = String(row.code || row.title || '');
+        if (!code) return;
+        alumniByCode.set(code, (alumniByCode.get(code) || 0) + Number(row.alumni || 0));
+        if (row.total_alumni !== null && row.total_alumni !== undefined) {
+          totalsByYear.set(year, Math.max(Number(row.total_alumni || 0), totalsByYear.get(year) || 0));
+        }
+      });
+      const totalAlumni = [...totalsByYear.values()].reduce((total, value) => total + Number(value || 0), 0);
+      const shareByCode = new Map();
+      alumniByCode.forEach((value, code) => {
+        if (totalAlumni > 0) shareByCode.set(code, 100 * Number(value || 0) / totalAlumni);
+      });
+      return { years, alumniByCode, shareByCode, totalAlumni };
+    }
+
+    function drawMajorMomentumPayBubble(id) {
+      const comparisonYears = currentStudentComparisonYears();
+      const {
+        currentTotalsByCode,
+        observedCurrentByCode,
+        totalCurrentStudents,
+      } = majorCurrentDemandStats({ years: comparisonYears });
+      const recent = recentAlumniShareStats();
+      const baselineSalary = Number(state.data.overview?.median_salary || state.data.overview?.weighted_mean_salary || 0);
+      if (!totalCurrentStudents || !recent.totalAlumni || !baselineSalary) return noData(id);
+      const rows = (state.data.top_majors || [])
+        .map(row => {
+          const code = String(row.code || '');
+          const projectedStudents = currentTotalsByCode.get(code) || 0;
+          const observedProfiles = observedCurrentByCode.get(code) || 0;
+          const projectedSharePct = totalCurrentStudents > 0 ? 100 * projectedStudents / totalCurrentStudents : null;
+          const recentSharePct = recent.shareByCode.has(code)
+            ? recent.shareByCode.get(code)
+            : null;
+          const salary = Number(row.median_salary || row.weighted_mean_salary || 0);
+          const salaryPremium = salary && baselineSalary ? salary - baselineSalary : null;
+          const coveragePct = projectedStudents > 0 ? Math.min(100, 100 * observedProfiles / projectedStudents) : null;
+          return {
+            ...row,
+            code,
+            projected_students: projectedStudents,
+            observed_current_profiles: observedProfiles,
+            projected_share_pct: projectedSharePct,
+            recent_alumni_share_pct: recentSharePct,
+            share_change_pct: projectedSharePct !== null && recentSharePct !== null ? projectedSharePct - recentSharePct : null,
+            salary_value: salary,
+            salary_premium: salaryPremium,
+            current_coverage_pct: coveragePct,
+          };
+        })
+        .filter(row =>
+          row.code
+          && Number.isFinite(Number(row.share_change_pct))
+          && Number.isFinite(Number(row.salary_premium))
+          && Number(row.projected_students || 0) > 0
+        )
+        .sort((a, b) => Math.abs(Number(b.share_change_pct || 0)) + Math.abs(Number(b.salary_premium || 0)) / 10000
+          - (Math.abs(Number(a.share_change_pct || 0)) + Math.abs(Number(a.salary_premium || 0)) / 10000))
+        .slice(0, topNFor(id));
+      if (rows.length < 2) return noData(id);
+      const maxProjected = Math.max(1, ...rows.map(row => Number(row.projected_students || 0)));
+      const markerSizes = rows.map(row => 18 + 42 * Math.sqrt(Number(row.projected_students || 0) / maxProjected));
+      const xValues = rows.map(row => Number(row.share_change_pct || 0));
+      const yValues = rows.map(row => Number(row.salary_premium || 0));
+      const xAbs = Math.max(1, ...xValues.map(Math.abs));
+      const yAbs = Math.max(1000, ...yValues.map(value => Math.abs(value)));
+      const signedMoney = value => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return 'No data';
+        const sign = n >= 0 ? '+' : '-';
+        return `${sign}$${fmt.format(Math.round(Math.abs(n) / 1000))}k`;
+      };
+      Plotly.newPlot(id, [{
+        type: 'scatter',
+        mode: 'markers+text',
+        x: xValues,
+        y: yValues,
+        text: rows.map(row => legendLabel(majorName(row), 18)),
+        textposition: rows.map((_, idx) => ['top center', 'bottom center', 'middle right', 'middle left'][idx % 4]),
+        textfont: { size: 12, color: '#233b5f' },
+        marker: {
+          size: markerSizes,
+          color: rows.map(row => Number(row.current_coverage_pct || 0)),
+          colorscale: [[0, '#e7eef7'], [0.45, '#73c7f3'], [1, '#21466f']],
+          cmin: 0,
+          cmax: 100,
+          colorbar: { title: 'Coverage', ticksuffix: '%', thickness: 12 },
+          opacity: 0.86,
+          line: { color: '#ffffff', width: 1.5 },
+        },
+        customdata: rows.map(row => [
+          majorName(row),
+          row.salary_value,
+          row.salary_premium,
+          signedMoney(row.salary_premium),
+          row.projected_students,
+          row.observed_current_profiles,
+          row.current_coverage_pct,
+          row.projected_share_pct,
+          row.recent_alumni_share_pct,
+          row.share_change_pct,
+        ]),
+        hovertemplate: `%{customdata[0]}<br>${activeHorizonLabel()}: %{customdata[1]:$,.0f}<br>Pay premium: %{customdata[3]}<br>Share change: %{customdata[9]:+.1f} pts<br>Projected share: %{customdata[7]:.1f}%<br>Recent alumni share: %{customdata[8]:.1f}%<br>Projected students: %{customdata[4]:,.0f}<br>Observed current profiles: %{customdata[5]:,.0f}<br>Coverage: %{customdata[6]:.1f}%<extra></extra>`,
+      }], {
+        ...layoutBase,
+        height: 500,
+        margin: { ...layoutBase.margin, l: 92, r: 92, t: 24, b: 78 },
+        xaxis: {
+          title: 'Projected major-share change',
+          ticksuffix: ' pts',
+          zeroline: true,
+          zerolinecolor: '#9caabd',
+          zerolinewidth: 2,
+          range: [-xAbs * 1.28, xAbs * 1.28],
+          automargin: true,
+        },
+        yaxis: {
+          title: `Pay premium vs school average (${activeHorizonLabel(true)})`,
+          tickprefix: '$',
+          tickformat: '~s',
+          zeroline: true,
+          zerolinecolor: '#9caabd',
+          zerolinewidth: 2,
+          range: [-yAbs * 1.28, yAbs * 1.28],
+          automargin: true,
+        },
+        showlegend: false,
+      }, plotConfig);
     }
 
     function drawMajorDemandPay(id) {
@@ -8692,7 +9201,11 @@
         .sort((a, b) => Number(a.lift_pp || 0) - Number(b.lift_pp || 0));
       if (!distinctive.length) return noData(id);
       const maxLift = Math.max(1, ...distinctive.map(row => Math.max(0, Number(row.lift_pp || 0))));
-      const layout = horizontalBarLayout(id, distinctive.map(row => ({ label: row.title })), '%', { rightMargin: 170 });
+      const layout = horizontalBarLayout(id, distinctive.map(row => ({ label: row.title })), '', {
+        height: Math.max(320, 174 + distinctive.length * 54),
+        leftMargin: compactWindow() ? 188 : 300,
+        rightMargin: compactWindow() ? 112 : 260,
+      });
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
@@ -8709,7 +9222,9 @@
         xaxis: {
           ...layout.xaxis,
           title: 'Share above all-major baseline',
-          range: [0, maxLift * 1.24],
+          ticksuffix: ' pp',
+          dtick: maxLift <= 10 ? 2 : undefined,
+          range: [0, Math.max(8, maxLift * 1.42)],
         },
       }, plotConfig);
     }
@@ -8730,7 +9245,11 @@
         .sort((a, b) => Number(a.lift_pp || 0) - Number(b.lift_pp || 0));
       if (!distinctive.length) return noData(id);
       const maxLift = Math.max(1, ...distinctive.map(row => Math.max(0, Number(row.lift_pp || 0))));
-      const layout = horizontalBarLayout(id, distinctive.map(row => ({ label: row.title })), '%', { rightMargin: 178 });
+      const layout = horizontalBarLayout(id, distinctive.map(row => ({ label: row.title })), '', {
+        height: Math.max(320, 174 + distinctive.length * 54),
+        leftMargin: compactWindow() ? 188 : 300,
+        rightMargin: compactWindow() ? 112 : 260,
+      });
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
@@ -8747,7 +9266,9 @@
         xaxis: {
           ...layout.xaxis,
           title: 'Share above selected-school average',
-          range: [0, maxLift * 1.24],
+          ticksuffix: ' pp',
+          dtick: maxLift <= 10 ? 2 : undefined,
+          range: [0, Math.max(8, maxLift * 1.42)],
         },
       }, plotConfig);
     }
@@ -8958,8 +9479,14 @@
               symbol: 'diamond',
             },
             showlegend: false,
-            customdata: bridge.map(row => [major.title, row.current_students ?? row.alumni, row.current_students === undefined ? 'alumni' : 'current students']),
-            hovertemplate: '%{customdata[0]}<br>Class of %{x}<br>%{y:.1f}% of %{customdata[2]}<extra></extra>',
+            customdata: bridge.map(row => [
+              major.title,
+              row.current_students ?? row.alumni,
+              row.current_students === undefined ? 'alumni' : 'projected students',
+              row.observed_current_profiles,
+              row.current_coverage_pct,
+            ]),
+            hovertemplate: '%{customdata[0]}<br>Class of %{x}<br>%{y:.1f}% of %{customdata[2]}<br>%{customdata[1]:,.0f} %{customdata[2]}<br>%{customdata[3]:,.0f} observed profiles<br>%{customdata[4]:.1f}% coverage<extra></extra>',
           } : null,
           legendDotTrace(major.title, color, legendgroup),
         ].filter(Boolean);
@@ -9544,8 +10071,35 @@
     }
 
     function drawPostgradFlows(id) {
-      const rows = (state.data.postgrad?.flows || []).filter(r => r.degree_type).slice(0, topNFor(id)).reverse();
+      const isNoFurtherPath = row => /^no\s+further/i.test(String(row?.degree_type || row?.label || '').trim());
+      const allRows = (state.data.postgrad?.flows || []).filter(r => r.degree_type);
+      const noFurther = state.data.postgrad?.no_further || allRows.find(isNoFurtherPath);
+      const rows = allRows
+        .filter(row => !isNoFurtherPath(row))
+        .slice(0, topNFor(id))
+        .reverse();
       if (!rows.length) return noData(id);
+      const layout = horizontalBarLayout(id, rows, '%');
+      const noFurtherShare = state.data.postgrad?.no_further_share_pct ?? noFurther?.share_pct;
+      if (noFurtherShare !== null && noFurtherShare !== undefined) {
+        layout.margin = { ...layout.margin, t: 38 };
+        layout.annotations = [{
+          xref: 'paper',
+          yref: 'paper',
+          x: 1,
+          y: 1.12,
+          xanchor: 'right',
+          yanchor: 'middle',
+          text: `No further ed: ${pct(noFurtherShare)}`,
+          showarrow: false,
+          align: 'right',
+          font: { color: THEME.muted, size: 12 },
+          bgcolor: 'rgba(248, 251, 255, 0.92)',
+          bordercolor: THEME.border,
+          borderwidth: 1,
+          borderpad: 6,
+        }];
+      }
       Plotly.newPlot(id, [{
         type: 'bar',
         orientation: 'h',
@@ -9555,13 +10109,13 @@
         textposition: 'outside',
         cliponaxis: false,
         customdata: rows.map(r => r.degree_type),
-        marker: { color: rows.map(r => r.degree_type === 'No further education' ? '#94a3b8' : COLORS[0]) },
+        marker: { color: COLORS[0] },
         hovertemplate: '%{customdata}<br>%{x:.1f}%<extra></extra>',
-      }], horizontalBarLayout(id, rows, '%'), plotConfig).then(plot => {
+      }], layout, plotConfig).then(plot => {
         plot.on('plotly_click', event => {
           const point = event.points?.[0];
           const label = point?.customdata || point?.y;
-          if (!label || label === 'No further education') return;
+          if (!label) return;
           state.selectedPostgradDegree = label;
           state.selectedPostgradSchool = null;
           state.selectedPostgradProgram = null;
@@ -9642,6 +10196,10 @@
 
     function noData(id) {
       $(id).innerHTML = '<div class="empty">No data for the current filters. Try a broader major, school set, year range, or horizon.</div>';
+    }
+
+    function noDataMessage(id, message) {
+      $(id).innerHTML = `<div class="empty">${escapeHtml(message || 'No data for the current filters.')}</div>`;
     }
 
     function table(headers, rows, mapper) {
@@ -9944,6 +10502,24 @@
           state.destinationLeftPath = [];
           state.destinationRightPath = [];
           storage.setItem('outcomes.destinationHorizon', state.destinationHorizon);
+          refresh({ resetDrill: true });
+          return;
+        }
+        const geographyHorizon = event.target.closest('[data-geography-horizon]');
+        if (geographyHorizon) {
+          event.preventDefault();
+          const value = geographyHorizon.dataset.geographyHorizon || 'all';
+          if (!GEOGRAPHY_HORIZON_OPTIONS.some(option => option.value === value)) return;
+          state.geographyHorizon = value;
+          storage.setItem('outcomes.geographyHorizon', value);
+          if (value === 'all') {
+            renderGeography();
+            queuePlotResize();
+            return;
+          }
+          if ($('horizon-select')) $('horizon-select').value = value;
+          state.appliedAdvanced = { ...activeAdvancedControls(), horizon: value };
+          syncHorizonToggle();
           refresh({ resetDrill: true });
           return;
         }
