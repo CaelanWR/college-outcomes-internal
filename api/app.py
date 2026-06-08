@@ -5728,7 +5728,7 @@ def _career_graduate_value(con: duckdb.DuckDBPyConnection, filters: QueryRequest
             "timeline": [],
             "primary": {},
         }
-    preferred_years = [5, 3, 1, 10]
+    preferred_years = [5, 4, 6, 3, 7, 2, 8, 1, 9, 10]
     primary = next(
         (
             row
@@ -5792,10 +5792,16 @@ def _career_graduate_transition_rows(
           ORDER BY
             CASE
               WHEN years_after_degree = 5 THEN 0
-              WHEN years_after_degree = 3 THEN 1
-              WHEN years_after_degree = 1 THEN 2
-              WHEN years_after_degree = 10 THEN 3
-              ELSE 4
+              WHEN years_after_degree = 4 THEN 1
+              WHEN years_after_degree = 6 THEN 2
+              WHEN years_after_degree = 3 THEN 3
+              WHEN years_after_degree = 7 THEN 4
+              WHEN years_after_degree = 2 THEN 5
+              WHEN years_after_degree = 8 THEN 6
+              WHEN years_after_degree = 1 THEN 7
+              WHEN years_after_degree = 9 THEN 8
+              WHEN years_after_degree = 10 THEN 9
+              ELSE 10
             END,
             total_n DESC
           LIMIT 1
