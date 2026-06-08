@@ -236,6 +236,16 @@ def postgrad_degree_with_plus_one_sql(later_alias: str, origin_alias: str) -> st
     """
 
 
+def postgrad_education_source_sql() -> str:
+    """Education table used to find later degrees.
+
+    Bachelor rows are intentionally limited to selected schools, but later-degree
+    matching must come from the full education universe. Server notebooks can set
+    POSTGRAD_EDUCATION_CIP when the selected-school education table is narrowed.
+    """
+    return globals().get("POSTGRAD_EDUCATION_CIP") or globals().get("LATER_EDUCATION_CIP") or EDUCATION_CIP
+
+
 def _postgrad_raw_bachelors_cte_sql() -> str:
     education_columns = globals().get("EDUCATION_COLUMNS", set())
     education_column_names = {str(c).lower() for c in education_columns}
@@ -286,8 +296,9 @@ raw_bachelors AS (
 
 def _postgrad_later_education_cte_sql(base_cte: str = "raw_bachelors") -> str:
     later_date = education_later_date_sql("e2")
+    later_source = postgrad_education_source_sql()
     return f"""
-later_edu AS (
+later_candidates AS (
     SELECT
         b.*,
         {postgrad_degree_label_sql('e2')} AS postgrad_degree,
@@ -297,16 +308,25 @@ later_edu AS (
         {assigned_cip4_sql('e2')} AS postgrad_cip_code,
         {assigned_cip_title_sql('e2')} AS postgrad_cip_title,
         YEAR({later_date}) AS postgrad_year,
-        DATEDIFF('day', b.grad_date, {later_date}) / 365.25 AS years_to_postgrad,
-        ROW_NUMBER() OVER (
-            PARTITION BY b.user_id, b.unitid, b.cohort_year, b.undergrad_cip4
-            ORDER BY {later_date} ASC
-        ) AS edu_rank
+        DATEDIFF('day', b.grad_date, {later_date}) / 365.25 AS years_to_postgrad
     FROM {base_cte} b
-    JOIN {EDUCATION_CIP} e2
+    JOIN {later_source} e2
       ON b.user_id = e2.user_id
      AND (e2.degree IN ('Master', 'MBA') OR e2.degree LIKE 'Doctor%')
      AND {later_date} > b.grad_date
+),
+later_edu AS (
+    SELECT
+        c.*,
+        ROW_NUMBER() OVER (
+            PARTITION BY c.user_id, c.unitid, c.cohort_year, c.undergrad_cip4
+            ORDER BY c.postgrad_year ASC, c.years_to_postgrad ASC, c.postgrad_degree ASC
+        ) AS edu_rank,
+        ROW_NUMBER() OVER (
+            PARTITION BY c.user_id, c.unitid, c.cohort_year, c.undergrad_cip4, c.postgrad_degree
+            ORDER BY c.postgrad_year ASC, c.years_to_postgrad ASC, c.postgrad_school ASC
+        ) AS degree_rank
+    FROM later_candidates c
 )
 """
 
@@ -316,7 +336,29 @@ def _postgrad_aggregate_queries() -> dict[str, str]:
     later_cte = _postgrad_later_education_cte_sql()
     common_ctes = f"WITH {base_cte},\n{later_cte}"
     postgrad = f"""
-{common_ctes}
+{common_ctes},
+later_any AS (
+    SELECT DISTINCT user_id, unitid, cohort_year, undergrad_cip4
+    FROM later_edu
+),
+degree_flags AS (
+    SELECT
+        user_id,
+        unitid,
+        cohort_year,
+        undergrad_cip4,
+        MAX(CASE WHEN postgrad_degree = 'Masters' THEN 1 ELSE 0 END) AS has_masters,
+        MAX(CASE WHEN postgrad_degree = 'MBA' THEN 1 ELSE 0 END) AS has_mba,
+        MAX(CASE WHEN postgrad_degree = 'LAW' THEN 1 ELSE 0 END) AS has_law,
+        MAX(CASE WHEN postgrad_degree = 'MD' THEN 1 ELSE 0 END) AS has_md,
+        MAX(CASE WHEN postgrad_degree = 'PhD' THEN 1 ELSE 0 END) AS has_phd,
+        MAX(CASE WHEN postgrad_degree = 'Professional Doctorate' THEN 1 ELSE 0 END) AS has_professional_doctorate,
+        MAX(CASE WHEN postgrad_degree = 'Other Doctorate' THEN 1 ELSE 0 END) AS has_other_doctorate,
+        MAX(CASE WHEN postgrad_degree IN ('PhD', 'LAW', 'MD', 'Professional Doctorate', 'Other Doctorate', 'Doctorate') THEN 1 ELSE 0 END) AS has_doctor
+    FROM later_edu
+    WHERE degree_rank = 1
+    GROUP BY user_id, unitid, cohort_year, undergrad_cip4
+)
 SELECT
     b.unitid,
     MAX(b.ipeds_name) AS ipeds_name,
@@ -328,32 +370,36 @@ SELECT
     MAX(b.undergrad_cip_title) AS undergrad_cip_title,
     ROUND(SUM(b.education_weight), 0) AS total_bachelors,
     COUNT(DISTINCT b.user_id) AS raw_total_bachelors,
-    ROUND(SUM(CASE WHEN le.user_id IS NOT NULL THEN b.education_weight ELSE 0 END), 0) AS has_later_degree,
-    COUNT(DISTINCT CASE WHEN le.user_id IS NOT NULL THEN b.user_id END) AS raw_has_later_degree,
-    ROUND(SUM(CASE WHEN le.postgrad_degree = 'Masters' THEN b.education_weight ELSE 0 END), 0) AS masters_count,
-    ROUND(SUM(CASE WHEN le.postgrad_degree = 'MBA' THEN b.education_weight ELSE 0 END), 0) AS mba_count,
-    ROUND(SUM(CASE WHEN le.postgrad_degree = 'LAW' THEN b.education_weight ELSE 0 END), 0) AS law_count,
-    ROUND(SUM(CASE WHEN le.postgrad_degree = 'MD' THEN b.education_weight ELSE 0 END), 0) AS md_count,
-    ROUND(SUM(CASE WHEN le.postgrad_degree = 'PhD' THEN b.education_weight ELSE 0 END), 0) AS phd_count,
-    ROUND(SUM(CASE WHEN le.postgrad_degree = 'Professional Doctorate' THEN b.education_weight ELSE 0 END), 0) AS professional_doctorate_count,
-    ROUND(SUM(CASE WHEN le.postgrad_degree = 'Other Doctorate' THEN b.education_weight ELSE 0 END), 0) AS other_doctorate_count,
-    ROUND(SUM(CASE WHEN le.postgrad_degree IN ('PhD', 'LAW', 'MD', 'Professional Doctorate', 'Other Doctorate', 'Doctorate') THEN b.education_weight ELSE 0 END), 0) AS doctor_count,
-    ROUND(100.0 * SUM(CASE WHEN le.user_id IS NOT NULL THEN b.education_weight ELSE 0 END) / NULLIF(SUM(b.education_weight), 0), 1) AS later_degree_pct
+    ROUND(SUM(CASE WHEN la.user_id IS NOT NULL THEN b.education_weight ELSE 0 END), 0) AS has_later_degree,
+    COUNT(DISTINCT CASE WHEN la.user_id IS NOT NULL THEN b.user_id END) AS raw_has_later_degree,
+    ROUND(SUM(CASE WHEN COALESCE(df.has_masters, 0) = 1 THEN b.education_weight ELSE 0 END), 0) AS masters_count,
+    ROUND(SUM(CASE WHEN COALESCE(df.has_mba, 0) = 1 THEN b.education_weight ELSE 0 END), 0) AS mba_count,
+    ROUND(SUM(CASE WHEN COALESCE(df.has_law, 0) = 1 THEN b.education_weight ELSE 0 END), 0) AS law_count,
+    ROUND(SUM(CASE WHEN COALESCE(df.has_md, 0) = 1 THEN b.education_weight ELSE 0 END), 0) AS md_count,
+    ROUND(SUM(CASE WHEN COALESCE(df.has_phd, 0) = 1 THEN b.education_weight ELSE 0 END), 0) AS phd_count,
+    ROUND(SUM(CASE WHEN COALESCE(df.has_professional_doctorate, 0) = 1 THEN b.education_weight ELSE 0 END), 0) AS professional_doctorate_count,
+    ROUND(SUM(CASE WHEN COALESCE(df.has_other_doctorate, 0) = 1 THEN b.education_weight ELSE 0 END), 0) AS other_doctorate_count,
+    ROUND(SUM(CASE WHEN COALESCE(df.has_doctor, 0) = 1 THEN b.education_weight ELSE 0 END), 0) AS doctor_count,
+    ROUND(100.0 * SUM(CASE WHEN la.user_id IS NOT NULL THEN b.education_weight ELSE 0 END) / NULLIF(SUM(b.education_weight), 0), 1) AS later_degree_pct
 FROM raw_bachelors b
-LEFT JOIN later_edu le
-  ON b.user_id = le.user_id
- AND b.unitid = le.unitid
- AND b.cohort_year = le.cohort_year
- AND b.undergrad_cip4 = le.undergrad_cip4
- AND le.edu_rank = 1
+LEFT JOIN later_any la
+  ON b.user_id = la.user_id
+ AND b.unitid = la.unitid
+ AND b.cohort_year = la.cohort_year
+ AND b.undergrad_cip4 = la.undergrad_cip4
+LEFT JOIN degree_flags df
+  ON b.user_id = df.user_id
+ AND b.unitid = df.unitid
+ AND b.cohort_year = df.cohort_year
+ AND b.undergrad_cip4 = df.undergrad_cip4
 GROUP BY b.unitid, b.cohort_year, b.cohort_band,
          b.undergrad_cip2, b.undergrad_cip4, b.undergrad_cip_code
 HAVING total_bachelors >= 1
 """
     flows = f"""
 {common_ctes},
-first_flow AS (
-    SELECT * FROM later_edu WHERE edu_rank = 1
+degree_flow AS (
+    SELECT * FROM later_edu WHERE degree_rank = 1
 ),
 base_totals AS (
     SELECT
@@ -384,7 +430,7 @@ SELECT
     ROUND(t.weighted_total_bachelors, 0) AS total_bachelors,
     t.raw_total_bachelors,
     ROUND(SUM(f.education_weight) / NULLIF(t.weighted_total_bachelors, 0) * 100, 2) AS flow_pct
-FROM first_flow f
+FROM degree_flow f
 JOIN base_totals t
   ON f.unitid = t.unitid
  AND f.cohort_year = t.cohort_year
@@ -417,7 +463,7 @@ SELECT
     COUNT(DISTINCT le.user_id) AS raw_n,
     ROUND(SUM(le.years_to_postgrad * le.education_weight) / NULLIF(SUM(le.education_weight), 0), 2) AS avg_years_to_postgrad
 FROM later_edu le
-WHERE le.edu_rank = 1
+WHERE le.degree_rank = 1
 GROUP BY le.unitid, le.ipeds_name, le.cohort_year, le.cohort_band,
          le.undergrad_cip2, le.undergrad_cip4, le.undergrad_cip_code, le.undergrad_cip_title,
          le.postgrad_degree, le.postgrad_school, le.postgrad_cip2, le.postgrad_cip4, le.postgrad_cip_code, le.postgrad_cip_title

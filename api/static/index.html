@@ -6512,12 +6512,13 @@
       const hasRoleTransitions = Boolean(graduateTransitions.available && (graduateTransitions.roles || []).length);
       const hasIndustryTransitions = Boolean(graduateTransitions.available && (graduateTransitions.industries || []).length);
       const hasCareerModels = Boolean((career.archetypes || []).length);
+      const hasHighUpsidePaths = Boolean((career.superstars || []).length);
       const metrics = comparing ? [] : [
         ...(hasInternshipSummary ? [metric(internshipRateTitle, pct(internshipSummary.internship_rate_pct), 3)] : []),
         ...(hasGraduateValue ? [metric('Grad school salary lift', money(graduateValue.primary.salary_lift_dollars), 3)] : []),
         metric('Avg employers by 5 yrs', mobility.avg_employers_5yr ?? '—', 3),
         metric('First employer retention 5 yrs', pct(mobility.first_employer_retention_5yr_pct), 3),
-        metric('High-upside paths', num((career.superstars || []).length), 3),
+        ...(state.viewMode === 'snapshot' && hasHighUpsidePaths ? [metric('High-upside paths', num((career.superstars || []).length), 3)] : []),
       ];
       if (state.viewMode === 'overtime') {
         $('content').innerHTML = [
@@ -6554,7 +6555,7 @@
               ...(hasIndustryTransitions ? [card('Graduate Industry Transitions', 'career-grad-industry-transitions', 6, true)] : []),
               ...(hasCareerModels ? [card('Common Career Paths', 'career-models', 12, false, { topControl: true, export: false })] : []),
               card('Employer Pay and Progression', 'career-employer-tenure', 6, true, { topControl: true }),
-              card('High-Upside Alumni Paths', 'career-superstars', 6, false, { topControl: true, export: false }),
+              ...(hasHighUpsidePaths ? [card('High-Upside Alumni Paths', 'career-superstars', 6, false, { topControl: true, export: false })] : []),
               ...(hasInternshipDetail ? [card('Internships That Became Jobs', 'career-internships', 12, false, { topControl: true, export: false })] : []),
             ]),
         ].join('');
@@ -6567,7 +6568,7 @@
           if (hasIndustryTransitions) drawGraduateTransitionMap('career-grad-industry-transitions', 'industries');
           if (hasCareerModels) drawCareerModels('career-models');
           drawCareerEmployerTenure('career-employer-tenure');
-          drawCareerSuperstars('career-superstars');
+          if (hasHighUpsidePaths) drawCareerSuperstars('career-superstars');
           if (hasInternshipDetail) drawCareerInternships('career-internships');
         }
       }

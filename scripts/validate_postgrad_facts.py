@@ -18,6 +18,12 @@ ANCHORS = [
         "min_total": 1000,
         "min_later_pct": 25.0,
         "min_law_pct": 4.0,
+        "law_destination_min_n": 75,
+        "law_destination_required_schools": [
+            "Columbia University in the City of New York",
+            "Harvard University",
+            "New York University",
+        ],
     },
 ]
 
@@ -60,6 +66,33 @@ def validate_anchor(con: duckdb.DuckDBPyConnection, root: Path, anchor: dict) ->
     return failures
 
 
+def validate_destination_anchor(con: duckdb.DuckDBPyConnection, root: Path, anchor: dict) -> list[str]:
+    failures: list[str] = []
+    rows = con.execute(
+        f"""
+        SELECT postgrad_school, SUM(n) AS n
+        FROM read_parquet(?)
+        WHERE CAST(unitid AS VARCHAR) = ?
+          AND undergrad_cip4 = ?
+          AND postgrad_degree = 'LAW'
+        GROUP BY postgrad_school
+        ORDER BY n DESC
+        """,
+        [parquet_glob(root, "postgrad_destinations"), anchor["unitid"], anchor["cip4"]],
+    ).fetchall()
+    total = sum(float(row[1] or 0) for row in rows)
+    top = ", ".join(f"{school or 'Unknown'} ({n:,.0f})" for school, n in rows[:5])
+    print(f"{anchor['name']} LAW destinations: total={total:,.0f}; top={top or 'none'}")
+    floor = anchor.get("law_destination_min_n")
+    if floor is not None and total < floor:
+        failures.append(f"{anchor['name']}: LAW destination n={total:.2f} below floor {floor:.2f}")
+    present = {row[0] for row in rows if row[0]}
+    missing = sorted(set(anchor.get("law_destination_required_schools", [])) - present)
+    for school in missing:
+        failures.append(f"{anchor['name']}: missing expected LAW destination {school}")
+    return failures
+
+
 def validate_degree_mix(con: duckdb.DuckDBPyConnection, root: Path) -> list[str]:
     rows = con.execute(
         """
@@ -91,6 +124,7 @@ def main() -> int:
     failures: list[str] = []
     for anchor in ANCHORS:
         failures.extend(validate_anchor(con, root, anchor))
+        failures.extend(validate_destination_anchor(con, root, anchor))
     failures.extend(validate_degree_mix(con, root))
 
     if failures:
