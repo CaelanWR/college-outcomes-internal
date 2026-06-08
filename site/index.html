@@ -9383,13 +9383,41 @@
       const xAbs = Math.max(1, ...xValues.map(Math.abs));
       const yAbs = Math.max(1000, ...yValues.map(value => Math.abs(value)));
       const periodLabel = majorMomentumPayPeriodLabel();
+      const trendLine = (() => {
+        const n = xValues.length;
+        if (n < 3) return null;
+        const xMean = xValues.reduce((total, value) => total + value, 0) / n;
+        const yMean = yValues.reduce((total, value) => total + value, 0) / n;
+        const denominator = xValues.reduce((total, value) => total + ((value - xMean) ** 2), 0);
+        if (!Number.isFinite(denominator) || denominator <= 0.0001) return null;
+        const slope = xValues.reduce((total, value, idx) => total + ((value - xMean) * (yValues[idx] - yMean)), 0) / denominator;
+        const intercept = yMean - slope * xMean;
+        const x0 = -xAbs * 1.18;
+        const x1 = xAbs * 1.18;
+        return {
+          x: [x0, x1],
+          y: [intercept + slope * x0, intercept + slope * x1],
+        };
+      })();
       const signedMoney = value => {
         const n = Number(value);
         if (!Number.isFinite(n)) return 'No data';
         const sign = n >= 0 ? '+' : '-';
         return `${sign}$${fmt.format(Math.round(Math.abs(n) / 1000))}k`;
       };
-      Plotly.newPlot(id, [{
+      const traces = [];
+      if (trendLine) {
+        traces.push({
+          type: 'scatter',
+          mode: 'lines',
+          x: trendLine.x,
+          y: trendLine.y,
+          line: { color: 'rgba(102,119,145,0.42)', width: 2, dash: 'dot' },
+          hoverinfo: 'skip',
+          showlegend: false,
+        });
+      }
+      traces.push({
         type: 'scatter',
         mode: 'markers+text',
         x: xValues,
@@ -9424,7 +9452,8 @@
           row.previous_observed_profiles,
         ]),
         hovertemplate: `%{customdata[0]}<br>${periodLabel}<br>${activeHorizonLabel()} pay premium change: %{customdata[3]}<br>Previous premium: %{customdata[10]}<br>Recent premium: %{customdata[11]}<br>Projected share change: %{customdata[9]:+.1f} pts<br>Later projected share: %{customdata[7]:.1f}%<br>Earlier projected share: %{customdata[8]:.1f}%<br>Later projected students: %{customdata[4]:,.0f}<br>Earlier projected students: %{customdata[12]:,.0f}<br>Later observed profiles: %{customdata[5]:,.0f}<br>Coverage: %{customdata[6]:.1f}%<extra></extra>`,
-      }], {
+      });
+      Plotly.newPlot(id, traces, {
         ...layoutBase,
         height: 500,
         margin: { ...layoutBase.margin, l: 92, r: 92, t: 24, b: 78 },
