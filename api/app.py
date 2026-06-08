@@ -197,7 +197,12 @@ def _dataset_root(dataset: str) -> Path:
 def _dataset_files(dataset: str) -> tuple[str, ...]:
     root = _dataset_root(dataset)
     if not root.exists():
+        parquet_file = root.with_suffix(".parquet") if root.suffix == "" else root
+        if parquet_file.exists() and parquet_file.is_file():
+            return (str(parquet_file),) if not parquet_file.name.startswith(".") else tuple()
         return tuple()
+    if root.is_file():
+        return (str(root),) if root.suffix == ".parquet" and not root.name.startswith(".") else tuple()
     return tuple(
         sorted(
             str(path)
@@ -3831,7 +3836,23 @@ def _postgrad_detail_degree_label(degree_type: str | None) -> str | None:
 
 
 def _postgrad_show_program_detail(degree_type: str | None) -> bool:
-    return degree_type in {"Masters", "Plus-One Masters", "PhD", "Research Doctorate"}
+    return bool(degree_type and degree_type != "No further education")
+
+
+def _postgrad_program_label_sql() -> tuple[str, str, list[Any]]:
+    if _dataset_exists("references/cip4_titles") and "cip4_title" in _dataset_columns("references/cip4_titles"):
+        return (
+            "COALESCE(NULLIF(later_program, ''), later_cip4_title, later_cip4)",
+            """
+            LEFT JOIN (
+              SELECT cip4 AS later_cip4_key, cip4_title AS later_cip4_title
+              FROM read_parquet(?)
+            ) cip_titles
+              ON later_cip4 = cip_titles.later_cip4_key
+            """,
+            [_dataset_glob("references/cip4_titles")],
+        )
+    return "COALESCE(NULLIF(later_program, ''), later_cip4)", "", []
 
 
 def _postgrad_detail_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
@@ -3848,8 +3869,13 @@ def _postgrad_detail_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRe
     placeholders = ",".join(["?"] * len(selected_values))
     per_entity_limit = min(_safe_limit(filters.top_n), 10)
     entity_code_sql, entity_title_sql, entity_filter_sql = _entity_compare_fields(filters)
+    program_label_sql, program_join_sql, program_join_params = _postgrad_program_label_sql()
 
     def grouped_destination(column: str) -> list[dict[str, Any]]:
+        is_program = column == "later_program"
+        label_sql = program_label_sql if is_program else column
+        join_sql = program_join_sql if is_program else ""
+        join_params = program_join_params if is_program else []
         return _records_from_query(
             con,
             f"""
@@ -3857,13 +3883,14 @@ def _postgrad_detail_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRe
               SELECT
                 {entity_code_sql} AS code,
                 {entity_title_sql} AS title,
-                {column} AS label,
+                {label_sql} AS label,
                 profile_weight
               FROM cohort_slice
+              {join_sql}
               WHERE later_degree_type IN ({placeholders})
                 {entity_filter_sql}
-                AND {column} IS NOT NULL
-                AND {column} <> ''
+                AND {label_sql} IS NOT NULL
+                AND {label_sql} <> ''
             ),
             denom AS (
               SELECT code, SUM(profile_weight) AS total_n
@@ -3902,7 +3929,7 @@ def _postgrad_detail_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRe
             WHERE entity_rank <= {per_entity_limit}
             ORDER BY title, entity_rank
             """,
-            selected_values,
+            [*join_params, *selected_values],
         )
 
     return {
@@ -5173,10 +5200,11 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
     if selected and selected != "No further education":
         selected_values = _postgrad_detail_degree_values(selected)
         placeholders = ",".join(["?"] * len(selected_values))
+        program_label_sql, program_join_sql, program_join_params = _postgrad_program_label_sql()
         school_filter_sql = ""
         school_filter_params: list[Any] = []
         if filters.selected_postgrad_program:
-            school_filter_sql = "AND later_program = ?"
+            school_filter_sql = f"AND {program_label_sql} = ?"
             school_filter_params.append(filters.selected_postgrad_program)
         schools = _records_from_query(
             con,
@@ -5184,6 +5212,7 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
             WITH degree_slice AS (
               SELECT later_school, profile_weight
               FROM cohort_slice
+              {program_join_sql}
               WHERE later_degree_type IN ({placeholders})
                 {school_filter_sql}
             ),
@@ -5202,7 +5231,7 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
             ORDER BY SUM(profile_weight) DESC
             LIMIT {limit}
             """,
-            [*selected_values, *school_filter_params, MIN_CELL_WEIGHT],
+            [*program_join_params, *selected_values, *school_filter_params, MIN_CELL_WEIGHT],
         )
         if _postgrad_show_program_detail(selected):
             program_filter_sql = ""
@@ -5212,10 +5241,11 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
                 program_filter_params.append(filters.selected_postgrad_school)
             programs = _records_from_query(
                 con,
-                f"""
+            f"""
                 WITH degree_slice AS (
-                  SELECT later_program, profile_weight
+                  SELECT {program_label_sql} AS program_label, profile_weight
                   FROM cohort_slice
+                  {program_join_sql}
                   WHERE later_degree_type IN ({placeholders})
                     {program_filter_sql}
                 ),
@@ -5223,18 +5253,18 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
                   SELECT SUM(profile_weight) AS total_n FROM degree_slice
                 )
                 SELECT
-                  later_program AS label,
+                  program_label AS label,
                   ROUND(SUM(profile_weight)) AS n,
                   ROUND(100.0 * SUM(profile_weight) / NULLIF((SELECT total_n FROM denom), 0), 1) AS share_pct
                 FROM degree_slice
-                WHERE later_program IS NOT NULL
-                  AND later_program <> ''
-                GROUP BY later_program
+                WHERE program_label IS NOT NULL
+                  AND program_label <> ''
+                GROUP BY program_label
                 HAVING SUM(profile_weight) > ?
                 ORDER BY SUM(profile_weight) DESC
                 LIMIT {limit}
                 """,
-                [*selected_values, *program_filter_params, MIN_CELL_WEIGHT],
+                [*program_join_params, *selected_values, *program_filter_params, MIN_CELL_WEIGHT],
             )
     return {
         "flows": flows,
