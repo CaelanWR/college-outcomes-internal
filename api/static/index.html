@@ -1025,70 +1025,35 @@
 
     .graduate-value-panel {
       display: grid;
-      grid-template-columns: 0.95fr 1.15fr;
       gap: 18px;
-      align-items: stretch;
-      min-height: 300px;
+      min-height: 0;
     }
 
-    .graduate-value-hero {
-      border-radius: 24px;
-      background:
-        radial-gradient(circle at 84% 14%, rgba(72,235,143,0.18), transparent 30%),
-        linear-gradient(150deg, var(--navy-dark), var(--navy));
-      color: white;
-      padding: 22px;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      box-shadow: 0 18px 34px rgba(45,66,106,0.18);
-    }
-
-    .graduate-value-hero strong {
-      display: block;
-      font-size: clamp(2.05rem, 4vw, 4.3rem);
-      line-height: 0.95;
-      letter-spacing: -0.04em;
-    }
-
-    .graduate-value-hero span {
-      display: block;
-      margin-top: 8px;
-      color: rgba(255,255,255,0.78);
-      font-size: 0.78rem;
-      font-weight: 900;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-    }
-
-    .graduate-value-hero p {
-      margin: 18px 0 0;
-      color: rgba(255,255,255,0.84);
-      font-size: 0.95rem;
-      line-height: 1.35;
-      font-weight: 750;
-    }
-
-    .graduate-value-grid {
+    .graduate-value-summary {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 12px;
-      align-content: stretch;
     }
 
     .graduate-value-stat {
       border: 1px solid var(--line);
-      border-radius: 18px;
-      background: rgba(255,255,255,0.82);
+      border-radius: 16px;
+      background: rgba(255,255,255,0.86);
       padding: 14px;
       min-width: 0;
+    }
+
+    .graduate-value-stat.is-lift {
+      background: linear-gradient(180deg, rgba(72,235,143,0.13), rgba(255,255,255,0.92));
+      border-color: rgba(72,235,143,0.34);
     }
 
     .graduate-value-stat strong {
       display: block;
       color: var(--ink);
-      font-size: 1.24rem;
+      font-size: clamp(1.25rem, 2vw, 1.72rem);
       line-height: 1.05;
+      overflow-wrap: anywhere;
     }
 
     .graduate-value-stat span {
@@ -1101,26 +1066,69 @@
       text-transform: uppercase;
     }
 
-    .graduate-value-stat.wide {
-      grid-column: span 3;
+    .graduate-value-path {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
     }
 
-    .graduate-value-bar {
+    .graduate-value-step {
       position: relative;
-      height: 12px;
-      margin-top: 12px;
-      border-radius: 999px;
-      background: rgba(151,164,185,0.22);
-      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: white;
+      padding: 16px;
+      min-width: 0;
     }
 
-    .graduate-value-bar i {
-      position: absolute;
-      inset: 0 auto 0 0;
+    .graduate-value-step::before {
+      content: '';
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
       display: block;
-      width: var(--bar-width, 0%);
-      border-radius: inherit;
-      background: linear-gradient(90deg, var(--green), var(--sky));
+      margin-bottom: 12px;
+      background: var(--sky);
+      box-shadow: 0 0 0 6px rgba(73,200,255,0.12);
+    }
+
+    .graduate-value-step.is-observed::before {
+      background: var(--green);
+      box-shadow: 0 0 0 6px rgba(72,235,143,0.16);
+    }
+
+    .graduate-value-step strong {
+      display: block;
+      color: var(--ink);
+      font-size: 1.36rem;
+      line-height: 1.05;
+    }
+
+    .graduate-value-step span {
+      display: block;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.7rem;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .graduate-value-step em {
+      display: block;
+      margin-top: 10px;
+      color: var(--label);
+      font-style: normal;
+      font-size: 0.82rem;
+      font-weight: 800;
+    }
+
+    .graduate-value-note {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.45;
+      font-weight: 750;
     }
 
     .internship-panel {
@@ -2733,9 +2741,7 @@
       .metric, .card { padding: 18px; }
       .salary-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .career-model-grid { grid-template-columns: 1fr; }
-      .graduate-value-panel { grid-template-columns: 1fr; }
-      .graduate-value-grid { grid-template-columns: 1fr; }
-      .graduate-value-stat.wide { grid-column: span 1; }
+      .graduate-value-summary, .graduate-value-path { grid-template-columns: 1fr; }
       .internship-panel,
       .internship-panel.with-conversions { grid-template-columns: 1fr; }
       select[multiple] { min-height: 92px; }
@@ -6524,13 +6530,11 @@
       const hasRoleTransitions = Boolean(graduateTransitions.available && (graduateTransitions.roles || []).length);
       const hasIndustryTransitions = Boolean(graduateTransitions.available && (graduateTransitions.industries || []).length);
       const hasCareerModels = Boolean((career.archetypes || []).length);
-      const hasHighUpsidePaths = Boolean((career.superstars || []).length);
       const metrics = comparing ? [] : [
         ...(hasInternshipSummary ? [metric(internshipRateTitle, pct(internshipSummary.internship_rate_pct), 3)] : []),
         ...(hasGraduateValue ? [metric('Grad school salary lift', money(graduateValue.primary.salary_lift_dollars), 3)] : []),
         metric('Avg employers by 5 yrs', mobility.avg_employers_5yr ?? '—', 3),
         metric('First employer retention 5 yrs', pct(mobility.first_employer_retention_5yr_pct), 3),
-        ...(state.viewMode === 'snapshot' && hasHighUpsidePaths ? [metric('High-upside paths', num((career.superstars || []).length), 3)] : []),
       ];
       const metricRow = metricStrip(metrics);
       if (state.viewMode === 'overtime') {
@@ -6563,12 +6567,11 @@
               card('Recent Top Internship Companies by Comparison', 'career-internship-employers', 7, true, { topControl: true }),
             ] : [])
             : [
-              ...(hasGraduateValue ? [card('Graduate Value', 'career-graduate-value', 12, false, { export: false })] : []),
+              ...(hasGraduateValue ? [card('Graduate Value', 'career-graduate-value', 12, false, { export: false, compact: true })] : []),
               ...(hasRoleTransitions ? [card('Graduate Role Transitions', 'career-grad-role-transitions', 6, true)] : []),
               ...(hasIndustryTransitions ? [card('Graduate Industry Transitions', 'career-grad-industry-transitions', 6, true)] : []),
               ...(hasCareerModels ? [card('Common Career Paths', 'career-models', 12, false, { topControl: true, export: false })] : []),
               card('Employer Pay and Progression', 'career-employer-tenure', 6, true, { topControl: true }),
-              ...(hasHighUpsidePaths ? [card('High-Upside Alumni Paths', 'career-superstars', 6, false, { topControl: true, export: false })] : []),
               ...(hasInternshipDetail ? [card('Internships That Became Jobs', 'career-internships', 12, false, { topControl: true, export: false })] : []),
             ]),
         ].join('');
@@ -6581,7 +6584,6 @@
           if (hasIndustryTransitions) drawGraduateTransitionMap('career-grad-industry-transitions', 'industries');
           if (hasCareerModels) drawCareerModels('career-models');
           drawCareerEmployerTenure('career-employer-tenure');
-          if (hasHighUpsidePaths) drawCareerSuperstars('career-superstars');
           if (hasInternshipDetail) drawCareerInternships('career-internships');
         }
       }
@@ -6601,58 +6603,48 @@
       const graduateValue = state.data.career?.graduate_value || {};
       const row = graduateValue.primary || {};
       if (!graduateValue.available || !Object.keys(row).length) return noDataMessage(id, graduateValue.reason);
-      const maxChange = Math.max(
-        1,
-        Number(row.role_change_pct || 0),
-        Number(row.industry_change_pct || 0),
-        Number(row.employer_change_pct || 0),
-      );
-      const changeStat = (label, value) => {
-        const width = Math.max(2, Math.min(100, (Number(value || 0) / maxChange) * 100));
-        return `
-          <div class="graduate-value-stat">
-            <strong>${pct(value)}</strong>
-            <span>${escapeHtml(label)}</span>
-            <div class="graduate-value-bar"><i style="--bar-width:${width}%"></i></div>
-          </div>
-        `;
-      };
+      const lift = Number(row.salary_lift_dollars || 0);
+      const liftDirection = lift >= 0 ? 'above' : 'below';
+      const year = Number(row.years_after_degree || 0);
+      const yearLabel = year ? `${year} years after grad school` : 'after grad school';
       $(id).innerHTML = `
         <div class="graduate-value-panel">
-          <div class="graduate-value-hero">
-            <strong>${money(row.salary_lift_dollars)}</strong>
-            <span>Lift above benchmark</span>
-            <p>${escapeHtml(graduateValueSentence(row))}</p>
-          </div>
-          <div class="graduate-value-grid">
+          <div class="graduate-value-summary">
             <div class="graduate-value-stat">
-              <strong>${money(row.avg_salary_before)}</strong>
-              <span>Salary before</span>
+              <strong>${num(row.n_alumni)}</strong>
+              <span>Alumni in slice</span>
+            </div>
+            <div class="graduate-value-stat is-lift">
+              <strong>${money(row.salary_lift_dollars)}</strong>
+              <span>Lift vs benchmark</span>
             </div>
             <div class="graduate-value-stat">
-              <strong>${money(row.expected_salary_after)}</strong>
-              <span>Expected after</span>
-            </div>
-            <div class="graduate-value-stat">
-              <strong>${money(row.avg_salary_after)}</strong>
-              <span>Observed after</span>
-            </div>
-            <div class="graduate-value-stat">
-              <strong>${pct(row.observed_salary_growth_pct)}</strong>
-              <span>Observed growth</span>
-            </div>
-            <div class="graduate-value-stat">
-              <strong>${pct(row.expected_salary_growth_pct)}</strong>
-              <span>Expected growth</span>
+              <strong>${pct(row.role_change_pct)}</strong>
+              <span>Role changed</span>
             </div>
             <div class="graduate-value-stat">
               <strong>${Number(row.seniority_lift || 0).toFixed(2)}</strong>
               <span>Seniority lift</span>
             </div>
-            ${changeStat('Role changed', row.role_change_pct)}
-            ${changeStat('Industry changed', row.industry_change_pct)}
-            ${changeStat('Employer changed', row.employer_change_pct)}
           </div>
+          <div class="graduate-value-path">
+            <div class="graduate-value-step">
+              <strong>${money(row.avg_salary_before)}</strong>
+              <span>Before grad school</span>
+              <em>Observed salary before the later degree.</em>
+            </div>
+            <div class="graduate-value-step">
+              <strong>${money(row.expected_salary_after)}</strong>
+              <span>Expected without lift</span>
+              <em>Comparable bachelor-only path.</em>
+            </div>
+            <div class="graduate-value-step is-observed">
+              <strong>${money(row.avg_salary_after)}</strong>
+              <span>Observed ${escapeHtml(yearLabel)}</span>
+              <em>${escapeHtml(money(Math.abs(lift)))} ${escapeHtml(liftDirection)} benchmark.</em>
+            </div>
+          </div>
+          <p class="graduate-value-note">${escapeHtml(graduateValueSentence(row))}</p>
         </div>
       `;
     }
