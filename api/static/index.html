@@ -1534,11 +1534,24 @@
     }
 
     .detail-panel {
+      position: relative;
+      overflow: hidden;
       border: 1px solid var(--line);
       border-radius: 20px;
-      background: rgba(255,255,255,0.74);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.86), rgba(249,252,255,0.76)),
+        rgba(255,255,255,0.74);
       padding: 16px;
       min-width: 0;
+    }
+
+    .detail-panel::before {
+      content: '';
+      position: absolute;
+      inset: 0 0 auto;
+      height: 3px;
+      background: linear-gradient(90deg, var(--green), var(--blue), var(--pink));
+      opacity: 0.75;
     }
 
     .detail-panel h3 {
@@ -1639,6 +1652,37 @@
     .detail-table .num {
       font-variant-numeric: tabular-nums;
       text-align: right;
+    }
+
+    .detail-metric-cell {
+      display: grid;
+      grid-template-columns: minmax(74px, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      min-width: 132px;
+    }
+
+    .detail-metric-track {
+      position: relative;
+      height: 9px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e8eef6;
+    }
+
+    .detail-metric-fill {
+      display: block;
+      height: 100%;
+      min-width: 4px;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--blue), var(--green));
+      box-shadow: 0 0 18px rgba(73,200,255,0.24);
+    }
+
+    .detail-metric-value {
+      color: var(--navy);
+      font-weight: 950;
+      white-space: nowrap;
     }
 
     .destination-compare-wrap {
@@ -1746,21 +1790,23 @@
     }
 
     .detail-bar-track {
-      height: 8px;
+      height: 9px;
       overflow: hidden;
       border-radius: 999px;
       background: #e8eef6;
     }
 
     .detail-bar-fill {
+      display: block;
       height: 100%;
-      min-width: 2px;
+      min-width: 4px;
       border-radius: inherit;
-      background: var(--navy);
+      background: linear-gradient(90deg, var(--blue), var(--green));
+      box-shadow: 0 0 18px rgba(72,235,143,0.24);
     }
 
     .detail-row-value {
-      color: var(--muted);
+      color: var(--navy);
       font-weight: 900;
       white-space: nowrap;
     }
@@ -4036,7 +4082,7 @@
               <tbody>
                 ${bodyRows.map(row => `
                   <tr>
-                    ${headers.map(header => `<td class="${header.className || ''}">${escapeHtml(header.value(row))}</td>`).join('')}
+                    ${headers.map(header => `<td class="${header.className || ''}">${header.html ? header.value(row) : escapeHtml(header.value(row))}</td>`).join('')}
                   </tr>
                 `).join('')}
               </tbody>
@@ -4046,12 +4092,32 @@
       `;
     }
 
+    function detailMetricHtml(value, color = COLORS[0], maxValue = 100) {
+      if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
+      const numeric = Math.max(0, Number(value || 0));
+      const width = Math.max(4, Math.min(100, 100 * numeric / Math.max(1, maxValue)));
+      return `
+        <span class="detail-metric-cell">
+          <span class="detail-metric-track" aria-hidden="true">
+            <span class="detail-metric-fill" style="width:${width}%; background:${color};"></span>
+          </span>
+          <span class="detail-metric-value">${pct(numeric)}</span>
+        </span>
+      `;
+    }
+
     function compareShareTable(title, rows, label, options = {}) {
       const comparisonRows = compareRowsForLabel(rows, label);
       const payLabel = options.payLabel || 'Avg pay';
+      const shareMax = Math.max(1, ...comparisonRows.map(row => Number(row.share_pct || 0)));
       const headers = [
         { label: compareEntityLabel(), value: row => row.entity_title || row.title || row.code || '' },
-        { label: options.shareLabel || 'Share', className: 'num', value: row => row.share_pct === null || row.share_pct === undefined ? '—' : pct(row.share_pct) },
+        {
+          label: options.shareLabel || 'Share',
+          className: 'num',
+          html: true,
+          value: row => detailMetricHtml(row.share_pct, options.color || COLORS[0], shareMax),
+        },
       ];
       if (options.showPay !== false) {
         headers.push({
@@ -4194,6 +4260,7 @@
       if (!employer) return;
       const table = compareShareTable(`Share at ${employer}`, compareEmployerRows(), employer, {
         shareLabel: 'Employer share',
+        color: COLORS[1],
       });
       setDrilldownModal(
         `Employer detail: ${employer}`,
@@ -4338,7 +4405,10 @@
         `${context.kind === 'industry' ? 'Industry' : 'Role'} share for ${context.label}`,
         compareRoleRows(context.kind),
         context.label,
-        { shareLabel: `${context.kind === 'industry' ? 'Industry' : 'Role'} share` }
+        {
+          shareLabel: `${context.kind === 'industry' ? 'Industry' : 'Role'} share`,
+          color: context.kind === 'industry' ? COLORS[1] : COLORS[3],
+        }
       );
       const body = `
         <div class="detail-grid single">
