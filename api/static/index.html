@@ -4409,19 +4409,7 @@
     }
 
     async function prefetchDashboardViews(baseFilters, generation) {
-      if (generation !== state.prefetchGeneration || state.loading) return;
-      if (canWarmFullSchoolSlice(baseFilters, { allowWarmupHorizons: true })) {
-        try {
-          const { warmed, latestData } = await warmFullSchoolCaches(baseFilters, generation);
-          if (warmed === horizonWarmupValues(baseFilters, { includeDestinationAll: true }).length) {
-            if (!state.loading) setStatus('ok', `${latestData?.meta?.data_version || 'Connected'} | all tabs and years ready`);
-            return;
-          }
-        } catch {
-          // Fall back to individual tab prefetching below if the full payload fails.
-        }
-      }
-      if (generation !== state.prefetchGeneration || state.loading) return;
+      if (generation !== state.prefetchGeneration || state.filterChangesPending) return;
       const fallbackBaseFilters = baseFilters.horizon ? baseFilters : { ...baseFilters, horizon: '1yr' };
       const activeTab = state.tab || 'overview';
       const activeView = state.viewMode || defaultViewForTab(activeTab);
@@ -4433,7 +4421,7 @@
         });
       });
       for (const view of views) {
-        if (generation !== state.prefetchGeneration || state.loading) return;
+        if (generation !== state.prefetchGeneration || state.filterChangesPending) return;
         const filters = { ...fallbackBaseFilters, active_tab: view.tab, view_mode: view.viewMode };
         if (getCachedDashboard(filters) || state.dashboardRequests.has(dashboardCacheKey(filters))) continue;
         try {
@@ -4441,6 +4429,9 @@
         } catch {
           return;
         }
+      }
+      if (generation === state.prefetchGeneration && !state.loading && !state.filterChangesPending) {
+        setStatus('ok', `${state.data?.meta?.data_version || 'Connected'} | tabs ready`);
       }
     }
 
@@ -4983,7 +4974,6 @@
         render();
         const warming = canWarmFullSchoolSlice(filters, { allowWarmupHorizons: true });
         setStatus('ok', `${state.data.meta?.data_version || 'Connected'} | loaded ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}${warming ? ' | warming tabs' : ''}`);
-        scheduleDashboardPrefetch(filters);
       } catch (error) {
         setStatus('bad', 'Connection failed');
         setMessage(`<strong>Could not load data.</strong><br>${escapeHtml(error.message)}`, true);
@@ -4991,6 +4981,9 @@
         state.loading = false;
         document.body.classList.remove('loading');
         $('refresh-state')?.classList.remove('is-visible');
+        if (!state.pendingRefresh && !state.filterChangesPending && state.data?.meta?.filters) {
+          scheduleDashboardPrefetch(dashboardFiltersForCurrentView());
+        }
         if (state.pendingRefresh) {
           const pending = state.pendingRefresh;
           state.pendingRefresh = null;
