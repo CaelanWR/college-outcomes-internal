@@ -2934,6 +2934,21 @@
       padding: 5px;
     }
 
+    .compare-options-kicker {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      margin: -5px -5px 3px;
+      padding: 7px 9px;
+      border-bottom: 1px solid rgba(221,231,241,0.82);
+      background: rgba(255,255,255,0.94);
+      color: var(--muted);
+      font-size: 0.68rem;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
     .compare-selected {
       display: flex;
       flex-direction: column;
@@ -3007,6 +3022,7 @@
 
     .compare-option {
       display: flex;
+      flex-direction: column;
       align-items: flex-start;
       gap: 8px;
       width: 100%;
@@ -3022,6 +3038,19 @@
       letter-spacing: 0;
       text-align: left;
       cursor: pointer;
+    }
+
+    .compare-option span {
+      display: block;
+      max-width: 100%;
+    }
+
+    .compare-option small {
+      display: block;
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 800;
+      line-height: 1.15;
     }
 
     .compare-option:hover { background: rgba(72,235,143,0.09); }
@@ -4591,6 +4620,67 @@
         .map(item => item.row);
     }
 
+    function schoolMetaValue(row, keys) {
+      for (const key of keys) {
+        const value = row?.[key];
+        if (value !== undefined && value !== null && String(value).trim()) return String(value).trim();
+      }
+      return '';
+    }
+
+    function schoolPeerScore(row, baseRow) {
+      const alumni = Math.max(1, Number(row?.alumni || 0));
+      if (!baseRow) return Math.log10(alumni) * 10;
+      const baseAlumni = Math.max(1, Number(baseRow?.alumni || 0));
+      const sizeDiff = Math.abs(Math.log10(alumni) - Math.log10(baseAlumni));
+      let score = Math.max(0, 100 - sizeDiff * 55);
+      const state = schoolMetaValue(row, ['state', 'school_state', 'stabbr']);
+      const baseState = schoolMetaValue(baseRow, ['state', 'school_state', 'stabbr']);
+      const region = schoolMetaValue(row, ['region', 'school_region', 'ipeds_region']);
+      const baseRegion = schoolMetaValue(baseRow, ['region', 'school_region', 'ipeds_region']);
+      const sector = schoolMetaValue(row, ['sector', 'school_sector', 'control']);
+      const baseSector = schoolMetaValue(baseRow, ['sector', 'school_sector', 'control']);
+      if (state && baseState && state.toLowerCase() === baseState.toLowerCase()) score += 45;
+      else if (region && baseRegion && region.toLowerCase() === baseRegion.toLowerCase()) score += 28;
+      if (sector && baseSector && sector.toLowerCase() === baseSector.toLowerCase()) score += 18;
+      return score;
+    }
+
+    function peerReason(row, baseRow) {
+      const parts = [];
+      const state = schoolMetaValue(row, ['state', 'school_state', 'stabbr']);
+      const baseState = schoolMetaValue(baseRow, ['state', 'school_state', 'stabbr']);
+      const region = schoolMetaValue(row, ['region', 'school_region', 'ipeds_region']);
+      const baseRegion = schoolMetaValue(baseRow, ['region', 'school_region', 'ipeds_region']);
+      const sector = schoolMetaValue(row, ['sector', 'school_sector', 'control']);
+      const baseSector = schoolMetaValue(baseRow, ['sector', 'school_sector', 'control']);
+      if (state && baseState && state.toLowerCase() === baseState.toLowerCase()) parts.push(`same state`);
+      else if (region && baseRegion && region.toLowerCase() === baseRegion.toLowerCase()) parts.push(`same region`);
+      if (sector && baseSector && sector.toLowerCase() === baseSector.toLowerCase()) parts.push(sector);
+      const alumni = Number(row?.alumni || 0);
+      if (alumni > 0) parts.push(`${num(alumni)} alumni`);
+      if (!baseRow && !parts.length) return '';
+      return parts.length ? parts.join(' | ') : 'similar alumni scale';
+    }
+
+    function peerSortedSchools(rows, query = '', baseRow = null) {
+      const needle = searchNeedle(query);
+      return (rows || [])
+        .map((row, index) => ({
+          row,
+          index,
+          searchScore: needle ? schoolSearchScore(row, query) : 0,
+          peerScore: schoolPeerScore(row, baseRow),
+        }))
+        .filter(item => !needle || item.searchScore >= 0)
+        .sort((a, b) => {
+          if (needle && b.searchScore !== a.searchScore) return b.searchScore - a.searchScore;
+          if (b.peerScore !== a.peerScore) return b.peerScore - a.peerScore;
+          return String(a.row.name || '').localeCompare(String(b.row.name || '')) || a.index - b.index;
+        })
+        .map(item => item.row);
+    }
+
     function renderSchoolSearchOptions(rows) {
       const panel = $('school-search-suggestions');
       if (!panel) return;
@@ -4683,6 +4773,8 @@
       searchKey = '',
       searchPlaceholder = '',
       searchRows = null,
+      getMeta = null,
+      availableTitle = '',
     }) {
       const picker = $(pickerId);
       if (!picker) return;
@@ -4722,12 +4814,16 @@
         </div>
         <div class="compare-picker-body">
           <div class="compare-options">
+            ${availableTitle ? `<div class="compare-options-kicker">${escapeHtml(availableTitle)}</div>` : ''}
             ${visibleRows.length ? visibleRows.map(row => {
               const value = String(getValue(row));
               const label = getLabel(row);
+              const meta = getMeta ? getMeta(row) : '';
+              const title = meta ? `${label} | ${meta}` : label;
               return `
-                <button type="button" class="compare-option" ${addAttr}="${escapeHtml(value)}" title="${escapeHtml(label)}" ${maxReached ? 'disabled' : ''}>
+                <button type="button" class="compare-option" ${addAttr}="${escapeHtml(value)}" title="${escapeHtml(title)}" ${maxReached ? 'disabled' : ''}>
                   <span>${escapeHtml(comparePickerLabel(label, 58))}</span>
+                  ${meta ? `<small>${escapeHtml(meta)}</small>` : ''}
                 </button>
               `;
             }).join('') : `<div class="compare-empty">${query ? 'No matches. Try another search.' : 'Everything available is selected.'}</div>`}
@@ -4745,13 +4841,15 @@
       const currentUnitid = String(currentSchool?.unitid || $('school-select')?.value || '');
       const selectedValuesSet = new Set(trimCompareSchools([...selectedSet], currentUnitid));
       const totalSelected = (currentUnitid ? 1 : 0) + selectedValuesSet.size;
+      const query = state.compareSchoolSearchQuery || '';
       renderComparePicker({
         pickerId: 'compare-school-picker',
         selectId: 'compare-school-select',
-        rows: (rows || []).filter(row => String(row.unitid) !== currentUnitid),
+        rows: peerSortedSchools((rows || []).filter(row => String(row.unitid) !== currentUnitid), '', currentSchool),
         selectedSet: selectedValuesSet,
         getValue: row => row.unitid,
         getLabel: row => row.name,
+        getMeta: row => peerReason(row, currentSchool),
         addAttr: 'data-add-compare-school',
         removeAttr: 'data-remove-compare-school',
         clearAttr: 'data-clear-compare-schools',
@@ -4762,7 +4860,8 @@
         selectedCountLabel: `${num(totalSelected)} of ${MAX_COMPARE_SCHOOLS} schools selected`,
         searchKey: 'compareSchoolSearchQuery',
         searchPlaceholder: 'Search comparison schools...',
-        searchRows: filteredSchools,
+        searchRows: (availableRows, searchQuery) => peerSortedSchools(availableRows, searchQuery, currentSchool),
+        availableTitle: query ? 'Search results' : 'Suggested peers',
       });
     }
 
