@@ -1224,6 +1224,184 @@
       font-weight: 780;
     }
 
+    .graduate-move-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .graduate-move-header h4 {
+      margin: 0 0 4px;
+      color: var(--ink);
+      font-size: 1.02rem;
+      line-height: 1.2;
+    }
+
+    .graduate-move-header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.35;
+      font-weight: 760;
+    }
+
+    .graduate-move-mode {
+      display: inline-flex;
+      flex: 0 0 auto;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(247,250,252,0.94);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);
+    }
+
+    .graduate-move-mode button {
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--label);
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.74rem;
+      font-weight: 950;
+      letter-spacing: 0.04em;
+      padding: 7px 12px;
+      text-transform: uppercase;
+    }
+
+    .graduate-move-mode button.active {
+      background: var(--navy);
+      color: white;
+      box-shadow: 0 8px 20px rgba(45,66,106,0.16);
+    }
+
+    .graduate-move-explorer {
+      display: grid;
+      grid-template-columns: minmax(240px, 0.72fr) minmax(0, 1.28fr);
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    .graduate-move-list {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(247,250,252,0.88));
+      padding: 12px;
+      min-width: 0;
+    }
+
+    .graduate-move-list-title {
+      color: var(--muted);
+      font-size: 0.68rem;
+      font-weight: 950;
+      letter-spacing: 0.06em;
+      margin: 0 0 8px;
+      text-transform: uppercase;
+    }
+
+    .graduate-move-option {
+      width: 100%;
+      border: 1px solid transparent;
+      border-radius: 14px;
+      background: transparent;
+      color: var(--ink);
+      cursor: pointer;
+      display: grid;
+      gap: 6px;
+      font: inherit;
+      padding: 10px;
+      text-align: left;
+    }
+
+    .graduate-move-option + .graduate-move-option {
+      margin-top: 4px;
+    }
+
+    .graduate-move-option.active {
+      border-color: rgba(72,235,143,0.32);
+      background: rgba(72,235,143,0.1);
+      box-shadow: 0 12px 28px rgba(45,66,106,0.08);
+    }
+
+    .graduate-move-option strong {
+      display: block;
+      font-size: 0.9rem;
+      font-weight: 900;
+      line-height: 1.16;
+      overflow-wrap: anywhere;
+    }
+
+    .graduate-move-option span {
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 820;
+    }
+
+    .graduate-move-bar {
+      height: 6px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(45,66,106,0.08);
+    }
+
+    .graduate-move-bar i {
+      display: block;
+      height: 100%;
+      width: var(--share, 0%);
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--green), var(--sky));
+    }
+
+    .graduate-move-sankey-card {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: white;
+      display: grid;
+      grid-template-rows: auto minmax(300px, 1fr) auto;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .graduate-move-sankey-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px 0;
+      min-width: 0;
+    }
+
+    .graduate-move-sankey-title strong {
+      color: var(--ink);
+      display: block;
+      font-size: 0.98rem;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+    }
+
+    .graduate-move-sankey-title span {
+      color: var(--muted);
+      flex: 0 0 auto;
+      font-size: 0.75rem;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+
+    .graduate-move-sankey {
+      min-height: 300px;
+    }
+
+    .graduate-move-caption {
+      border-top: 1px solid rgba(22,50,74,0.08);
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 780;
+      line-height: 1.35;
+      margin: 0;
+      padding: 10px 16px 13px;
+    }
+
     .graduate-transition-stats {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3054,6 +3232,14 @@
       }
       .graduate-value-timeline { justify-content: flex-start; }
       .graduate-value-chart { min-height: 320px; }
+      .graduate-move-header {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .graduate-move-mode { align-self: flex-start; }
+      .graduate-move-explorer { grid-template-columns: 1fr; }
+      .graduate-move-sankey-card { grid-template-rows: auto minmax(280px, 1fr) auto; }
+      .graduate-move-sankey { min-height: 280px; }
       .graduate-transition-row { grid-template-columns: minmax(0, 1fr); gap: 7px; }
       .graduate-transition-flow { grid-template-columns: 1fr; }
       .graduate-transition-arrow { display: none; }
@@ -3447,6 +3633,8 @@
       geographyHorizon: storage.getItem('outcomes.geographyHorizon') || 'all',
       destinationLeftPath: [],
       destinationRightPath: [],
+      graduateMoveMode: storage.getItem('outcomes.graduateMoveMode') || 'roles',
+      graduateMoveSelection: {},
       topNByChart: {},
       appliedAdvanced: null,
       schoolSearchQuery: '',
@@ -7232,41 +7420,86 @@
       }, plotConfig);
     }
 
-    function graduateTransitionRowsHtml(rows, title) {
-      const visibleRows = (rows || []).slice(0, 6);
-      if (!visibleRows.length) return '';
-      const body = visibleRows.map(row => {
-        const delta = Number(row.salary_delta || 0);
-        const color = delta >= 0 ? THEME.green : '#E783C4';
+    function graduateMoveGroups(rows) {
+      const groups = new Map();
+      (rows || []).forEach(row => {
         const preLabel = row.pre_label || 'Earlier path';
-        const postLabel = row.post_label || 'Later path';
-        return `
-          <div class="graduate-transition-row" title="${escapeHtml(preLabel)} → ${escapeHtml(postLabel)}">
-            <div class="graduate-transition-flow">
-              <div class="graduate-transition-node">
-                <span>Before</span>
-                <strong>${escapeHtml(legendLabel(preLabel, 34))}</strong>
-              </div>
-              <div class="graduate-transition-arrow" aria-hidden="true">→</div>
-              <div class="graduate-transition-node">
-                <span>After</span>
-                <strong>${escapeHtml(legendLabel(postLabel, 34))}</strong>
-              </div>
-            </div>
-            <div class="graduate-transition-detail">
-              <span>${escapeHtml(pct(row.share_pct))} of observed moves · ${escapeHtml(num(row.n_alumni))} alumni</span>
-              <span class="graduate-transition-change" style="color:${color};">${escapeHtml(money(delta))} avg pay change</span>
-            </div>
-          </div>
-        `;
-      }).join('');
-      const year = visibleRows.find(row => row.years_after_degree !== null && row.years_after_degree !== undefined)?.years_after_degree;
-      return `
-        <div class="graduate-transition-group">
-          <h4>${escapeHtml(title)}${year ? ` · ${escapeHtml(String(year))} years after degree` : ''}</h4>
-          <div class="graduate-transition-list">${body}</div>
-        </div>
-      `;
+        const n = Number(row.n_alumni || 0);
+        if (!preLabel || !n) return;
+        const group = groups.get(preLabel) || {
+          label: preLabel,
+          n: 0,
+          share: 0,
+          weightedDelta: 0,
+          rows: [],
+        };
+        group.n += n;
+        group.share = Math.max(group.share, Number(row.pre_share_pct || 0));
+        group.weightedDelta += Number(row.salary_delta || 0) * n;
+        group.rows.push(row);
+        groups.set(preLabel, group);
+      });
+      return [...groups.values()]
+        .map(group => ({
+          ...group,
+          delta: group.n ? group.weightedDelta / group.n : 0,
+          rows: group.rows.sort((a, b) => Number(b.n_alumni || 0) - Number(a.n_alumni || 0)),
+        }))
+        .sort((a, b) => b.n - a.n)
+        .slice(0, 10);
+    }
+
+    function graduateMoveModeTitle(mode) {
+      return mode === 'industries' ? 'Industries' : 'Roles';
+    }
+
+    function graduateMoveNoun(mode) {
+      return mode === 'industries' ? 'industry' : 'role';
+    }
+
+    function drawGraduateMoveSankey(id, mode, group) {
+      const el = $(id);
+      if (!el || !group) return;
+      const rows = group.rows.slice(0, 8);
+      if (!rows.length) return noData(id);
+      const postLabels = rows.map(row => row.post_label || 'Later path');
+      const labels = [group.label, ...postLabels];
+      const source = rows.map(() => 0);
+      const target = rows.map((_, idx) => idx + 1);
+      const values = rows.map(row => Math.max(0.01, Number(row.n_alumni || 0)));
+      const customdata = rows.map(row => [
+        row.post_label || 'Later path',
+        pct(row.share_pct),
+        num(row.n_alumni),
+        money(row.salary_delta),
+      ]);
+      const nodeColors = ['rgba(45,66,106,0.92)', ...rows.map(row => Number(row.salary_delta || 0) >= 0 ? 'rgba(72,235,143,0.78)' : 'rgba(231,131,196,0.78)')];
+      const linkColors = rows.map(row => Number(row.salary_delta || 0) >= 0 ? 'rgba(72,235,143,0.28)' : 'rgba(231,131,196,0.3)');
+      const flowType = mode === 'industries' ? 'Industry' : 'Role';
+      Plotly.newPlot(id, [{
+        type: 'sankey',
+        arrangement: 'snap',
+        node: {
+          pad: 18,
+          thickness: 16,
+          line: { color: 'rgba(45,66,106,0.12)', width: 1 },
+          label: labels.map(label => legendLabel(label, compactWindow() ? 20 : 30)),
+          color: nodeColors,
+          hovertemplate: '%{label}<extra></extra>',
+        },
+        link: {
+          source,
+          target,
+          value: values,
+          color: linkColors,
+          customdata,
+          hovertemplate: `${flowType} flow to %{customdata[0]}<br>%{customdata[1]} of observed moves<br>%{customdata[2]} alumni<br>%{customdata[3]} avg pay change<extra></extra>`,
+        },
+      }], {
+        ...layoutBase,
+        height: compactWindow() ? 300 : 330,
+        margin: { l: 12, r: 12, t: 12, b: 12 },
+      }, plotConfig);
     }
 
     function drawGraduateTransitionSummary(id) {
@@ -7274,38 +7507,77 @@
       const roles = transitions.roles || [];
       const industries = transitions.industries || [];
       const value = state.data.career?.graduate_value?.primary || {};
+      const modeRows = { roles, industries };
+      let mode = ['roles', 'industries'].includes(state.graduateMoveMode) ? state.graduateMoveMode : 'roles';
+      if (!(modeRows[mode] || []).length) mode = roles.length ? 'roles' : 'industries';
+      state.graduateMoveMode = mode;
+      const groups = graduateMoveGroups(modeRows[mode]);
       const transitionYear = value.years_after_degree
         || roles.find(row => row.years_after_degree !== null && row.years_after_degree !== undefined)?.years_after_degree
         || industries.find(row => row.years_after_degree !== null && row.years_after_degree !== undefined)?.years_after_degree;
       const timingText = transitionYear ? `${transitionYear} years after the graduate degree` : 'after the graduate degree';
-      const stats = Object.keys(value).length ? `
-        <div class="graduate-transition-stats">
-          <div class="graduate-transition-stat">
-            <strong>${pct(value.role_change_pct)}</strong>
-            <span>Changed role</span>
-          </div>
-          <div class="graduate-transition-stat">
-            <strong>${pct(value.industry_change_pct)}</strong>
-            <span>Changed industry</span>
-          </div>
-          <div class="graduate-transition-stat">
-            <strong>${pct(value.employer_change_pct)}</strong>
-            <span>Changed employer</span>
-          </div>
-        </div>
-      ` : '';
-      const groups = [
-        graduateTransitionRowsHtml(roles, 'Common role paths'),
-        graduateTransitionRowsHtml(industries, 'Common industry paths'),
-      ].filter(Boolean).join('');
-      if (!stats && !groups) return noData(id);
+      const selectedLabel = state.graduateMoveSelection[mode];
+      const selected = groups.find(group => group.label === selectedLabel) || groups[0];
+      if (!groups.length || !selected) return noData(id);
+      state.graduateMoveSelection[mode] = selected.label;
+      const maxN = Math.max(1, ...groups.map(group => group.n));
+      const modeButtons = ['roles', 'industries'].map(option => `
+        <button type="button" class="${option === mode ? 'active' : ''}" data-grad-move-mode="${option}">
+          ${escapeHtml(graduateMoveModeTitle(option))}
+        </button>
+      `).join('');
+      const optionsHtml = groups.slice(0, 8).map((group, idx) => {
+        const active = group.label === selected.label;
+        const deltaColor = group.delta >= 0 ? THEME.greenDim : '#D8649A';
+        return `
+          <button type="button" class="graduate-move-option ${active ? 'active' : ''}" data-grad-move-option="${idx}" title="${escapeHtml(group.label)}">
+            <strong>${escapeHtml(legendLabel(group.label, 36))}</strong>
+            <span>${escapeHtml(num(group.n))} alumni · ${escapeHtml(pct(group.share))} · <b style="color:${deltaColor};">${escapeHtml(money(group.delta))}</b> avg pay change</span>
+            <span class="graduate-move-bar" aria-hidden="true"><i style="--share:${Math.max(6, Math.round(100 * group.n / maxN))}%;"></i></span>
+          </button>
+        `;
+      }).join('');
       $(id).innerHTML = `
         <div class="graduate-transition-panel">
-          <p class="graduate-transition-intro">Among alumni with jobs observed before and ${escapeHtml(timingText)}, this shows how often they changed paths and the most common before-to-after moves.</p>
-          ${stats}
-          ${groups ? `<div class="graduate-transition-groups">${groups}</div>` : ''}
+          <div class="graduate-move-header">
+            <div>
+              <h4>Before program to ${escapeHtml(timingText)}</h4>
+              <p>Pick a common pre-program ${escapeHtml(graduateMoveNoun(mode))} to see where alumni moved after the degree.</p>
+            </div>
+            <div class="graduate-move-mode">${modeButtons}</div>
+          </div>
+          <div class="graduate-move-explorer">
+            <div class="graduate-move-list">
+              <p class="graduate-move-list-title">Top before-program ${escapeHtml(graduateMoveModeTitle(mode).toLowerCase())}</p>
+              ${optionsHtml}
+            </div>
+            <div class="graduate-move-sankey-card">
+              <div class="graduate-move-sankey-title">
+                <strong>${escapeHtml(legendLabel(selected.label, 46))}</strong>
+                <span>${escapeHtml(num(selected.n))} alumni</span>
+              </div>
+              <div id="${id}-sankey" class="graduate-move-sankey"></div>
+              <p class="graduate-move-caption">Flow width is alumni volume. Green paths have higher average pay after the degree; pink paths have lower average pay.</p>
+            </div>
+          </div>
         </div>
       `;
+      $(id).querySelectorAll('[data-grad-move-mode]').forEach(button => {
+        button.addEventListener('click', () => {
+          state.graduateMoveMode = button.dataset.gradMoveMode;
+          storage.setItem('outcomes.graduateMoveMode', state.graduateMoveMode);
+          drawGraduateTransitionSummary(id);
+        });
+      });
+      $(id).querySelectorAll('[data-grad-move-option]').forEach(button => {
+        button.addEventListener('click', () => {
+          const group = groups[Number(button.dataset.gradMoveOption)];
+          if (!group) return;
+          state.graduateMoveSelection[mode] = group.label;
+          drawGraduateTransitionSummary(id);
+        });
+      });
+      drawGraduateMoveSankey(`${id}-sankey`, mode, selected);
     }
 
     function drawCareerEarnings(id) {

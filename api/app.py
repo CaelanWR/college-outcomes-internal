@@ -5772,7 +5772,7 @@ def _career_graduate_transition_rows(
     where_sql, params, degree_values = _graduate_value_where(filters)
     if not degree_values:
         return []
-    limit = _safe_limit(filters.top_n)
+    limit = min(max(_safe_limit(filters.top_n), 80), 120)
     return _records_from_query(
         con,
         f"""
@@ -5834,6 +5834,31 @@ def _career_graduate_transition_rows(
           JOIN selected_year y
             ON e.years_after_degree = y.years_after_degree
           GROUP BY e.years_after_degree, e.pre_label, e.post_label
+        ),
+        pre_totals_raw AS (
+          SELECT
+            pre_label,
+            SUM(n_alumni) AS pre_n
+          FROM grouped
+          GROUP BY pre_label
+        ),
+        pre_totals AS (
+          SELECT
+            pre_label,
+            pre_n,
+            ROW_NUMBER() OVER (ORDER BY pre_n DESC) AS pre_rank
+          FROM pre_totals_raw
+        ),
+        ranked AS (
+          SELECT
+            g.*,
+            p.pre_n,
+            p.pre_rank,
+            SUM(g.n_alumni) OVER () AS total_n,
+            ROW_NUMBER() OVER (PARTITION BY g.pre_label ORDER BY g.n_alumni DESC) AS post_rank
+          FROM grouped g
+          JOIN pre_totals p
+            ON g.pre_label = p.pre_label
         )
         SELECT
           years_after_degree,
@@ -5841,16 +5866,20 @@ def _career_graduate_transition_rows(
           post_label,
           ROUND(n_alumni) AS n_alumni,
           ROUND(raw_n) AS raw_n,
-          ROUND(100.0 * n_alumni / NULLIF(SUM(n_alumni) OVER (), 0), 1) AS share_pct,
+          ROUND(100.0 * n_alumni / NULLIF(total_n, 0), 1) AS share_pct,
+          ROUND(pre_n) AS pre_n_alumni,
+          ROUND(100.0 * pre_n / NULLIF(total_n, 0), 1) AS pre_share_pct,
           ROUND(avg_salary_before) AS avg_salary_before,
           ROUND(avg_salary_after) AS avg_salary_after,
           ROUND(avg_salary_after - avg_salary_before) AS salary_delta,
           ROUND(avg_seniority_before, 2) AS avg_seniority_before,
           ROUND(avg_seniority_after, 2) AS avg_seniority_after,
           ROUND(avg_seniority_after - avg_seniority_before, 2) AS seniority_delta
-        FROM grouped
+        FROM ranked
         WHERE n_alumni > ?
-        ORDER BY n_alumni DESC
+          AND pre_rank <= 10
+          AND post_rank <= 8
+        ORDER BY pre_n DESC, n_alumni DESC
         LIMIT {limit}
         """,
         [_work_source_for_filters(dataset, filters), *params, GRAD_TRANSITION_ROW_MIN_WEIGHT],
