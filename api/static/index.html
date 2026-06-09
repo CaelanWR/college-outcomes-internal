@@ -7457,11 +7457,28 @@
       return mode === 'industries' ? 'industry' : 'role';
     }
 
+    function graduateMoveDeltaColor(delta, maxAbs, alpha = 0.34) {
+      const value = Number(delta || 0);
+      const scale = maxAbs > 0 ? Math.min(1, Math.abs(value) / maxAbs) : 0;
+      const eased = Math.sqrt(scale);
+      if (value >= 0) {
+        const r = Math.round(130 - 58 * eased);
+        const g = Math.round(222 + 13 * eased);
+        const b = Math.round(170 - 27 * eased);
+        return `rgba(${r},${g},${b},${alpha})`;
+      }
+      const r = Math.round(238 - 7 * eased);
+      const g = Math.round(174 - 43 * eased);
+      const b = Math.round(207 - 11 * eased);
+      return `rgba(${r},${g},${b},${alpha})`;
+    }
+
     function drawGraduateMoveSankey(id, mode, group) {
       const el = $(id);
       if (!el || !group) return;
       const rows = group.rows.slice(0, 8);
       if (!rows.length) return noData(id);
+      const maxAbsDelta = Math.max(1, ...rows.map(row => Math.abs(Number(row.salary_delta || 0))));
       const postLabels = rows.map(row => row.post_label || 'Later path');
       const labels = [group.label, ...postLabels];
       const source = rows.map(() => 0);
@@ -7473,8 +7490,8 @@
         num(row.n_alumni),
         money(row.salary_delta),
       ]);
-      const nodeColors = ['rgba(45,66,106,0.92)', ...rows.map(row => Number(row.salary_delta || 0) >= 0 ? 'rgba(72,235,143,0.78)' : 'rgba(231,131,196,0.78)')];
-      const linkColors = rows.map(row => Number(row.salary_delta || 0) >= 0 ? 'rgba(72,235,143,0.28)' : 'rgba(231,131,196,0.3)');
+      const nodeColors = ['rgba(45,66,106,0.92)', ...rows.map(row => graduateMoveDeltaColor(row.salary_delta, maxAbsDelta, 0.86))];
+      const linkColors = rows.map(row => graduateMoveDeltaColor(row.salary_delta, maxAbsDelta, 0.38));
       const flowType = mode === 'industries' ? 'Industry' : 'Role';
       Plotly.newPlot(id, [{
         type: 'sankey',
@@ -7557,7 +7574,7 @@
                 <span>${escapeHtml(num(selected.n))} alumni</span>
               </div>
               <div id="${id}-sankey" class="graduate-move-sankey"></div>
-              <p class="graduate-move-caption">Flow width is alumni volume. Green paths have higher average pay after the degree; pink paths have lower average pay.</p>
+              <p class="graduate-move-caption">Flow width is alumni volume. Color intensity reflects average pay change after the degree: stronger green is a larger gain, stronger pink is a larger decline.</p>
             </div>
           </div>
         </div>
