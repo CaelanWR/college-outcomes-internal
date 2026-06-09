@@ -3656,6 +3656,7 @@
       graduateMoveMode: storage.getItem('outcomes.graduateMoveMode') || 'roles',
       graduateMoveSelection: {},
       graduateMoveExpanded: storage.getItem('outcomes.graduateMoveExpanded') === '1',
+      majorMomentumMode: storage.getItem('outcomes.majorMomentumMode') || 'momentum',
       topNByChart: {},
       appliedAdvanced: null,
       schoolSearchQuery: '',
@@ -3703,6 +3704,11 @@
     ];
     const REQUEST_TOP_N = Math.max(...TOP_N_OPTIONS);
     const MAJOR_MOMENTUM_MIN_SALARY_WEIGHT = 30;
+    const MAJOR_MOMENTUM_MODES = [
+      { value: 'momentum', label: 'Momentum' },
+      { value: 'demand', label: 'Demand shift' },
+      { value: 'scale', label: 'Scale' },
+    ];
     const DASHBOARD_CACHE_LIMIT = 120;
     const TAB_ORDER = ['overview', 'destinations', 'career', 'earnings', 'geography', 'demographics', 'postgrad'];
     const DASHBOARD_VIEW_MODES = ['snapshot', 'overtime'];
@@ -5425,6 +5431,10 @@
       if (chartUsesSalaryDollars(id, title)) {
         items.push(`${SALARY_DOLLAR_NOTE} Salary charts use Revelio compensation observations weighted by the selected profile/outcome weights.`);
       }
+      if (id === 'major-momentum-pay') {
+        items.push('This is a student-choice exploration chart. Demand shift uses current-student projected class shares; pay movement uses the change in new-grad salary premium relative to the school-wide baseline.');
+        items.push('Bubble size is projected student volume. Majors with thin salary-weighted observations are removed from pay-premium views to avoid unstable spikes.');
+      }
       if (/\bmajor|cip|program/.test(text)) {
         items.push('Majors and programs use IPEDS CIP taxonomy at the selected CIP level. The default 4-digit CIP view keeps related programs together while avoiding overly noisy 6-digit cells.');
       }
@@ -6102,6 +6112,13 @@
       const current = topNFor(chartId);
       const options = TOP_N_OPTIONS.map(value => `<option value="${value}" ${value === current ? 'selected' : ''}>${value}</option>`).join('');
       return `<label class="chart-top-control" for="${id}"><span>Show top</span><select id="${id}" data-top-n-control data-chart-id="${chartId}">${options}</select></label>`;
+    }
+
+    function majorMomentumModeControl(id = 'major-momentum-pay-mode') {
+      const validModes = new Set(MAJOR_MOMENTUM_MODES.map(option => option.value));
+      const current = validModes.has(state.majorMomentumMode) ? state.majorMomentumMode : 'momentum';
+      const options = MAJOR_MOMENTUM_MODES.map(option => `<option value="${option.value}" ${option.value === current ? 'selected' : ''}>${option.label}</option>`).join('');
+      return `<label class="chart-top-control" for="${id}"><span>View</span><select id="${id}" data-major-momentum-mode>${options}</select></label>`;
     }
 
     function activeHorizonValue() {
@@ -7063,7 +7080,7 @@
           ...overviewMetrics(o),
           card('Top Majors in Current Slice', 'overview-major-bars', 6, true, { topControl: true }),
           card('Top Career Employers', 'employer-bars', 6, true, { topControl: true }),
-          ...(!hasMajor ? [card('Major Momentum', 'major-momentum-pay', 12, true, { topControl: true, horizonControl: true })] : []),
+          ...(!hasMajor ? [card('Student Choice Momentum', 'major-momentum-pay', 12, true, { topControl: true, horizonControl: true, controls: majorMomentumModeControl() })] : []),
           card('Top Cities by Alumni Share', 'overview-geo', 12, false, { topControl: true }),
         ].join('');
         drawTopMajorsVolume('overview-major-bars');
@@ -9941,10 +9958,18 @@
       return { byCode, recentYears, previousYears };
     }
 
-    function drawMajorMomentumPayBubble(id) {
+    function signedMomentumMoney(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return 'No data';
+      const sign = n >= 0 ? '+' : '-';
+      return `${sign}$${fmt.format(Math.round(Math.abs(n) / 1000))}k`;
+    }
+
+    function majorMomentumRows(id, options = {}) {
       const shareStats = projectedShareChangeStats();
       const premiumStats = salaryPremiumChangeStats();
-      if (!shareStats.byCode.size || !premiumStats.byCode.size) return noData(id);
+      if (!shareStats.byCode.size) return [];
+      const requirePremium = options.requirePremium ?? false;
       const rows = (state.data.top_majors || [])
         .map(row => {
           const code = String(row.code || '');
@@ -9961,6 +9986,7 @@
             previous_share_pct: shareChange?.previous_share_pct,
             later_share_pct: shareChange?.later_share_pct,
             share_change_pct: shareChange?.share_change_pct,
+            later_coverage_pct: shareChange?.later_coverage_pct,
             salary_value: salary,
             previous_salary_premium: premiumChange?.previous_premium,
             recent_salary_premium: premiumChange?.recent_premium,
@@ -9972,32 +9998,68 @@
         .filter(row =>
           row.code
           && Number.isFinite(Number(row.share_change_pct))
-          && Number.isFinite(Number(row.salary_premium_change))
+          && Number.isFinite(Number(row.previous_share_pct))
+          && Number.isFinite(Number(row.later_share_pct))
           && Number(row.later_projected_students || 0) > 0
-        )
-        .sort((a, b) => Math.abs(Number(b.share_change_pct || 0)) + Math.abs(Number(b.salary_premium_change || 0)) / 10000
-          - (Math.abs(Number(a.share_change_pct || 0)) + Math.abs(Number(a.salary_premium_change || 0)) / 10000))
+          && (!requirePremium || Number.isFinite(Number(row.salary_premium_change)))
+        );
+      const score = row => {
+        if (options.sortMode === 'demand') {
+          return Math.max(Number(row.previous_projected_students || 0), Number(row.later_projected_students || 0));
+        }
+        if (options.sortMode === 'scale') {
+          return Number(row.later_projected_students || 0) * (1 + Math.abs(Number(row.share_change_pct || 0)) / 10);
+        }
+        return Math.abs(Number(row.share_change_pct || 0)) + Math.abs(Number(row.salary_premium_change || 0)) / 10000;
+      };
+      return rows
+        .sort((a, b) => score(b) - score(a))
         .slice(0, topNFor(id));
-      if (rows.length < 2) return noData(id);
+    }
+
+    function majorMomentumMarkerSizes(rows) {
       const maxProjected = Math.max(1, ...rows.map(row => Number(row.later_projected_students || 0)));
-      const markerSizes = rows.map(row => 18 + 42 * Math.sqrt(Number(row.later_projected_students || 0) / maxProjected));
+      return rows.map(row => 16 + 44 * Math.sqrt(Number(row.later_projected_students || 0) / maxProjected));
+    }
+
+    function majorMomentumLabeledCodes(rows, metric = 'share_change_pct', count = 5) {
+      return new Set(
+        [...rows]
+          .sort((a, b) => Math.abs(Number(b[metric] || 0)) - Math.abs(Number(a[metric] || 0)))
+          .slice(0, Math.min(count, rows.length))
+          .map(row => row.code)
+      );
+    }
+
+    function drawMajorMomentumPayBubble(id) {
+      const mode = MAJOR_MOMENTUM_MODES.some(option => option.value === state.majorMomentumMode)
+        ? state.majorMomentumMode
+        : 'momentum';
+      if (mode === 'demand') {
+        drawMajorMomentumDemandShift(id);
+        return;
+      }
+      if (mode === 'scale') {
+        drawMajorMomentumScale(id);
+        return;
+      }
+      drawMajorMomentumPremiumChange(id);
+    }
+
+    function drawMajorMomentumPremiumChange(id) {
+      const shareStats = projectedShareChangeStats();
+      const premiumStats = salaryPremiumChangeStats();
+      if (!shareStats.byCode.size || !premiumStats.byCode.size) return noData(id);
+      const rows = majorMomentumRows(id, { requirePremium: true, sortMode: 'momentum' });
+      if (rows.length < 2) return noData(id);
+      const markerSizes = majorMomentumMarkerSizes(rows);
       const xValues = rows.map(row => Number(row.share_change_pct || 0));
       const yValues = rows.map(row => Number(row.salary_premium_change || 0));
       const xAbs = Math.max(1, ...xValues.map(Math.abs));
       const yAbs = Math.max(1000, ...yValues.map(value => Math.abs(value)));
       const periodLabel = majorMomentumPayPeriodLabel();
       const axisLabels = majorMomentumAxisLabels();
-      const labelCount = Math.min(4, rows.length);
-      const labeledRows = new Set(
-        [...rows]
-          .sort((a, b) => (
-            Math.abs(Number(b.share_change_pct || 0)) + Math.abs(Number(b.salary_premium_change || 0)) / 10000
-          ) - (
-            Math.abs(Number(a.share_change_pct || 0)) + Math.abs(Number(a.salary_premium_change || 0)) / 10000
-          ))
-          .slice(0, labelCount)
-          .map(row => row.code)
-      );
+      const labeledRows = majorMomentumLabeledCodes(rows, 'salary_premium_change', 5);
       const trendLine = (() => {
         if (xValues.length < 3) return null;
         const weights = rows.map(row => Math.max(0, Number(row.later_projected_students || 0)));
@@ -10016,12 +10078,6 @@
           y: [intercept + slope * x0, intercept + slope * x1],
         };
       })();
-      const signedMoney = value => {
-        const n = Number(value);
-        if (!Number.isFinite(n)) return 'No data';
-        const sign = n >= 0 ? '+' : '-';
-        return `${sign}$${fmt.format(Math.round(Math.abs(n) / 1000))}k`;
-      };
       const traces = [];
       if (trendLine) {
         traces.push({
@@ -10052,14 +10108,14 @@
           majorName(row),
           row.salary_value,
           row.salary_premium_change,
-          signedMoney(row.salary_premium_change),
+          signedMomentumMoney(row.salary_premium_change),
           row.later_projected_students,
           row.later_observed_profiles,
           row.later_share_pct,
           row.previous_share_pct,
           row.share_change_pct,
-          signedMoney(row.previous_salary_premium),
-          signedMoney(row.recent_salary_premium),
+          signedMomentumMoney(row.previous_salary_premium),
+          signedMomentumMoney(row.recent_salary_premium),
           row.previous_projected_students,
           row.previous_observed_profiles,
           row.previous_salary_weight,
@@ -10095,6 +10151,165 @@
           { text: 'Falling pay premium', x: 0.52, y: 0.04, xref: 'paper', yref: 'paper', showarrow: false, font: { color: 'rgba(102,119,145,0.58)', size: 12 }, xanchor: 'left', yanchor: 'bottom' },
           { text: 'Falling share', x: 0.02, y: 0.52, xref: 'paper', yref: 'paper', showarrow: false, font: { color: 'rgba(102,119,145,0.58)', size: 12 }, xanchor: 'left', yanchor: 'bottom' },
           { text: 'Rising share', x: 0.98, y: 0.52, xref: 'paper', yref: 'paper', showarrow: false, font: { color: 'rgba(102,119,145,0.58)', size: 12 }, xanchor: 'right', yanchor: 'bottom' },
+        ],
+        showlegend: false,
+      }, plotConfig);
+    }
+
+    function drawMajorMomentumDemandShift(id) {
+      const shareStats = projectedShareChangeStats();
+      const rows = majorMomentumRows(id, { sortMode: 'demand' });
+      if (rows.length < 2) return noData(id);
+      const xValues = rows.map(row => Number(row.previous_share_pct || 0));
+      const yValues = rows.map(row => Number(row.later_share_pct || 0));
+      const changeValues = rows.map(row => Number(row.share_change_pct || 0));
+      const maxShare = Math.max(1, ...xValues, ...yValues);
+      const changeAbs = Math.max(1, ...changeValues.map(Math.abs));
+      const labeledRows = majorMomentumLabeledCodes(rows, 'share_change_pct', 5);
+      const sharePeriod = projectedShareChangePeriodLabel();
+      const markerSizes = majorMomentumMarkerSizes(rows);
+      Plotly.newPlot(id, [
+        {
+          type: 'scatter',
+          mode: 'lines',
+          x: [0, maxShare * 1.12],
+          y: [0, maxShare * 1.12],
+          line: { color: 'rgba(102,119,145,0.4)', width: 2, dash: 'dot' },
+          hoverinfo: 'skip',
+          showlegend: false,
+        },
+        {
+          type: 'scatter',
+          mode: 'markers+text',
+          x: xValues,
+          y: yValues,
+          text: rows.map(row => labeledRows.has(row.code) ? legendLabel(majorName(row), 18) : ''),
+          textposition: rows.map((_, idx) => ['top center', 'bottom center', 'middle right', 'middle left'][idx % 4]),
+          textfont: { size: 12, color: '#233b5f' },
+          marker: {
+            size: markerSizes,
+            color: changeValues,
+            colorscale: [[0, '#e66386'], [0.5, '#d8dee8'], [1, '#5bd58f']],
+            cmin: -changeAbs,
+            cmax: changeAbs,
+            opacity: 0.88,
+            line: { color: '#ffffff', width: 1.5 },
+            colorbar: { title: 'Share change', ticksuffix: ' pts', thickness: 12, len: 0.74 },
+          },
+          customdata: rows.map(row => [
+            majorName(row),
+            row.share_change_pct,
+            row.previous_share_pct,
+            row.later_share_pct,
+            row.previous_projected_students,
+            row.later_projected_students,
+            row.later_observed_profiles,
+            row.later_coverage_pct,
+          ]),
+          hovertemplate: `%{customdata[0]}<br>${sharePeriod}<br>Projected share change: %{customdata[1]:+.1f} pts<br>Earlier share: %{customdata[2]:.1f}%<br>Later share: %{customdata[3]:.1f}%<br>Earlier projected students: %{customdata[4]:,.0f}<br>Later projected students: %{customdata[5]:,.0f}<br>Observed current profiles: %{customdata[6]:,.0f}<extra></extra>`,
+        },
+      ], {
+        ...layoutBase,
+        height: 500,
+        margin: { ...layoutBase.margin, l: 88, r: 92, t: 24, b: 78 },
+        xaxis: {
+          title: `Earlier projected share (${compactYearsLabel(shareStats.previousYears, '2024/25')})`,
+          ticksuffix: '%',
+          range: [0, maxShare * 1.15],
+          zeroline: false,
+          automargin: true,
+        },
+        yaxis: {
+          title: `Later projected share (${compactYearsLabel(shareStats.laterYears, '2028/29')})`,
+          ticksuffix: '%',
+          range: [0, maxShare * 1.15],
+          zeroline: false,
+          automargin: true,
+        },
+        annotations: [
+          { text: 'Gaining projected share', x: 0.05, y: 0.96, xref: 'paper', yref: 'paper', showarrow: false, font: { color: 'rgba(102,119,145,0.6)', size: 12 }, xanchor: 'left', yanchor: 'top' },
+          { text: 'Losing projected share', x: 0.94, y: 0.08, xref: 'paper', yref: 'paper', showarrow: false, font: { color: 'rgba(102,119,145,0.6)', size: 12 }, xanchor: 'right', yanchor: 'bottom' },
+        ],
+        showlegend: false,
+      }, plotConfig);
+    }
+
+    function drawMajorMomentumScale(id) {
+      const shareStats = projectedShareChangeStats();
+      const rows = majorMomentumRows(id, { sortMode: 'scale' });
+      if (rows.length < 2) return noData(id);
+      const xValues = rows.map(row => Number(row.later_projected_students || 0));
+      const yValues = rows.map(row => Number(row.share_change_pct || 0));
+      const premiumValues = rows.map(row => Number(row.salary_premium_change));
+      const hasPremium = premiumValues.some(Number.isFinite);
+      const colorValues = hasPremium ? premiumValues.map(value => Number.isFinite(value) ? value : 0) : yValues;
+      const colorAbs = Math.max(hasPremium ? 1000 : 1, ...colorValues.map(value => Math.abs(Number(value || 0))));
+      const yAbs = Math.max(1, ...yValues.map(Math.abs));
+      const xMax = Math.max(1, ...xValues);
+      const labeledRows = majorMomentumLabeledCodes(rows, 'share_change_pct', 5);
+      const maxLaterShare = Math.max(1, ...rows.map(row => Number(row.later_share_pct || 0)));
+      const markerSizes = rows.map(row => 16 + 34 * Math.sqrt(Math.max(0, Number(row.later_share_pct || 0)) / maxLaterShare));
+      Plotly.newPlot(id, [{
+        type: 'scatter',
+        mode: 'markers+text',
+        x: xValues,
+        y: yValues,
+        text: rows.map(row => labeledRows.has(row.code) ? legendLabel(majorName(row), 18) : ''),
+        textposition: rows.map((_, idx) => ['top center', 'bottom center', 'middle right', 'middle left'][idx % 4]),
+        textfont: { size: 12, color: '#233b5f' },
+        marker: {
+          size: markerSizes,
+          color: colorValues,
+          colorscale: hasPremium
+            ? [[0, '#e66386'], [0.5, '#d8dee8'], [1, '#5bd58f']]
+            : [[0, '#e66386'], [0.5, '#d8dee8'], [1, '#5bd58f']],
+          cmin: -colorAbs,
+          cmax: colorAbs,
+          opacity: 0.88,
+          line: { color: '#ffffff', width: 1.5 },
+          colorbar: {
+            title: hasPremium ? 'Pay premium change' : 'Share change',
+            tickprefix: hasPremium ? '$' : '',
+            ticksuffix: hasPremium ? '' : ' pts',
+            tickformat: hasPremium ? '~s' : undefined,
+            thickness: 12,
+            len: 0.74,
+          },
+        },
+        customdata: rows.map(row => [
+          majorName(row),
+          row.share_change_pct,
+          row.later_share_pct,
+          row.previous_share_pct,
+          row.later_projected_students,
+          row.previous_projected_students,
+          signedMomentumMoney(row.salary_premium_change),
+          row.later_observed_profiles,
+        ]),
+        hovertemplate: `%{customdata[0]}<br>${projectedShareChangePeriodLabel()}<br>Projected share change: %{customdata[1]:+.1f} pts<br>Later projected share: %{customdata[2]:.1f}%<br>Earlier projected share: %{customdata[3]:.1f}%<br>Later projected students: %{customdata[4]:,.0f}<br>Earlier projected students: %{customdata[5]:,.0f}<br>Pay premium change: %{customdata[6]}<extra></extra>`,
+      }], {
+        ...layoutBase,
+        height: 500,
+        margin: { ...layoutBase.margin, l: 88, r: 100, t: 24, b: 78 },
+        xaxis: {
+          title: `Projected students (${compactYearsLabel(shareStats.laterYears, '2028/29')})`,
+          range: [0, xMax * 1.12],
+          zeroline: false,
+          automargin: true,
+        },
+        yaxis: {
+          title: `Projected share change (${compactYearsLabel(shareStats.laterYears, '2028/29')})`,
+          ticksuffix: ' pts',
+          range: [-yAbs * 1.22, yAbs * 1.22],
+          zeroline: true,
+          zerolinecolor: '#9caabd',
+          zerolinewidth: 2,
+          automargin: true,
+        },
+        annotations: [
+          { text: 'Bigger projected class', x: 0.98, y: 0.08, xref: 'paper', yref: 'paper', showarrow: false, font: { color: 'rgba(102,119,145,0.6)', size: 12 }, xanchor: 'right', yanchor: 'bottom' },
+          { text: 'Growing share', x: 0.03, y: 0.96, xref: 'paper', yref: 'paper', showarrow: false, font: { color: 'rgba(102,119,145,0.6)', size: 12 }, xanchor: 'left', yanchor: 'top' },
+          { text: 'Shrinking share', x: 0.03, y: 0.06, xref: 'paper', yref: 'paper', showarrow: false, font: { color: 'rgba(102,119,145,0.6)', size: 12 }, xanchor: 'left', yanchor: 'bottom' },
         ],
         showlegend: false,
       }, plotConfig);
@@ -11713,6 +11928,16 @@
           storage.removeItem('outcomes.destinationRelation');
           if (state.selectionMode === 'compare' || state.selectionMode === 'major_compare') renderComparePage();
           else renderDestinations();
+          queuePlotResize();
+          return;
+        }
+        const momentumMode = event.target.closest('[data-major-momentum-mode]');
+        if (momentumMode) {
+          const value = momentumMode.value;
+          if (!MAJOR_MOMENTUM_MODES.some(option => option.value === value)) return;
+          state.majorMomentumMode = value;
+          storage.setItem('outcomes.majorMomentumMode', value);
+          renderOverview();
           queuePlotResize();
           return;
         }
