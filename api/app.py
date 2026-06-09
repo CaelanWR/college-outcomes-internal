@@ -5772,7 +5772,10 @@ def _career_graduate_transition_rows(
     where_sql, params, degree_values = _graduate_value_where(filters)
     if not degree_values:
         return []
-    limit = min(max(_safe_limit(filters.top_n), 80), 120)
+    limit = min(max(_safe_limit(filters.top_n), 160), 220)
+    transition_columns = _dataset_columns(f"work_facts/{dataset}")
+    expected_salary_expr = "expected_salary_after" if "expected_salary_after" in transition_columns else "NULL"
+    salary_lift_expr = "salary_lift_dollars" if "salary_lift_dollars" in transition_columns else "NULL"
     return _records_from_query(
         con,
         f"""
@@ -5785,6 +5788,8 @@ def _career_graduate_transition_rows(
             raw_n,
             avg_salary_before,
             avg_salary_after,
+            {expected_salary_expr} AS expected_salary_after,
+            {salary_lift_expr} AS salary_lift_dollars,
             avg_seniority_before,
             avg_seniority_after
           FROM read_parquet(?)
@@ -5828,6 +5833,8 @@ def _career_graduate_transition_rows(
             SUM(e.raw_n) AS raw_n,
             {_weighted_avg_expr("e.avg_salary_before", "e.n_alumni")} AS avg_salary_before,
             {_weighted_avg_expr("e.avg_salary_after", "e.n_alumni")} AS avg_salary_after,
+            {_weighted_avg_expr("e.expected_salary_after", "e.n_alumni")} AS expected_salary_after,
+            {_weighted_avg_expr("e.salary_lift_dollars", "e.n_alumni")} AS salary_lift_dollars,
             {_weighted_avg_expr("e.avg_seniority_before", "e.n_alumni")} AS avg_seniority_before,
             {_weighted_avg_expr("e.avg_seniority_after", "e.n_alumni")} AS avg_seniority_after
           FROM eligible e
@@ -5872,12 +5879,14 @@ def _career_graduate_transition_rows(
           ROUND(avg_salary_before) AS avg_salary_before,
           ROUND(avg_salary_after) AS avg_salary_after,
           ROUND(avg_salary_after - avg_salary_before) AS salary_delta,
+          ROUND(expected_salary_after) AS expected_salary_after,
+          ROUND(salary_lift_dollars) AS salary_lift_dollars,
           ROUND(avg_seniority_before, 2) AS avg_seniority_before,
           ROUND(avg_seniority_after, 2) AS avg_seniority_after,
           ROUND(avg_seniority_after - avg_seniority_before, 2) AS seniority_delta
         FROM ranked
         WHERE n_alumni > ?
-          AND pre_rank <= 10
+          AND pre_rank <= 24
           AND post_rank <= 8
         ORDER BY pre_n DESC, n_alumni DESC
         LIMIT {limit}

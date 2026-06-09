@@ -2027,6 +2027,7 @@ FROM grouped
 
 
 def _grad_transition_category_query(category: str) -> str:
+    min_benchmark = GRAD_BENCHMARK_MIN_WEIGHT
     if category == "role":
         pre_col = "pre_role"
         post_col = "post_role"
@@ -2038,6 +2039,60 @@ def _grad_transition_category_query(category: str) -> str:
     return f"""
 WITH stacked AS (
     {_grad_transition_stacked_source_sql()}
+), benchmarked AS (
+    SELECT
+        s.*,
+        COALESCE(b1.expected_salary_ratio, b2.expected_salary_ratio, b3.expected_salary_ratio, b4.expected_salary_ratio, b5.expected_salary_ratio, b6.expected_salary_ratio) AS expected_salary_ratio,
+        COALESCE(b1.benchmark_tier, b2.benchmark_tier, b3.benchmark_tier, b4.benchmark_tier, b5.benchmark_tier, b6.benchmark_tier) AS benchmark_tier
+    FROM stacked s
+    LEFT JOIN {SCRATCH}.SCHOOL_OUTCOMES_GRAD_TRANSITION_BENCHMARK b1
+      ON b1.benchmark_tier = 'role_industry_seniority_year'
+     AND b1.pre_role = s.pre_role
+     AND b1.pre_industry = s.pre_industry
+     AND b1.pre_seniority_group = s.pre_seniority_group
+     AND b1.pre_year_bucket = s.pre_year_bucket
+     AND b1.years_after_degree = s.years_after_degree
+     AND b1.n_benchmark >= {min_benchmark}
+    LEFT JOIN {SCRATCH}.SCHOOL_OUTCOMES_GRAD_TRANSITION_BENCHMARK b2
+      ON b2.benchmark_tier = 'role_industry_seniority'
+     AND b2.pre_role = s.pre_role
+     AND b2.pre_industry = s.pre_industry
+     AND b2.pre_seniority_group = s.pre_seniority_group
+     AND b2.pre_year_bucket = -1
+     AND b2.years_after_degree = s.years_after_degree
+     AND b2.n_benchmark >= {min_benchmark}
+    LEFT JOIN {SCRATCH}.SCHOOL_OUTCOMES_GRAD_TRANSITION_BENCHMARK b3
+      ON b3.benchmark_tier = 'role_seniority'
+     AND b3.pre_role = s.pre_role
+     AND b3.pre_industry = 'All'
+     AND b3.pre_seniority_group = s.pre_seniority_group
+     AND b3.pre_year_bucket = -1
+     AND b3.years_after_degree = s.years_after_degree
+     AND b3.n_benchmark >= {min_benchmark}
+    LEFT JOIN {SCRATCH}.SCHOOL_OUTCOMES_GRAD_TRANSITION_BENCHMARK b4
+      ON b4.benchmark_tier = 'industry_seniority'
+     AND b4.pre_role = 'All'
+     AND b4.pre_industry = s.pre_industry
+     AND b4.pre_seniority_group = s.pre_seniority_group
+     AND b4.pre_year_bucket = -1
+     AND b4.years_after_degree = s.years_after_degree
+     AND b4.n_benchmark >= {min_benchmark}
+    LEFT JOIN {SCRATCH}.SCHOOL_OUTCOMES_GRAD_TRANSITION_BENCHMARK b5
+      ON b5.benchmark_tier = 'seniority'
+     AND b5.pre_role = 'All'
+     AND b5.pre_industry = 'All'
+     AND b5.pre_seniority_group = s.pre_seniority_group
+     AND b5.pre_year_bucket = -1
+     AND b5.years_after_degree = s.years_after_degree
+     AND b5.n_benchmark >= {min_benchmark}
+    LEFT JOIN {SCRATCH}.SCHOOL_OUTCOMES_GRAD_TRANSITION_BENCHMARK b6
+      ON b6.benchmark_tier = 'overall'
+     AND b6.pre_role = 'All'
+     AND b6.pre_industry = 'All'
+     AND b6.pre_seniority_group = 'All'
+     AND b6.pre_year_bucket = -1
+     AND b6.years_after_degree = s.years_after_degree
+     AND b6.n_benchmark >= {min_benchmark}
 ), grouped AS (
     SELECT
         unitid, school_name, degree, cip_level, cip4, major_title,
@@ -2050,11 +2105,13 @@ WITH stacked AS (
               NULLIF(SUM(CASE WHEN pre_salary IS NOT NULL THEN transition_weight ELSE 0 END), 0), 0) AS avg_salary_before,
         ROUND(SUM(CASE WHEN post_salary IS NOT NULL THEN post_salary * transition_weight ELSE 0 END) /
               NULLIF(SUM(CASE WHEN post_salary IS NOT NULL THEN transition_weight ELSE 0 END), 0), 0) AS avg_salary_after,
+        ROUND(SUM(CASE WHEN pre_salary IS NOT NULL AND expected_salary_ratio IS NOT NULL THEN pre_salary * expected_salary_ratio * transition_weight ELSE 0 END) /
+              NULLIF(SUM(CASE WHEN pre_salary IS NOT NULL AND expected_salary_ratio IS NOT NULL THEN transition_weight ELSE 0 END), 0), 0) AS expected_salary_after,
         ROUND(SUM(CASE WHEN pre_seniority IS NOT NULL THEN pre_seniority * transition_weight ELSE 0 END) /
               NULLIF(SUM(CASE WHEN pre_seniority IS NOT NULL THEN transition_weight ELSE 0 END), 0), 2) AS avg_seniority_before,
         ROUND(SUM(CASE WHEN post_seniority IS NOT NULL THEN post_seniority * transition_weight ELSE 0 END) /
               NULLIF(SUM(CASE WHEN post_seniority IS NOT NULL THEN transition_weight ELSE 0 END), 0), 2) AS avg_seniority_after
-    FROM stacked
+    FROM benchmarked
     WHERE {pre_col} <> 'Unknown'
       AND {post_col} <> 'Unknown'
     GROUP BY unitid, school_name, degree, cip_level, cip4, major_title,
@@ -2082,6 +2139,9 @@ WITH stacked AS (
      AND g.grad_plus_one_masters_flag = t.grad_plus_one_masters_flag
 )
 SELECT *
+    EXCLUDE (transition_rank),
+    ROUND(avg_salary_after - avg_salary_before, 0) AS salary_delta,
+    ROUND(avg_salary_after - expected_salary_after, 0) AS salary_lift_dollars
 FROM ranked
 WHERE transition_rank <= {WORK_TOP_N_PER_GROUP}
 """
