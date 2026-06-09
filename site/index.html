@@ -4976,22 +4976,13 @@
         const cached = getCachedDashboard(filters);
         if (cached) {
           state.data = cached;
-        } else if (canWarmFullSchoolSlice(filters)) {
-          const fullFilters = { ...filters, active_tab: 'all', view_mode: 'all' };
-          state.data = await fetchDashboard(fullFilters);
-          hydrateFullSchoolCaches(filters, state.data);
-          setStatus('', 'Preparing all tabs and years');
-          try {
-            await warmFullSchoolCaches(filters, state.prefetchGeneration, { skipHorizon: filters.horizon || '1yr' });
-          } catch {
-            // Keep the active school usable even if a background horizon cache misses.
-          }
         } else {
           state.data = await fetchDashboard(filters);
         }
         showContent();
         render();
-        setStatus('ok', `${state.data.meta?.data_version || 'Connected'} | loaded ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}`);
+        const warming = canWarmFullSchoolSlice(filters, { allowWarmupHorizons: true });
+        setStatus('ok', `${state.data.meta?.data_version || 'Connected'} | loaded ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}${warming ? ' | warming tabs' : ''}`);
         scheduleDashboardPrefetch(filters);
       } catch (error) {
         setStatus('bad', 'Connection failed');
