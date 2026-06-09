@@ -6076,6 +6076,7 @@
 
     function defaultTopNForChart(chartId) {
       const id = String(chartId || '');
+      if (id === 'major-momentum-pay') return 30;
       if (['major-employer-heatmap', 'employer-bars', 'emp-top'].includes(id)) return 10;
       if (['destination-left-tree', 'destination-right-tree', 'destination-left-trend-tree', 'destination-right-trend-tree'].includes(id)) return 12;
       return selectedTopN();
