@@ -1873,7 +1873,7 @@
 
     .controls-main {
       display: grid;
-      grid-template-columns: minmax(300px, 1.35fr) minmax(160px, 0.62fr) minmax(220px, 0.92fr) minmax(220px, 0.82fr) max-content max-content;
+      grid-template-columns: minmax(300px, 1.35fr) minmax(160px, 0.62fr) minmax(220px, 0.92fr) minmax(220px, 0.82fr) max-content max-content max-content;
       gap: 14px 16px;
       width: 100%;
       align-items: end;
@@ -1907,6 +1907,24 @@
     .control > .segmented { width: auto; }
     .control-years .segmented, .control-view .segmented { flex-wrap: nowrap; }
     .control-years .btn, .control-view .btn { white-space: nowrap; }
+    .control-load { min-width: 112px; }
+    .load-btn {
+      min-height: 44px;
+      width: 100%;
+      border-color: rgba(72,235,143,0.42);
+      background: linear-gradient(135deg, var(--navy-dark), var(--navy));
+      color: #fff;
+      box-shadow: 0 10px 22px rgba(45,66,106,0.12), inset 0 -2px 0 rgba(72,235,143,0.46);
+    }
+    .load-btn:not(.is-dirty) {
+      border-color: rgba(45,66,106,0.16);
+      background: rgba(255,255,255,0.9);
+      color: var(--navy);
+      box-shadow: 0 8px 18px rgba(45,66,106,0.05);
+    }
+    .load-btn.is-dirty {
+      transform: translateY(-1px);
+    }
 
     .school-picker-stack {
       position: relative;
@@ -3403,6 +3421,10 @@
           <button class="btn active" type="button" data-view-mode="overtime">Over Time</button>
         </span>
       </div>
+      <div class="control control-load">
+        <label>Data</label>
+        <button id="load-filters-btn" class="btn load-btn" type="button">Load</button>
+      </div>
       <div class="control advanced-toggle">
         <label>Options</label>
         <button id="advanced-btn" class="btn" type="button">Advanced Options</button>
@@ -3511,7 +3533,7 @@
             <button id="print-page-btn" class="btn" type="button">Save Page PDF</button>
           </div>
           <button id="advanced-reset-btn" class="btn" type="button">Reset Advanced Filters</button>
-          <button id="advanced-apply-btn" class="btn active" type="button">Apply Advanced Options</button>
+          <button id="advanced-apply-btn" class="btn active" type="button">Load Changes</button>
         </div>
       </div>
     </div>
@@ -3658,7 +3680,11 @@
       graduateMoveExpanded: storage.getItem('outcomes.graduateMoveExpanded') === '1',
       majorMomentumMode: storage.getItem('outcomes.majorMomentumMode') || 'momentum',
       topNByChart: {},
+      appliedPrimary: null,
       appliedAdvanced: null,
+      filterChangesPending: false,
+      pendingFilterReloadOptions: false,
+      pendingFilterResetDrill: false,
       schoolSearchQuery: '',
       schoolSearchFocused: false,
       schoolSearchBlurTimer: null,
@@ -3952,6 +3978,23 @@
       };
     }
 
+    function readPrimaryControls() {
+      return {
+        school: $('school-select')?.value || '',
+        degree: $('degree-select')?.value || 'Bachelors',
+        major: $('major-select')?.value || '',
+      };
+    }
+
+    function activePrimaryControls() {
+      return state.appliedPrimary || readPrimaryControls();
+    }
+
+    function initializeAppliedPrimaryControls() {
+      if (state.appliedPrimary) return;
+      state.appliedPrimary = readPrimaryControls();
+    }
+
     function activeAdvancedControls() {
       return state.appliedAdvanced || readAdvancedControls();
     }
@@ -3962,6 +4005,29 @@
       state.appliedAdvanced = readAdvancedControls();
       state.selectionMode = state.appliedAdvanced.selectionMode;
       syncSelectionMode(state.selectionMode);
+    }
+
+    function primaryChangeNeedsOptionsReload(previous, next) {
+      if (!previous) return false;
+      return previous.school !== next.school || previous.degree !== next.degree;
+    }
+
+    function syncLoadButton() {
+      const button = $('load-filters-btn');
+      if (!button) return;
+      const dirty = Boolean(state.filterChangesPending);
+      button.classList.toggle('is-dirty', dirty);
+      button.textContent = dirty ? 'Load changes' : 'Load';
+      $('advanced-apply-btn')?.classList.toggle('active', dirty);
+    }
+
+    function markFiltersDirty({ reloadOptions = false, resetDrill = true, openAdvanced = false } = {}) {
+      state.filterChangesPending = true;
+      state.pendingFilterReloadOptions = Boolean(state.pendingFilterReloadOptions || reloadOptions);
+      state.pendingFilterResetDrill = Boolean(state.pendingFilterResetDrill || resetDrill);
+      if (openAdvanced) setAdvancedOpen(true);
+      syncLoadButton();
+      if (state.apiUrl) setStatus('ok', 'Changes ready | click Load');
     }
 
     function persistAdvancedControls(advanced) {
@@ -3980,9 +4046,11 @@
       return false;
     }
 
-    function applyAdvancedOptions() {
+    function applyDashboardFilters() {
       normalizeAdvancedControls();
+      const previousPrimary = state.appliedPrimary ? { ...state.appliedPrimary } : null;
       const previousAdvanced = state.appliedAdvanced ? { ...state.appliedAdvanced } : null;
+      const primary = readPrimaryControls();
       const advanced = readAdvancedControls();
       if (advanced.selectionMode === 'compare') {
         advanced.compareSchools = trimCompareSchools(advanced.compareSchools);
@@ -3991,6 +4059,7 @@
         });
         renderCompareSchoolPicker(state.options?.schools || [], new Set(advanced.compareSchools));
       }
+      state.appliedPrimary = primary;
       state.appliedAdvanced = advanced;
       state.selectionMode = advanced.selectionMode;
       persistAdvancedControls(advanced);
@@ -4008,12 +4077,26 @@
         showContent();
         render();
         setStatus('ok', `${state.options?.meta?.data_version || 'Connected'} | pick comparison items`);
+        state.filterChangesPending = false;
+        state.pendingFilterReloadOptions = false;
+        state.pendingFilterResetDrill = false;
+        syncLoadButton();
         return;
       }
       setAdvancedOpen(false);
+      const reloadOptions = Boolean(
+        state.pendingFilterReloadOptions
+        || primaryChangeNeedsOptionsReload(previousPrimary, primary)
+        || advancedChangeNeedsOptionsReload(previousAdvanced, advanced)
+      );
+      const resetDrill = Boolean(state.pendingFilterResetDrill);
+      state.filterChangesPending = false;
+      state.pendingFilterReloadOptions = false;
+      state.pendingFilterResetDrill = false;
+      syncLoadButton();
       refresh({
-        reloadOptions: advancedChangeNeedsOptionsReload(previousAdvanced, advanced),
-        resetDrill: true,
+        reloadOptions,
+        resetDrill,
       });
     }
 
@@ -4044,17 +4127,15 @@
       syncHorizonToggle();
       renderCompareSchoolPicker(state.options?.schools || [], new Set());
       renderCompareMajorPicker(state.options?.major_options || [], new Set());
-      state.appliedAdvanced = readAdvancedControls();
-      persistAdvancedControls(state.appliedAdvanced);
       setAdvancedOpen(false);
-      refresh({
-        reloadOptions: advancedChangeNeedsOptionsReload(previousAdvanced, state.appliedAdvanced),
+      markFiltersDirty({
+        reloadOptions: advancedChangeNeedsOptionsReload(previousAdvanced, readAdvancedControls()),
         resetDrill: true,
       });
     }
 
-    function getSelectedSchools(advanced = activeAdvancedControls()) {
-      const primary = $('school-select').value ? [$('school-select').value] : [];
+    function getSelectedSchools(advanced = activeAdvancedControls(), primaryControls = activePrimaryControls()) {
+      const primary = primaryControls.school ? [primaryControls.school] : [];
       if (advanced.selectionMode !== 'compare') return primary;
       const compare = trimCompareSchools(advanced.compareSchools || [], primary[0] || '');
       return [...new Set([...primary, ...compare])].filter(Boolean);
@@ -4067,9 +4148,9 @@
         .slice(0, maxComparisonSchools);
     }
 
-    function getSelectedMajors(advanced = activeAdvancedControls()) {
+    function getSelectedMajors(advanced = activeAdvancedControls(), primaryControls = activePrimaryControls()) {
       if (advanced.selectionMode === 'major_compare') return advanced.compareMajors || [];
-      return $('major-select').value ? [$('major-select').value] : [];
+      return primaryControls.major ? [primaryControls.major] : [];
     }
 
     function compareNeedsSelections(advanced = activeAdvancedControls()) {
@@ -4169,12 +4250,13 @@
 
     function currentFilters(extra = {}) {
       const advanced = activeAdvancedControls();
+      const primary = activePrimaryControls();
       const noFurtherValue = advanced.noFurther;
       return {
-        schools: getSelectedSchools(advanced),
-        degree: $('degree-select').value || 'Bachelors',
+        schools: getSelectedSchools(advanced, primary),
+        degree: primary.degree || 'Bachelors',
         cip_level: advanced.cipLevel || 'cip4',
-        majors: getSelectedMajors(advanced),
+        majors: getSelectedMajors(advanced, primary),
         grad_years: yearRange(advanced),
         horizon: advanced.horizon || '1yr',
         demographics: {
@@ -4569,7 +4651,7 @@
       $('school-search').value = '';
       renderSchoolSelectOptions(rows, String(match.unitid));
       clearDashboardCache();
-      refresh({ reloadOptions: true, resetDrill: true });
+      markFiltersDirty({ reloadOptions: true, resetDrill: true });
       return true;
     }
 
@@ -4791,10 +4873,12 @@
       }
       populateStaticControls(options);
       populateMajorOptions(options, preserveMajor);
+      state.appliedPrimary = readPrimaryControls();
       initializeAppliedAdvancedControls();
       if (state.selectionMode === 'compare' || state.selectionMode === 'major_compare') {
         setAdvancedOpen(compareNeedsSelections());
       }
+      syncLoadButton();
       setStatus('ok', `${options.meta?.data_version || 'Connected'} | positive-weight cells visible`);
     }
 
@@ -4831,6 +4915,11 @@
     async function refresh({ reloadOptions = false, resetDrill = false } = {}) {
       if (!state.apiUrl) {
         setMessage('Enter the protected API URL and password, then connect.');
+        return;
+      }
+      if (state.filterChangesPending) {
+        setStatus('ok', 'Changes ready | click Load');
+        syncLoadButton();
         return;
       }
       state.prefetchGeneration += 1;
@@ -11761,7 +11850,8 @@
       });
       $('compare-status').addEventListener('click', () => setAdvancedOpen(true));
       $('advanced-reset-btn').addEventListener('click', () => resetAdvancedOptions());
-      $('advanced-apply-btn').addEventListener('click', () => applyAdvancedOptions());
+      $('load-filters-btn').addEventListener('click', () => applyDashboardFilters());
+      $('advanced-apply-btn').addEventListener('click', () => applyDashboardFilters());
       $('download-visible-btn').addEventListener('click', () => downloadVisibleCharts());
       $('print-page-btn').addEventListener('click', () => window.print());
       $('tabs').addEventListener('click', event => {
@@ -11787,16 +11877,15 @@
         const button = event.target.closest('[data-selection-mode]');
         if (!button) return;
         syncSelectionMode(button.dataset.selectionMode);
-        setAdvancedOpen(true);
+        markFiltersDirty({ reloadOptions: true, resetDrill: true, openAdvanced: true });
       });
 
       $('horizon-toggle').addEventListener('click', event => {
         const button = event.target.closest('[data-horizon]');
         if (!button) return;
         $('horizon-select').value = button.dataset.horizon;
-        state.appliedAdvanced = { ...activeAdvancedControls(), horizon: button.dataset.horizon };
         syncHorizonToggle();
-        refresh({ resetDrill: true });
+        markFiltersDirty({ resetDrill: true });
       });
 
       $('school-search').addEventListener('input', () => {
@@ -11850,10 +11939,10 @@
             renderSchoolSelectOptions(state.options?.schools || [], $('school-select')?.value || '');
             clearDashboardCache();
           }
-          refresh({ reloadOptions: true, resetDrill: true });
+          markFiltersDirty({ reloadOptions: true, resetDrill: true });
         });
       });
-      $('major-select').addEventListener('change', () => refresh({ resetDrill: true }));
+      $('major-select').addEventListener('change', () => markFiltersDirty({ resetDrill: true }));
       ['compare-school-select', 'compare-major-select', 'cip-level-select'].forEach(id => {
         $(id).addEventListener('change', () => {
           if (id === 'compare-school-select') {
@@ -11863,6 +11952,7 @@
             refreshCompareMajorPicker();
           }
           setAdvancedOpen(true);
+          markFiltersDirty({ reloadOptions: id === 'cip-level-select', resetDrill: true, openAdvanced: true });
         });
       });
       $('compare-school-picker').addEventListener('click', event => {
@@ -11878,6 +11968,7 @@
           setHiddenSelectValue('compare-school-select', value, Boolean(add));
         }
         refreshCompareSchoolPicker();
+        markFiltersDirty({ resetDrill: true, openAdvanced: true });
       });
       $('compare-school-picker').addEventListener('input', event => {
         const search = event.target.closest('[data-compare-search]');
@@ -11903,12 +11994,13 @@
           setHiddenSelectValue('compare-major-select', value, Boolean(add));
         }
         refreshCompareMajorPicker();
+        markFiltersDirty({ resetDrill: true, openAdvanced: true });
       });
       ['horizon-select', 'from-year-select', 'to-year-select', 'gender-select', 'race-select', 'later-degree-filter', 'no-further-select', 'current-select', 'school-employer-select'].forEach(id => {
         $(id).addEventListener('change', () => {
           if (id === 'later-degree-filter' && $('later-degree-filter').value) $('no-further-select').value = 'false';
           if (id === 'no-further-select' && $('no-further-select').value === 'true') $('later-degree-filter').value = '';
-          setAdvancedOpen(true);
+          markFiltersDirty({ resetDrill: true, openAdvanced: true });
         });
       });
       $('content').addEventListener('change', event => {
@@ -11959,7 +12051,7 @@
           state.destinationLeftPath = [];
           state.destinationRightPath = [];
           storage.setItem('outcomes.destinationHorizon', state.destinationHorizon);
-          refresh({ resetDrill: true });
+          markFiltersDirty({ resetDrill: true });
           return;
         }
         const geographyHorizon = event.target.closest('[data-geography-horizon]');
@@ -11975,9 +12067,8 @@
             return;
           }
           if ($('horizon-select')) $('horizon-select').value = value;
-          state.appliedAdvanced = { ...activeAdvancedControls(), horizon: value };
           syncHorizonToggle();
-          refresh({ resetDrill: true });
+          markFiltersDirty({ resetDrill: true });
           return;
         }
         const infoButton = event.target.closest('[data-chart-info-id]');
@@ -11993,9 +12084,8 @@
           const value = horizonButton.dataset.chartHorizon;
           if (!HORIZON_OPTIONS.some(option => option.value === value)) return;
           if ($('horizon-select')) $('horizon-select').value = value;
-          state.appliedAdvanced = { ...activeAdvancedControls(), horizon: value };
           syncHorizonToggle();
-          refresh({ resetDrill: true });
+          markFiltersDirty({ resetDrill: true });
           return;
         }
         const saveMenuButton = event.target.closest('[data-save-chart-menu]');
