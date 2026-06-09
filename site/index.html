@@ -3702,6 +3702,7 @@
       ...HORIZON_OPTIONS,
     ];
     const REQUEST_TOP_N = Math.max(...TOP_N_OPTIONS);
+    const MAJOR_MOMENTUM_MIN_SALARY_WEIGHT = 30;
     const DASHBOARD_CACHE_LIMIT = 120;
     const TAB_ORDER = ['overview', 'destinations', 'career', 'earnings', 'geography', 'demographics', 'postgrad'];
     const DASHBOARD_VIEW_MODES = ['snapshot', 'overtime'];
@@ -4146,8 +4147,8 @@
     function majorMomentumPayPeriodLabel() {
       const premium = salaryPremiumChangeStats();
       const payLabel = premium.previousYears?.length && premium.recentYears?.length
-        ? `pay ${yearSpanLabel(premium.previousYears)} to ${yearSpanLabel(premium.recentYears)}`
-        : 'pay change';
+        ? `pay premium ${yearSpanLabel(premium.previousYears)} to ${yearSpanLabel(premium.recentYears)}`
+        : 'pay premium change';
       return `${payLabel}; share ${projectedShareChangePeriodLabel()}`;
     }
 
@@ -4156,7 +4157,7 @@
       const share = projectedShareChangeStats();
       return {
         x: `Projected major share change (${compactYearsLabel(share.laterYears, '2028/29')})`,
-        y: `New grad pay change (${compactYearsLabel(premium.recentYears, '2024/25')})`,
+        y: `New grad pay premium change (${compactYearsLabel(premium.recentYears, '2024/25')})`,
       };
     }
 
@@ -9858,6 +9859,25 @@
       return weightTotal > 0 ? weightedTotal / weightTotal : null;
     }
 
+    function weightedSalaryStats(rows) {
+      let weightedTotal = 0;
+      let weightTotal = 0;
+      const years = new Set();
+      (rows || []).forEach(row => {
+        const value = salaryTrendValue(row);
+        const weight = Number(row?.salary_weight || row?.alumni || 0);
+        if (!Number.isFinite(value) || !Number.isFinite(weight) || weight <= 0) return;
+        weightedTotal += value * weight;
+        weightTotal += weight;
+        if (row?.grad_year !== null && row?.grad_year !== undefined) years.add(String(row.grad_year));
+      });
+      return {
+        value: weightTotal > 0 ? weightedTotal / weightTotal : null,
+        weight: weightTotal,
+        years: years.size,
+      };
+    }
+
     function salaryPremiumChangeStats() {
       const majorRows = state.data.salary_trend_by_major || [];
       const baselineRows = state.data.salary_trend || [];
@@ -9900,9 +9920,12 @@
       });
       const byCode = new Map();
       grouped.forEach((group, code) => {
-        const previousSalary = weightedSalaryAverage(group.previous);
-        const recentSalary = weightedSalaryAverage(group.recent);
+        const previousStats = weightedSalaryStats(group.previous);
+        const recentStats = weightedSalaryStats(group.recent);
+        const previousSalary = previousStats.value;
+        const recentSalary = recentStats.value;
         if (!Number.isFinite(previousSalary) || !Number.isFinite(recentSalary)) return;
+        if (previousStats.weight < MAJOR_MOMENTUM_MIN_SALARY_WEIGHT || recentStats.weight < MAJOR_MOMENTUM_MIN_SALARY_WEIGHT) return;
         const previousPremium = previousSalary - previousBaseline;
         const recentPremium = recentSalary - recentBaseline;
         byCode.set(code, {
@@ -9911,6 +9934,8 @@
           previous_premium: previousPremium,
           recent_premium: recentPremium,
           premium_change: recentPremium - previousPremium,
+          previous_salary_weight: previousStats.weight,
+          recent_salary_weight: recentStats.weight,
         });
       });
       return { byCode, recentYears, previousYears };
@@ -9940,6 +9965,8 @@
             previous_salary_premium: premiumChange?.previous_premium,
             recent_salary_premium: premiumChange?.recent_premium,
             salary_premium_change: premiumChange?.premium_change,
+            previous_salary_weight: premiumChange?.previous_salary_weight,
+            recent_salary_weight: premiumChange?.recent_salary_weight,
           };
         })
         .filter(row =>
@@ -10035,8 +10062,10 @@
           signedMoney(row.recent_salary_premium),
           row.previous_projected_students,
           row.previous_observed_profiles,
+          row.previous_salary_weight,
+          row.recent_salary_weight,
         ]),
-        hovertemplate: `%{customdata[0]}<br>${periodLabel}<br>${activeHorizonLabel()} pay change: %{customdata[3]}<br>Previous premium: %{customdata[9]}<br>Recent premium: %{customdata[10]}<br>Projected share change: %{customdata[8]:+.1f} pts<br>Later projected share: %{customdata[6]:.1f}%<br>Earlier projected share: %{customdata[7]:.1f}%<br>Later projected students: %{customdata[4]:,.0f}<br>Earlier projected students: %{customdata[11]:,.0f}<extra></extra>`,
+        hovertemplate: `%{customdata[0]}<br>${periodLabel}<br>${activeHorizonLabel()} pay premium change: %{customdata[3]}<br>Previous premium: %{customdata[9]}<br>Recent premium: %{customdata[10]}<br>Salary weight: %{customdata[13]:,.0f} recent / %{customdata[12]:,.0f} previous<br>Projected share change: %{customdata[8]:+.1f} pts<br>Later projected share: %{customdata[6]:.1f}%<br>Earlier projected share: %{customdata[7]:.1f}%<br>Later projected students: %{customdata[4]:,.0f}<br>Earlier projected students: %{customdata[11]:,.0f}<extra></extra>`,
       });
       Plotly.newPlot(id, traces, {
         ...layoutBase,
@@ -10062,8 +10091,8 @@
           automargin: true,
         },
         annotations: [
-          { text: 'Rising pay', x: 0.52, y: 0.98, xref: 'paper', yref: 'paper', showarrow: false, font: { color: 'rgba(102,119,145,0.58)', size: 12 }, xanchor: 'left', yanchor: 'top' },
-          { text: 'Falling pay', x: 0.52, y: 0.04, xref: 'paper', yref: 'paper', showarrow: false, font: { color: 'rgba(102,119,145,0.58)', size: 12 }, xanchor: 'left', yanchor: 'bottom' },
+          { text: 'Rising pay premium', x: 0.52, y: 0.98, xref: 'paper', yref: 'paper', showarrow: false, font: { color: 'rgba(102,119,145,0.58)', size: 12 }, xanchor: 'left', yanchor: 'top' },
+          { text: 'Falling pay premium', x: 0.52, y: 0.04, xref: 'paper', yref: 'paper', showarrow: false, font: { color: 'rgba(102,119,145,0.58)', size: 12 }, xanchor: 'left', yanchor: 'bottom' },
           { text: 'Falling share', x: 0.02, y: 0.52, xref: 'paper', yref: 'paper', showarrow: false, font: { color: 'rgba(102,119,145,0.58)', size: 12 }, xanchor: 'left', yanchor: 'bottom' },
           { text: 'Rising share', x: 0.98, y: 0.52, xref: 'paper', yref: 'paper', showarrow: false, font: { color: 'rgba(102,119,145,0.58)', size: 12 }, xanchor: 'right', yanchor: 'bottom' },
         ],
