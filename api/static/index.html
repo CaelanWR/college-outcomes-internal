@@ -4062,12 +4062,13 @@
     }
 
     function applyQuickChartFilter({ resetDrill = true } = {}) {
-      applyDashboardFilters({ preserveView: true });
+      refresh({ resetDrill, ignorePendingFilters: true });
     }
 
     function setHorizonDraft(value, { resetDrill = true } = {}) {
       if (!HORIZON_OPTIONS.some(option => option.value === value)) return;
       if ($('horizon-select')) $('horizon-select').value = value;
+      state.appliedAdvanced = { ...activeAdvancedControls(), horizon: value };
       syncHorizonToggle();
       applyQuickChartFilter({ resetDrill });
     }
@@ -5031,12 +5032,12 @@
       }
     }
 
-    async function refresh({ reloadOptions = false, resetDrill = false } = {}) {
+    async function refresh({ reloadOptions = false, resetDrill = false, ignorePendingFilters = false } = {}) {
       if (!state.apiUrl) {
         setMessage('Enter the protected API URL and password, then connect.');
         return;
       }
-      if (state.filterChangesPending) {
+      if (state.filterChangesPending && !ignorePendingFilters) {
         setStatus('ok', 'Changes ready | click Load');
         syncLoadButton();
         return;
@@ -5047,6 +5048,7 @@
         state.pendingRefresh = {
           reloadOptions: Boolean(state.pendingRefresh?.reloadOptions || reloadOptions),
           resetDrill: Boolean(state.pendingRefresh?.resetDrill || resetDrill),
+          ignorePendingFilters: Boolean(state.pendingRefresh?.ignorePendingFilters || ignorePendingFilters),
         };
         return;
       }
@@ -5068,7 +5070,8 @@
           state.data = cachedData;
           showContent();
           render();
-          setStatus('ok', `${state.data.meta?.data_version || 'Connected'} | loaded from cache`);
+          const pendingNote = state.filterChangesPending ? ' | unapplied filter changes pending' : '';
+          setStatus('ok', `${state.data.meta?.data_version || 'Connected'} | loaded from cache${pendingNote}`);
           scheduleDashboardPrefetch(cachedFilters);
           return;
         }
@@ -5101,7 +5104,8 @@
         showContent();
         render();
         const warming = canWarmFullSchoolSlice(filters, { allowWarmupHorizons: true });
-        setStatus('ok', `${state.data.meta?.data_version || 'Connected'} | loaded ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}${warming ? ' | warming tabs' : ''}`);
+        const pendingNote = state.filterChangesPending ? ' | unapplied filter changes pending' : '';
+        setStatus('ok', `${state.data.meta?.data_version || 'Connected'} | loaded ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}${warming ? ' | warming tabs' : ''}${pendingNote}`);
       } catch (error) {
         setStatus('bad', 'Connection failed');
         setMessage(`<strong>Could not load data.</strong><br>${escapeHtml(error.message)}`, true);
