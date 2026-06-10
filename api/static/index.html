@@ -4059,6 +4059,21 @@
       if (state.apiUrl) setStatus('ok', 'Changes ready | click Load');
     }
 
+    function applyQuickChartFilter({ resetDrill = true } = {}) {
+      if (state.filterChangesPending) {
+        markFiltersDirty({ resetDrill });
+        return;
+      }
+      applyDashboardFilters({ preserveView: true });
+    }
+
+    function setHorizonDraft(value, { resetDrill = true } = {}) {
+      if (!HORIZON_OPTIONS.some(option => option.value === value)) return;
+      if ($('horizon-select')) $('horizon-select').value = value;
+      syncHorizonToggle();
+      applyQuickChartFilter({ resetDrill });
+    }
+
     function persistAdvancedControls(advanced) {
       storage.setItem('outcomes.selectionMode', advanced.selectionMode);
       storage.setItem('outcomes.compareSchools', JSON.stringify(advanced.compareSchools || []));
@@ -4075,7 +4090,7 @@
       return false;
     }
 
-    function applyDashboardFilters() {
+    function applyDashboardFilters({ preserveView = false } = {}) {
       normalizeAdvancedControls();
       const previousPrimary = state.appliedPrimary ? { ...state.appliedPrimary } : null;
       const previousAdvanced = state.appliedAdvanced ? { ...state.appliedAdvanced } : null;
@@ -4093,7 +4108,7 @@
       state.selectionMode = advanced.selectionMode;
       persistAdvancedControls(advanced);
       syncSelectionMode(advanced.selectionMode);
-      applyDefaultViewForTab(state.tab, advanced.selectionMode);
+      if (!preserveView) applyDefaultViewForTab(state.tab, advanced.selectionMode);
       syncViewToggle();
       if (compareNeedsSelections(advanced)) {
         setAdvancedOpen(true);
@@ -11966,9 +11981,7 @@
       $('horizon-toggle').addEventListener('click', event => {
         const button = event.target.closest('[data-horizon]');
         if (!button) return;
-        $('horizon-select').value = button.dataset.horizon;
-        syncHorizonToggle();
-        markFiltersDirty({ resetDrill: true });
+        setHorizonDraft(button.dataset.horizon, { resetDrill: true });
       });
 
       $('school-search').addEventListener('input', () => {
@@ -12083,6 +12096,10 @@
         $(id).addEventListener('change', () => {
           if (id === 'later-degree-filter' && $('later-degree-filter').value) $('no-further-select').value = 'false';
           if (id === 'no-further-select' && $('no-further-select').value === 'true') $('later-degree-filter').value = '';
+          if (id === 'horizon-select') {
+            setHorizonDraft($('horizon-select').value || '1yr', { resetDrill: true });
+            return;
+          }
           markFiltersDirty({ resetDrill: true, openAdvanced: true });
         });
       });
@@ -12134,7 +12151,7 @@
           state.destinationLeftPath = [];
           state.destinationRightPath = [];
           storage.setItem('outcomes.destinationHorizon', state.destinationHorizon);
-          markFiltersDirty({ resetDrill: true });
+          applyQuickChartFilter({ resetDrill: true });
           return;
         }
         const geographyHorizon = event.target.closest('[data-geography-horizon]');
@@ -12149,9 +12166,7 @@
             queuePlotResize();
             return;
           }
-          if ($('horizon-select')) $('horizon-select').value = value;
-          syncHorizonToggle();
-          markFiltersDirty({ resetDrill: true });
+          setHorizonDraft(value, { resetDrill: true });
           return;
         }
         const infoButton = event.target.closest('[data-chart-info-id]');
@@ -12166,9 +12181,7 @@
           event.preventDefault();
           const value = horizonButton.dataset.chartHorizon;
           if (!HORIZON_OPTIONS.some(option => option.value === value)) return;
-          if ($('horizon-select')) $('horizon-select').value = value;
-          syncHorizonToggle();
-          markFiltersDirty({ resetDrill: true });
+          setHorizonDraft(value, { resetDrill: true });
           return;
         }
         const saveMenuButton = event.target.closest('[data-save-chart-menu]');
@@ -12225,6 +12238,9 @@
       const horizon = $('horizon-select').value || '1yr';
       document.querySelectorAll('[data-horizon]').forEach(button => {
         button.classList.toggle('active', button.dataset.horizon === horizon);
+      });
+      document.querySelectorAll('[data-chart-horizon]').forEach(button => {
+        button.classList.toggle('active', button.dataset.chartHorizon === horizon);
       });
     }
 
