@@ -4062,10 +4062,6 @@
     }
 
     function applyQuickChartFilter({ resetDrill = true } = {}) {
-      if (state.filterChangesPending) {
-        markFiltersDirty({ resetDrill });
-        return;
-      }
       applyDashboardFilters({ preserveView: true });
     }
 
