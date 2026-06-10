@@ -3877,6 +3877,51 @@ def _postgrad_program_label_sql() -> tuple[str, str, list[Any]]:
     return "COALESCE(NULLIF(later_program, ''), later_cip4)", "", []
 
 
+def _postgrad_aggregate_program_label_sql() -> tuple[str, str, list[Any]]:
+    joins: list[str] = []
+    params: list[Any] = []
+    title_terms = ["NULLIF(postgrad_cip_title, '')"]
+    if _dataset_exists("references/cip6_titles") and "cip6_title" in _dataset_columns("references/cip6_titles"):
+        joins.append(
+            """
+            LEFT JOIN (
+              SELECT cip6 AS postgrad_cip6_key, cip6_title AS postgrad_cip6_title
+              FROM read_parquet(?)
+            ) cip6_titles
+              ON postgrad_cip_code = cip6_titles.postgrad_cip6_key
+            """
+        )
+        params.append(_dataset_glob("references/cip6_titles"))
+        title_terms.append("postgrad_cip6_title")
+    if _dataset_exists("references/cip4_titles") and "cip4_title" in _dataset_columns("references/cip4_titles"):
+        joins.append(
+            """
+            LEFT JOIN (
+              SELECT cip4 AS postgrad_cip4_key, cip4_title AS postgrad_cip4_title
+              FROM read_parquet(?)
+            ) cip4_titles
+              ON COALESCE(NULLIF(postgrad_cip_code, ''), '') = cip4_titles.postgrad_cip4_key
+              OR LEFT(COALESCE(NULLIF(postgrad_cip_code, ''), ''), 5) = cip4_titles.postgrad_cip4_key
+            """
+        )
+        params.append(_dataset_glob("references/cip4_titles"))
+        title_terms.append("postgrad_cip4_title")
+    if _dataset_exists("references/cip2_titles") and "cip2_title" in _dataset_columns("references/cip2_titles"):
+        joins.append(
+            """
+            LEFT JOIN (
+              SELECT cip2 AS postgrad_cip2_key, cip2_title AS postgrad_cip2_title
+              FROM read_parquet(?)
+            ) cip2_titles
+              ON LEFT(COALESCE(NULLIF(postgrad_cip_code, ''), ''), 2) = cip2_titles.postgrad_cip2_key
+            """
+        )
+        params.append(_dataset_glob("references/cip2_titles"))
+        title_terms.append("postgrad_cip2_title")
+    title_terms.extend(["NULLIF(postgrad_cip_code, '')", "'Unknown'"])
+    return f"COALESCE({', '.join(title_terms)})", "\n".join(joins), params
+
+
 def _postgrad_detail_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
     selected = filters.selected_postgrad_degree
     if not selected or selected == "No further education":
@@ -5387,10 +5432,11 @@ def _postgrad_from_aggregates(con: duckdb.DuckDBPyConnection, filters: QueryRequ
         selected_values = _postgrad_detail_degree_values(selected)
         placeholders = ",".join(["?"] * len(selected_values))
         dest_where_sql, dest_params = _postgrad_aggregate_where(filters)
+        program_label_sql, program_join_sql, program_join_params = _postgrad_aggregate_program_label_sql()
         school_filter_sql = ""
         school_filter_params: list[Any] = []
         if filters.selected_postgrad_program:
-            school_filter_sql = "AND COALESCE(NULLIF(postgrad_cip_title, ''), NULLIF(postgrad_cip_code, ''), 'Unknown') = ?"
+            school_filter_sql = f"AND {program_label_sql} = ?"
             school_filter_params.append(filters.selected_postgrad_program)
         schools = _records_from_query(
             con,
@@ -5398,6 +5444,7 @@ def _postgrad_from_aggregates(con: duckdb.DuckDBPyConnection, filters: QueryRequ
             WITH degree_slice AS (
               SELECT postgrad_school, n
               FROM read_parquet(?)
+              {program_join_sql}
               {dest_where_sql}
                 {"AND" if dest_where_sql else "WHERE"} postgrad_degree IN ({placeholders})
                 {school_filter_sql}
@@ -5416,7 +5463,7 @@ def _postgrad_from_aggregates(con: duckdb.DuckDBPyConnection, filters: QueryRequ
             ORDER BY SUM(n) DESC
             LIMIT {limit}
             """,
-            [_dataset_glob("aggregate_facts/postgrad_destinations"), *dest_params, *selected_values, *school_filter_params, MIN_CELL_WEIGHT],
+            [_dataset_glob("aggregate_facts/postgrad_destinations"), *program_join_params, *dest_params, *selected_values, *school_filter_params, MIN_CELL_WEIGHT],
         )
         if _postgrad_show_program_detail(selected):
             program_filter_sql = ""
@@ -5428,8 +5475,9 @@ def _postgrad_from_aggregates(con: duckdb.DuckDBPyConnection, filters: QueryRequ
                 con,
                 f"""
                 WITH degree_slice AS (
-                  SELECT COALESCE(NULLIF(postgrad_cip_title, ''), NULLIF(postgrad_cip_code, ''), 'Unknown') AS program_label, n
+                  SELECT {program_label_sql} AS program_label, n
                   FROM read_parquet(?)
+                  {program_join_sql}
                   {dest_where_sql}
                     {"AND" if dest_where_sql else "WHERE"} postgrad_degree IN ({placeholders})
                     {program_filter_sql}
@@ -5448,7 +5496,7 @@ def _postgrad_from_aggregates(con: duckdb.DuckDBPyConnection, filters: QueryRequ
                 ORDER BY SUM(n) DESC
                 LIMIT {limit}
                 """,
-                [_dataset_glob("aggregate_facts/postgrad_destinations"), *dest_params, *selected_values, *program_filter_params, MIN_CELL_WEIGHT],
+                [_dataset_glob("aggregate_facts/postgrad_destinations"), *program_join_params, *dest_params, *selected_values, *program_filter_params, MIN_CELL_WEIGHT],
             )
     return {
         "flows": flows,
