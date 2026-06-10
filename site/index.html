@@ -3767,6 +3767,8 @@
     const DASHBOARD_CACHE_LIMIT = 120;
     const TAB_ORDER = ['overview', 'destinations', 'career', 'earnings', 'geography', 'demographics', 'postgrad'];
     const DASHBOARD_VIEW_MODES = ['snapshot', 'overtime'];
+    const DASHBOARD_PREFETCH_DELAY_MS = 850;
+    const DASHBOARD_PREFETCH_LIMIT = 2;
     const MAX_COMPARE_SCHOOLS = 3;
     const DESTINATION_TYPES = {
       roles: {
@@ -4386,12 +4388,12 @@
     }
 
     function scheduleDashboardPrefetch(baseFilters) {
-      if (!state.apiUrl || compareNeedsSelections()) return;
+      if (!state.apiUrl || compareNeedsSelections() || baseFilters.compare_mode) return;
       clearTimeout(state.prefetchTimer);
       const generation = state.prefetchGeneration;
       state.prefetchTimer = window.setTimeout(() => {
         prefetchDashboardViews(baseFilters, generation);
-      }, 75);
+      }, DASHBOARD_PREFETCH_DELAY_MS);
     }
 
     function canWarmFullSchoolSlice(filters, { allowWarmupHorizons = false } = {}) {
@@ -4452,20 +4454,36 @@
       return { warmed, latestData };
     }
 
+    function prefetchDashboardCandidates(activeTab, activeView) {
+      const candidates = [];
+      const add = (tab, viewMode) => {
+        if (!tab || !viewMode) return;
+        if (tab === activeTab && viewMode === activeView) return;
+        if (candidates.some(item => item.tab === tab && item.viewMode === viewMode)) return;
+        candidates.push({ tab, viewMode });
+      };
+      const alternateView = activeView === 'snapshot' ? 'overtime' : 'snapshot';
+      add(activeTab, alternateView);
+      const activeIndex = TAB_ORDER.indexOf(activeTab);
+      const nearbyTabs = [
+        TAB_ORDER[activeIndex + 1],
+        TAB_ORDER[activeIndex - 1],
+        activeTab !== 'overview' ? 'overview' : null,
+      ];
+      nearbyTabs.forEach(tab => add(tab, defaultViewForTab(tab)));
+      return candidates.slice(0, DASHBOARD_PREFETCH_LIMIT);
+    }
+
     async function prefetchDashboardViews(baseFilters, generation) {
       if (generation !== state.prefetchGeneration || state.filterChangesPending) return;
+      if (state.loading || state.dashboardRequests.size > 0 || baseFilters.compare_mode) return;
       const fallbackBaseFilters = baseFilters.horizon ? baseFilters : { ...baseFilters, horizon: '1yr' };
       const activeTab = state.tab || 'overview';
       const activeView = state.viewMode || defaultViewForTab(activeTab);
-      const views = [];
-      TAB_ORDER.forEach(tab => {
-        DASHBOARD_VIEW_MODES.forEach(viewMode => {
-          if (tab === activeTab && viewMode === activeView) return;
-          views.push({ tab, viewMode });
-        });
-      });
+      const views = prefetchDashboardCandidates(activeTab, activeView);
       for (const view of views) {
         if (generation !== state.prefetchGeneration || state.filterChangesPending) return;
+        if (state.loading || state.dashboardRequests.size > 0) return;
         const filters = { ...fallbackBaseFilters, active_tab: view.tab, view_mode: view.viewMode };
         if (getCachedDashboard(filters) || state.dashboardRequests.has(dashboardCacheKey(filters))) continue;
         try {
@@ -4475,7 +4493,7 @@
         }
       }
       if (generation === state.prefetchGeneration && !state.loading && !state.filterChangesPending) {
-        setStatus('ok', `${state.data?.meta?.data_version || 'Connected'} | tabs ready`);
+        setStatus('ok', `${state.data?.meta?.data_version || 'Connected'} | nearby tabs warming`);
       }
     }
 
