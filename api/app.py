@@ -67,11 +67,19 @@ RESPONSE_CACHE: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
 RESPONSE_CACHE_TTL_SECONDS = int(os.environ.get("OUTCOMES_RESPONSE_CACHE_TTL_SECONDS", "600"))
 RESPONSE_CACHE_MAX_ENTRIES = int(os.environ.get("OUTCOMES_RESPONSE_CACHE_MAX_ENTRIES", "96"))
 APP_PASSWORD = os.environ.get("OUTCOMES_APP_PASSWORD")
-ALLOWED_ORIGINS = [
+DEFAULT_LOCAL_ALLOWED_ORIGINS = [
+    "http://127.0.0.1:8126",
+    "http://localhost:8126",
+    "http://127.0.0.1:8124",
+    "http://localhost:8124",
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+]
+ALLOWED_ORIGINS = list(dict.fromkeys([
     origin.strip()
     for origin in os.environ.get("OUTCOMES_ALLOWED_ORIGINS", "").split(",")
     if origin.strip()
-]
+] + DEFAULT_LOCAL_ALLOWED_ORIGINS))
 
 RESEARCH_DOCTORATE_VALUES = ["Research Doctorate", "PhD", "Doctorate", "Other Doctorate"]
 PROFESSIONAL_DOCTORATE_VALUES = ["Professional Doctorate"]
