@@ -7646,33 +7646,8 @@
     function renderCareer() {
       const career = state.data.career || {};
       const mobility = career.mobility || {};
-      const internships = career.internships || {};
       const graduateValue = career.graduate_value || {};
       const graduateTransitions = career.graduate_transitions || {};
-      const internshipSummary = internships.summary || {};
-      const hasInternshipSummary = Boolean(
-        internships.available
-        && (
-          Number(internshipSummary.n_alumni || 0) > 0
-          || Number(internshipSummary.n_interns || 0) > 0
-          || internshipSummary.internship_rate_pct !== null && internshipSummary.internship_rate_pct !== undefined
-        )
-      );
-      const hasInternshipDetail = Boolean(
-        hasInternshipSummary
-        || (internships.employers || []).length
-        || (internships.roles || []).length
-        || (internships.industries || []).length
-        || (internships.conversions || []).length
-      );
-      const hasInternshipCompare = Boolean(
-        (internships.rates || []).length
-        || (internships.employer_comparison || []).length
-      );
-      const internshipWindowLabel = internshipSummary.rate_window
-        ? `classes of ${internshipSummary.rate_window}`
-        : 'recent classes';
-      const internshipRateTitle = `Internship Rate (${internshipWindowLabel})`;
       const comparing = state.selectionMode === 'compare' || state.selectionMode === 'major_compare';
       const hasGraduateValue = Boolean(graduateValue.available && graduateValue.primary && Object.keys(graduateValue.primary).length);
       const hasRoleTransitions = Boolean(graduateTransitions.available && (graduateTransitions.roles || []).length);
@@ -7680,7 +7655,6 @@
       const hasGraduateTransitions = hasRoleTransitions || hasIndustryTransitions;
       const hasCareerModels = Boolean((career.archetypes || []).length);
       const metrics = comparing ? [] : [
-        ...(hasInternshipSummary ? [metric(internshipRateTitle, pct(internshipSummary.internship_rate_pct), 3)] : []),
         ...(hasGraduateValue ? [metric('Grad school salary lift', money(graduateValue.primary.salary_lift_dollars), 3)] : []),
         metric('Avg employers by 5 yrs', mobility.avg_employers_5yr ?? '—', 3),
         metric('First employer retention 5 yrs', pct(mobility.first_employer_retention_5yr_pct), 3),
@@ -7694,43 +7668,25 @@
           ...(comparing ? [] : [
             card('Employer Share by Years After Graduation', 'career-employer-share', 12, true, { topControl: true }),
           ]),
-          ...(comparing && hasInternshipCompare ? [
-            card(`${internshipRateTitle} Comparison`, 'career-internship-rates', 5, true, { topControl: true }),
-            card('Recent Top Internship Companies by Comparison', 'career-internship-employers', 7, true, { topControl: true }),
-          ] : []),
         ].join('');
         drawCareerEarnings('career-earnings');
         if (comparing) drawCareerAverageSeniority('career-seniority');
         else drawCareerSeniority('career-seniority');
         if (!comparing) drawCareerEmployerShare('career-employer-share');
-        if (comparing && hasInternshipCompare) {
-          drawCareerInternshipRates('career-internship-rates');
-          drawCareerInternshipEmployers('career-internship-employers');
-        }
       } else {
         $('content').innerHTML = [
           metricRow,
           ...(comparing
-            ? (hasInternshipCompare ? [
-              card(`${internshipRateTitle} Comparison`, 'career-internship-rates', 5, true, { topControl: true }),
-              card('Recent Top Internship Companies by Comparison', 'career-internship-employers', 7, true, { topControl: true }),
-            ] : [])
+            ? []
             : [
               ...(hasGraduateValue ? [card('Graduate Value', 'career-graduate-value', 12, false, { export: false, compact: true })] : []),
               ...(hasGraduateTransitions ? [card('Career Moves After Grad School', 'career-grad-transitions', 12, false, { export: false, compact: true })] : []),
               ...(hasCareerModels ? [card('Common Career Paths', 'career-models', 12, false, { topControl: true, export: false })] : []),
-              ...(hasInternshipDetail ? [card('Internships That Became Jobs', 'career-internships', 12, false, { topControl: true, export: false })] : []),
             ]),
         ].join('');
-        if (comparing && hasInternshipCompare) {
-          drawCareerInternshipRates('career-internship-rates');
-          drawCareerInternshipEmployers('career-internship-employers');
-        } else {
-          if (hasGraduateValue) drawGraduateValue('career-graduate-value');
-          if (hasGraduateTransitions) drawGraduateTransitionSummary('career-grad-transitions');
-          if (hasCareerModels) drawCareerModels('career-models');
-          if (hasInternshipDetail) drawCareerInternships('career-internships');
-        }
+        if (hasGraduateValue) drawGraduateValue('career-graduate-value');
+        if (hasGraduateTransitions) drawGraduateTransitionSummary('career-grad-transitions');
+        if (hasCareerModels) drawCareerModels('career-models');
       }
     }
 
@@ -8597,8 +8553,8 @@
       $(id).innerHTML = `
         <div class="internship-panel ${conversions.length ? 'with-conversions' : ''}">
           <div class="internship-hero">
-            <strong>${pct(summary.internship_rate_pct)}</strong>
-            <span>Internship Rate (${escapeHtml(summary.rate_window ? `classes of ${summary.rate_window}` : 'recent classes')})</span>
+            <strong>${people(summary.n_interns)}</strong>
+            <span>Internship profiles</span>
             <small>Profile positions classified as internships before or near graduation.</small>
           </div>
           ${conversions.length ? listHtml('Became postgrad jobs', conversions, conversionFormatter) : ''}
