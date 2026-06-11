@@ -7914,9 +7914,8 @@
       return graduateMoveHasBenchmark(row) ? Number(row.salary_lift_dollars || 0) : Number(row?.salary_delta || 0);
     }
 
-    function graduateMovePayLabel(rowsOrGroup) {
-      const rows = Array.isArray(rowsOrGroup) ? rowsOrGroup : rowsOrGroup?.rows || [];
-      return rows.some(graduateMoveHasBenchmark) ? 'pay lift vs baseline' : 'raw pay change';
+    function graduateMovePayLabel() {
+      return 'salary boost';
     }
 
     function graduateMoveDeltaColor(delta, maxAbs, alpha = 0.34) {
@@ -8006,11 +8005,10 @@
       const visibleGroups = groups.slice(0, visibleLimit);
       const selectedVisible = visibleGroups.some(group => group.label === selected.label);
       if (!selectedVisible && selected) visibleGroups.push(selected);
-      const selectedPayLabel = graduateMovePayLabel(selected);
       const selectedHasBenchmark = selected.rows.some(graduateMoveHasBenchmark);
       const captionText = selectedHasBenchmark
-        ? 'Flow width is alumni volume. Color intensity reflects pay lift vs baseline after the degree: stronger green is a larger gain above baseline, stronger pink is a larger shortfall.'
-        : 'Flow width is alumni volume. Color intensity reflects raw average pay change after the degree. Re-export the platform bundle to show pay lift vs baseline.';
+        ? 'Flow width is alumni volume. Color intensity reflects salary boost above the expected path after the degree: stronger green is a larger boost, stronger pink is a shortfall.'
+        : 'Flow width is alumni volume. Color intensity reflects observed salary boost after the degree: stronger green is a larger boost, stronger pink is a decline.';
       const modeButtons = ['roles', 'industries'].map(option => `
         <button type="button" class="${option === mode ? 'active' : ''}" data-grad-move-mode="${option}">
           ${escapeHtml(graduateMoveModeTitle(option))}
