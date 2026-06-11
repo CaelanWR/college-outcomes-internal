@@ -11838,6 +11838,13 @@
       drawSimpleBars(id, rows.slice().reverse().map(r => ({ label: r.label, n: r.n })), 'n', title === 'Roles' ? COLORS[3] : COLORS[1]);
     }
 
+    function treemapTileText(label, share) {
+      const shareValue = Number(share);
+      const compactLabel = escapeHtml(legendLabel(label, shareValue >= 7 ? 30 : 24));
+      if (!Number.isFinite(shareValue) || shareValue < 4) return compactLabel;
+      return `${compactLabel}<br>${pct(shareValue)}`;
+    }
+
     function drawHierarchyTreemap(id, rows, levels, path, onDrill, options = {}) {
       const nodes = visibleHierarchyRows(rows, levels, path, id);
       if (!nodes.length) return noData(id);
@@ -11856,9 +11863,11 @@
         labels: nodes.map(row => row.label),
         parents: nodes.map(() => ''),
         values: nodes.map(row => row.value),
-        text: nodes.map(row => `${escapeHtml(legendLabel(row.label, 24))}<br>${pct(tileShare(row))}`),
+        text: nodes.map(row => treemapTileText(row.label, tileShare(row))),
         textinfo: 'text',
         texttemplate: '%{text}',
+        textposition: 'middle center',
+        textfont: { size: 12 },
         marker: {
           colors: nodes.map(row => payColor(Number(row.median_salary), domain)),
           line: { width: 1.25, color: '#ffffff' },
@@ -11880,7 +11889,7 @@
         width: plotWidth,
         height: plotHeight,
         margin: { l: 0, r: 0, t: 0, b: 0 },
-        uniformtext: { minsize: 11, mode: 'hide' },
+        uniformtext: { minsize: 9, mode: 'show' },
       }, plotConfig).then(plot => {
         plot.on('plotly_click', event => {
           const node = nodes[event.points?.[0]?.pointNumber];
@@ -11929,7 +11938,7 @@
           labels: yearRows.map(row => row.label),
           parents: yearRows.map(() => ''),
           values: yearRows.map(row => Number(row.n || 0)),
-          text: yearRows.map(row => `${escapeHtml(legendLabel(row.label, 24))}<br>${pct(row.share_pct)}`),
+          text: yearRows.map(row => treemapTileText(row.label, row.share_pct)),
           marker: {
             colors: yearRows.map(row => payColor(Number(row.weighted_mean_salary), domain)),
             line: { width: 1.25, color: '#ffffff' },
@@ -11958,6 +11967,8 @@
         branchvalues: 'remainder',
         textinfo: 'text',
         texttemplate: '%{text}',
+        textposition: 'middle center',
+        textfont: { size: 12 },
         hovertemplate: '<b>%{label}</b><br>Class of %{customdata[3]}<br>%{customdata[0]:.1f}% of total<br>%{customdata[1]:.1f}% of visible top group<br>%{customdata[2]}<extra></extra>',
         pathbar: { visible: false },
         tiling: { packing: 'squarify', squarifyratio: 1.1 },
@@ -11970,7 +11981,7 @@
         width: plotWidth,
         height: plotHeight,
         margin: { l: 0, r: 0, t: 0, b: 58 },
-        uniformtext: { minsize: 11, mode: 'hide' },
+        uniformtext: { minsize: 9, mode: 'show' },
         sliders: [{
           active: years.length - 1,
           currentvalue: { prefix: 'Class of ', font: { color: '#2D426A', size: 13 } },
