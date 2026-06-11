@@ -3233,6 +3233,27 @@
       white-space: nowrap;
     }
 
+    .demand-note-panel {
+      display: grid;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 0.94rem;
+      line-height: 1.45;
+      font-weight: 700;
+    }
+
+    .demand-note-panel strong {
+      color: var(--navy);
+      font-weight: 900;
+    }
+
+    .demand-note-panel ul {
+      margin: 0;
+      padding-left: 18px;
+      display: grid;
+      gap: 7px;
+    }
+
     .no-data,
     .empty,
     .error {
@@ -3378,6 +3399,10 @@
     <symbol id="icon-career" viewBox="0 0 24 24">
       <path d="M5 18.5c3.2-5.9 6-8.4 14-11" fill="none" stroke="currentColor"/>
       <path d="M15.2 6.7 19 7.5l-1.4 3.6M6.5 18.5h-3v-3M9 15.2l2.4 2.4M12 12.2l2.3 2.3" fill="none" stroke="currentColor"/>
+    </symbol>
+    <symbol id="icon-demand" viewBox="0 0 24 24">
+      <path d="M4 18.5h16M6 15.5l3.2-4.2 3.3 2.4L18.5 6" fill="none" stroke="currentColor"/>
+      <path d="M15.2 6h3.8v3.8M6 18.5V6" fill="none" stroke="currentColor"/>
     </symbol>
     <symbol id="icon-geography" viewBox="0 0 24 24">
       <path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z" fill="none" stroke="currentColor"/>
@@ -3628,6 +3653,7 @@
     <button class="tab active" data-tab="overview"><svg class="tab-icon" aria-hidden="true"><use href="#icon-overview"></use></svg>Overview</button>
     <button class="tab" data-tab="destinations"><svg class="tab-icon" aria-hidden="true"><use href="#icon-employers"></use></svg>Destinations</button>
     <button class="tab" data-tab="career"><svg class="tab-icon" aria-hidden="true"><use href="#icon-career"></use></svg>Career</button>
+    <button class="tab" data-tab="demand"><svg class="tab-icon" aria-hidden="true"><use href="#icon-demand"></use></svg>Demand</button>
     <button class="tab" data-tab="earnings"><svg class="tab-icon" aria-hidden="true"><use href="#icon-earnings"></use></svg>Starting Salary</button>
     <button class="tab" data-tab="geography"><svg class="tab-icon" aria-hidden="true"><use href="#icon-geography"></use></svg>Geography</button>
     <button class="tab" data-tab="demographics"><svg class="tab-icon" aria-hidden="true"><use href="#icon-demographics"></use></svg>Demographics</button>
@@ -3747,6 +3773,12 @@
       return fmt.format(Math.round(n));
     };
     const pct = value => value === null || value === undefined ? 'No data' : `${Number(value).toFixed(1)}%`;
+    const signedPct = value => {
+      if (value === null || value === undefined) return 'No data';
+      const n = Number(value);
+      if (!Number.isFinite(n)) return 'No data';
+      return `${n > 0 ? '+' : ''}${n.toFixed(1)}%`;
+    };
     const TOP_N_OPTIONS = [5, 8, 10, 12, 16, 20, 30, 50];
     const HORIZON_OPTIONS = [
       { value: '1yr', label: '1 yr' },
@@ -3765,7 +3797,7 @@
       { value: 'scale', label: 'Scale' },
     ];
     const DASHBOARD_CACHE_LIMIT = 120;
-    const TAB_ORDER = ['overview', 'destinations', 'career', 'earnings', 'geography', 'demographics', 'postgrad'];
+    const TAB_ORDER = ['overview', 'destinations', 'career', 'demand', 'earnings', 'geography', 'demographics', 'postgrad'];
     const DASHBOARD_VIEW_MODES = ['snapshot', 'overtime'];
     const DASHBOARD_PREFETCH_DELAY_MS = 850;
     const DASHBOARD_PREFETCH_LIMIT = 2;
@@ -4206,7 +4238,7 @@
       if (selectionMode === 'compare' || selectionMode === 'major_compare') {
         return tab === 'career' ? 'overtime' : 'snapshot';
       }
-      if (tab === 'destinations') return 'snapshot';
+      if (tab === 'destinations' || tab === 'demand') return 'snapshot';
       const overTimeTabs = new Set(['overview', 'earnings', 'career', 'geography', 'demographics']);
       return overTimeTabs.has(tab) ? 'overtime' : 'snapshot';
     }
@@ -5667,6 +5699,10 @@
       if (/\binternship/.test(text)) {
         items.push('Internship rate is calculated for classes of 2020-2025 from positions classified as internships before or near graduation. It is a profile signal, so unreported internships are not counted.');
       }
+      if (/\bdemand|posting|skill theme|opportunity/.test(text)) {
+        items.push('Demand views combine school-major alumni role fit with recent U.S. postings dynamics. Role and skill demand come from postings; employer, industry, and metro context shows alumni landing patterns among those demand-fit roles.');
+        items.push('The current demand export has role and skill postings facts, but not true company-level or metro-level posting demand. Treat those context cards as where similar alumni have worked, not direct current openings by firm or city.');
+      }
       if (/\bcurrent student|student demand/.test(text)) {
         items.push('Current-student views use active education rows and projected graduation years. They are not earnings outcomes and do not have post-graduation salary data.');
       }
@@ -6643,6 +6679,7 @@
       if (tab === 'earnings') renderEarnings();
       if (tab === 'destinations' || tab === 'employers' || tab === 'roles') renderDestinations();
       if (tab === 'career') renderCareer();
+      if (tab === 'demand') renderDemand();
       if (tab === 'geography') renderGeography();
       if (tab === 'demographics') renderDemographics();
       if (tab === 'postgrad') renderPostgrad();
@@ -6710,6 +6747,10 @@
       const salaryHorizon = activeHorizonLabel();
       const entity = compareEntityLabel();
       const entities = compareEntityLabel(true);
+      if (tab === 'demand') {
+        renderDemand();
+        return;
+      }
       if (rows.length < 2) {
         $('content').innerHTML = [card(`${entity} Compare`, 'compare-empty', 12)].join('');
         $('compare-empty').innerHTML = `<div class="empty">Pick at least ${state.selectionMode === 'major_compare' ? 'two comparison majors' : 'one comparison school'} in Advanced Options.</div>`;
@@ -7331,6 +7372,211 @@
         drawSalaryDistribution('salary-distribution');
         if (!hasMajor) drawMajorSalary('top-major-salary');
       }
+    }
+
+    function demandHorizonLabel(value) {
+      if (value === '1yr') return '1-year fit';
+      if (value === '5yr') return '5-year fit';
+      if (value === 'early_2025') return 'early 2025 fit';
+      return value || 'selected horizon';
+    }
+
+    function formatDemandMonth(value) {
+      if (!value) return 'No data';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
+      return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+    }
+
+    function demandMetricRows(demand) {
+      const summary = demand.summary || {};
+      const fallbackTitle = demand.horizon_fallback
+        ? `Demand facts do not include ${demand.requested_horizon}; using ${demand.effective_horizon}.`
+        : '';
+      return metricStrip([
+        metric('Demand Window', demandHorizonLabel(demand.effective_horizon), 3, 'metric-text', fallbackTitle || demandHorizonLabel(demand.effective_horizon)),
+        metric('Latest Postings Month', formatDemandMonth(summary.latest_month), 3),
+        metric('Demand-Fit Profiles', people(summary.observed_profiles), 3),
+        metric('Top Demand-Fit Role', legendLabel(summary.top_role || 'No data', 34), 3, 'metric-text', summary.top_role || ''),
+      ]);
+    }
+
+    function renderDemand() {
+      const demand = state.data.demand || {};
+      if (!demand.available) {
+        $('content').innerHTML = [
+          card('Labor Demand', 'demand-empty', 12, false, { compact: true, export: false }),
+        ].join('');
+        noDataMessage('demand-empty', demand.reason || 'Demand facts are not available for this deployment.');
+        return;
+      }
+      const fallbackNote = demand.horizon_fallback
+        ? `<p><strong>Horizon note:</strong> the current demand export does not include ${escapeHtml(demand.requested_horizon || 'that horizon')}, so this page uses ${escapeHtml(demandHorizonLabel(demand.effective_horizon))}.</p>`
+        : '';
+      const majorNote = demand.major_broadened
+        ? `<p><strong>Major note:</strong> the selected detailed major was too thin for stable demand matching, so demand is broadened to the ${escapeHtml((demand.effective_majors || []).join(', ') || '2-digit CIP')} family.</p>`
+        : '';
+      $('content').innerHTML = [
+        demandMetricRows(demand),
+        card('Role Opportunity Map', 'demand-role-map', 5, true, { topControl: true }),
+        card('Demand-Fit Roles', 'demand-roles', 7, true, { topControl: true }),
+        card('Demand Skill Themes', 'demand-skills', 6, true, { topControl: true }),
+        card('Alumni Employers in Demand-Fit Roles', 'demand-employers', 6, true, { topControl: true }),
+        card('Industries in Demand-Fit Roles', 'demand-industries', 6, true, { topControl: true }),
+        card('Metros in Demand-Fit Roles', 'demand-metros', 6, true, { topControl: true }),
+        card('How to Read Demand', 'demand-notes', 12, false, { compact: true, export: false }),
+      ].join('');
+      drawDemandRoleMap('demand-role-map');
+      drawDemandRoleBars('demand-roles');
+      drawDemandSkills('demand-skills');
+      drawDemandContextBars('demand-employers', 'employers', COLORS[1]);
+      drawDemandContextBars('demand-industries', 'industries', COLORS[2]);
+      drawDemandContextBars('demand-metros', 'metros', COLORS[3]);
+      drawDemandNotes('demand-notes', `${fallbackNote}${majorNote}`);
+    }
+
+    function demandRoleRows(id) {
+      return (state.data.demand?.roles || [])
+        .filter(row => row.role_k150 || row.role_k50)
+        .slice(0, topNFor(id));
+    }
+
+    function demandRoleLabel(row) {
+      return row.role_k150 || row.role_k50 || row.role_k10 || 'Role';
+    }
+
+    function drawDemandRoleMap(id) {
+      const rows = demandRoleRows(id);
+      if (!rows.length) return noData(id);
+      const maxActive = Math.max(1, ...rows.map(row => Number(row.active_postings_recent || 0)));
+      const labelLimit = Math.min(5, rows.length);
+      Plotly.newPlot(id, [{
+        type: 'scatter',
+        mode: 'markers+text',
+        x: rows.map(row => Number(row.alumni_role_share_pct || 0)),
+        y: rows.map(row => Number(row.role_demand_score || 0)),
+        text: rows.map((row, index) => index < labelLimit ? legendLabel(demandRoleLabel(row), 18) : ''),
+        textposition: 'top center',
+        textfont: { color: THEME.navy, size: 11 },
+        marker: {
+          size: rows.map(row => 12 + 28 * Math.sqrt(Number(row.active_postings_recent || 0) / maxActive)),
+          color: rows.map(row => Number(row.active_postings_growth_pct || 0)),
+          colorscale: [
+            [0, '#E66791'],
+            [0.5, '#A9B5C7'],
+            [1, '#48EB8F'],
+          ],
+          cmin: -35,
+          cmax: 35,
+          line: { color: '#FFFFFF', width: 1.5 },
+          colorbar: { title: 'posting growth', thickness: 12 },
+        },
+        customdata: rows.map(row => [
+          demandRoleLabel(row),
+          row.active_postings_recent,
+          row.new_postings_recent,
+          row.active_postings_growth_pct,
+          row.active_salary_avg_recent,
+        ]),
+        hovertemplate: '%{customdata[0]}<br>Alumni role fit: %{x:.1f}%<br>Demand score: %{y:.1f}<br>Active postings: %{customdata[1]:,.0f}<br>New postings: %{customdata[2]:,.0f}<br>Posting growth: %{customdata[3]:+.1f}%<br>Avg posting salary: $%{customdata[4]:,.0f}<extra></extra>',
+      }], {
+        ...layoutBase,
+        height: chartIsTall(id) ? 470 : 420,
+        margin: { l: 74, r: 82, t: 22, b: 70 },
+        xaxis: { ...layoutBase.xaxis, title: 'Share of selected alumni in role', ticksuffix: '%', rangemode: 'tozero' },
+        yaxis: { ...layoutBase.yaxis, title: 'Current posting demand score', rangemode: 'tozero' },
+      }, plotConfig);
+    }
+
+    function drawDemandRoleBars(id) {
+      const rows = demandRoleRows(id);
+      if (!rows.length) return noData(id);
+      const plotRows = [...rows].reverse();
+      Plotly.newPlot(id, [{
+        type: 'bar',
+        orientation: 'h',
+        y: plotRows.map(row => wrapAxisLabel(demandRoleLabel(row), 26)),
+        x: plotRows.map(row => Number(row.role_demand_score || 0)),
+        text: plotRows.map(row => `${pct(row.alumni_role_share_pct)} alumni | ${signedPct(row.active_postings_growth_pct)} postings`),
+        textposition: 'outside',
+        cliponaxis: false,
+        marker: {
+          color: plotRows.map(row => Number(row.active_postings_growth_pct || 0) >= 0 ? COLORS[3] : '#E66791'),
+        },
+        customdata: plotRows.map(row => [
+          demandRoleLabel(row),
+          row.alumni_role_share_pct,
+          row.observed_profiles,
+          row.active_postings_recent,
+          row.new_postings_recent,
+          row.expected_hires_recent,
+          row.active_postings_growth_pct,
+          row.active_salary_avg_recent,
+        ]),
+        hovertemplate: '%{customdata[0]}<br>Demand score: %{x:.1f}<br>Alumni role fit: %{customdata[1]:.1f}%<br>Observed profiles: %{customdata[2]:,.0f}<br>Active postings: %{customdata[3]:,.0f}<br>New postings: %{customdata[4]:,.0f}<br>Expected hires: %{customdata[5]:,.0f}<br>Posting growth: %{customdata[6]:+.1f}%<br>Avg posting salary: $%{customdata[7]:,.0f}<extra></extra>',
+      }], horizontalBarLayout(id, plotRows.map(row => ({ label: demandRoleLabel(row) })), '', {
+        rightMargin: 210,
+        leftMargin: compactWindow() ? 150 : 230,
+      }), plotConfig);
+    }
+
+    function drawDemandSkills(id) {
+      const rows = (state.data.demand?.skills || [])
+        .filter(row => row.skill)
+        .slice(0, topNFor(id));
+      if (!rows.length) return noDataMessage(id, 'No stable skill themes for the current filters. Try a broader major or school set.');
+      const plotRows = [...rows].reverse();
+      Plotly.newPlot(id, [{
+        type: 'bar',
+        orientation: 'h',
+        y: plotRows.map(row => wrapAxisLabel(row.skill, 28)),
+        x: plotRows.map(row => Number(row.school_major_skill_opportunity_score || 0)),
+        text: plotRows.map(row => `${people(row.supporting_role_observed_profiles)} profiles | ${signedPct(row.scaled_skill_count_growth_pct)}`),
+        textposition: 'outside',
+        cliponaxis: false,
+        marker: {
+          color: plotRows.map(row => Number(row.scaled_skill_count_growth_pct || 0) >= 0 ? COLORS[3] : COLORS[5]),
+        },
+        customdata: plotRows.map(row => [
+          row.skill,
+          row.supporting_role_alumni_weight,
+          row.supporting_role_observed_profiles,
+          row.scaled_skill_count_recent,
+          row.scaled_skill_inflow_recent,
+          row.scaled_skill_count_growth_pct,
+        ]),
+        hovertemplate: '%{customdata[0]}<br>Skill opportunity score: %{x:,.0f}<br>Supporting alumni weight: %{customdata[1]:,.1f}<br>Supporting profiles: %{customdata[2]:,.0f}<br>Scaled skill count: %{customdata[3]:,.0f}<br>Scaled inflow: %{customdata[4]:,.0f}<br>Skill growth: %{customdata[5]:+.1f}%<extra></extra>',
+      }], horizontalBarLayout(id, plotRows.map(row => ({ label: row.skill })), '', {
+        rightMargin: 190,
+        leftMargin: compactWindow() ? 150 : 230,
+      }), plotConfig);
+    }
+
+    function drawDemandContextBars(id, key, color) {
+      const rows = (state.data.demand?.context?.[key] || [])
+        .filter(row => row.label)
+        .slice(0, topNFor(id));
+      if (!rows.length) return noDataMessage(id, 'No alumni context for the current demand-fit roles.');
+      drawSimpleBars(id, rows, 'share_pct', color, {
+        axisSuffix: '%',
+        labelTransform: key === 'metros' ? titleCase : undefined,
+        valueFormatter: (value, row) => `${pct(value)} | ${money(row.weighted_mean_salary)}`,
+        hovertemplate: '%{customdata[0]}<br>Share among demand-fit alumni: %{customdata[1]:.1f}%<br>Weighted alumni: %{customdata[2]:,.0f}<extra></extra>',
+        maxLabelChars: 30,
+      });
+    }
+
+    function drawDemandNotes(id, fallbackNote = '') {
+      const notes = state.data.demand?.notes || [];
+      $(id).innerHTML = `
+        <div class="demand-note-panel">
+          ${fallbackNote}
+          <p><strong>Role fit</strong> starts from outcomes: we look at roles alumni from the selected school/major actually entered, then rank those roles by current U.S. posting demand.</p>
+          <p><strong>Skill themes</strong> are broad posting signals attached to the demand-fit roles. They should be read as market themes, not a precise transcript of every required skill.</p>
+          <p><strong>Employers, industries, and metros</strong> show where similar alumni in the selected demand-fit roles have worked. They are useful for targeting, but they are not yet current hiring demand by company or city.</p>
+          ${notes.length ? `<ul>${notes.map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul>` : ''}
+        </div>
+      `;
     }
 
     function renderEmployers() {

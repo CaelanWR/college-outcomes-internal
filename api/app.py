@@ -32,6 +32,9 @@ GEOGRAPHY_ROW_MIN_WEIGHT = float(os.environ.get("GEOGRAPHY_ROW_MIN_WEIGHT", str(
 GRAD_VALUE_MIN_WEIGHT = float(os.environ.get("GRAD_VALUE_MIN_WEIGHT", str(max(MIN_CELL_WEIGHT, 5))))
 GRAD_TRANSITION_ROW_MIN_WEIGHT = float(os.environ.get("GRAD_TRANSITION_ROW_MIN_WEIGHT", str(max(MIN_CELL_WEIGHT, 5))))
 DESTINATION_HIERARCHY_MIN_WEIGHT = float(os.environ.get("DESTINATION_HIERARCHY_MIN_WEIGHT", "3"))
+DEMAND_ROLE_MIN_SUPPORT = float(os.environ.get("OUTCOMES_DEMAND_ROLE_MIN_SUPPORT", str(max(MIN_CELL_WEIGHT, 5))))
+DEMAND_SKILL_MIN_SUPPORT = float(os.environ.get("OUTCOMES_DEMAND_SKILL_MIN_SUPPORT", "10"))
+DEMAND_CONTEXT_ROLE_LIMIT = int(os.environ.get("OUTCOMES_DEMAND_CONTEXT_ROLE_LIMIT", "12"))
 SALARY_DISTRIBUTION_BUCKETS = int(os.environ.get("SALARY_DISTRIBUTION_BUCKETS", "32"))
 INTERNSHIP_RATE_START_YEAR = int(os.environ.get("OUTCOMES_INTERNSHIP_RATE_START_YEAR", "2020"))
 INTERNSHIP_RATE_END_YEAR = int(os.environ.get("OUTCOMES_INTERNSHIP_RATE_END_YEAR", "2025"))
@@ -4738,6 +4741,363 @@ def _roles(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, A
     }
 
 
+def _demand_dataset(dataset: str) -> str:
+    return f"demand_facts/{dataset}"
+
+
+def _demand_source(dataset: str) -> list[str]:
+    return _dataset_glob(_demand_dataset(dataset))
+
+
+def _demand_dataset_exists(dataset: str) -> bool:
+    return _dataset_exists(_demand_dataset(dataset))
+
+
+def _demand_horizon(filters: QueryRequest) -> str:
+    return filters.horizon if filters.horizon in {"1yr", "5yr", "early_2025"} else "5yr"
+
+
+def _demand_where(filters: QueryRequest, *, include_horizon: bool = True) -> tuple[str, list[Any]]:
+    clauses: list[str] = []
+    params: list[Any] = []
+    _append_in_clause(clauses, params, "unitid", filters.schools)
+    _append_in_clause(clauses, params, "degree", _degree_values(filters.degree))
+    _append_in_clause(clauses, params, _cip_col(filters), filters.majors)
+    if include_horizon:
+        clauses.append("horizon = ?")
+        params.append(_demand_horizon(filters))
+    return (" WHERE " + " AND ".join(clauses)) if clauses else "", params
+
+
+def _demand_roles(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    if not _demand_dataset_exists("school_major_role_demand"):
+        return []
+    where_sql, params = _demand_where(filters)
+    limit = max(_safe_limit(filters.top_n), 30)
+    return _records_from_query(
+        con,
+        f"""
+        WITH scope AS (
+          SELECT *
+          FROM read_parquet(?)
+          {where_sql}
+        ),
+        scope_groups AS (
+          SELECT DISTINCT
+            unitid,
+            degree,
+            COALESCE(cip2, '') AS cip2,
+            COALESCE(cip4, '') AS cip4,
+            COALESCE(cip6, '') AS cip6,
+            horizon,
+            total_alumni_weight
+          FROM scope
+        ),
+        denom AS (
+          SELECT SUM(total_alumni_weight) AS total_alumni_weight
+          FROM scope_groups
+        ),
+        grouped AS (
+          SELECT
+            role_k10,
+            role_k50,
+            role_k150,
+            MIN(role_rank) AS role_rank,
+            SUM(alumni_weight) AS alumni_weight,
+            SUM(observed_profiles) AS observed_profiles,
+            MAX(active_postings_recent) AS active_postings_recent,
+            MAX(new_postings_recent) AS new_postings_recent,
+            MAX(expected_hires_recent) AS expected_hires_recent,
+            MAX(active_postings_previous) AS active_postings_previous,
+            MAX(active_postings_change) AS active_postings_change,
+            MAX(active_postings_growth_pct) AS active_postings_growth_pct,
+            MAX(active_salary_avg_recent) AS active_salary_avg_recent,
+            MAX(filling_time_avg_recent) AS filling_time_avg_recent,
+            MAX(role_demand_score) AS role_demand_score,
+            SUM(school_major_role_opportunity_score) AS school_major_role_opportunity_score
+          FROM scope
+          WHERE role_k150 IS NOT NULL
+            AND role_k150 <> ''
+            AND LOWER(role_k150) NOT IN ('unknown', 'empty', 'other')
+          GROUP BY role_k10, role_k50, role_k150
+          HAVING SUM(alumni_weight) >= ?
+             AND SUM(observed_profiles) >= ?
+        )
+        SELECT
+          role_k10,
+          role_k50,
+          role_k150,
+          role_rank,
+          ROUND(alumni_weight, 2) AS alumni_weight,
+          ROUND(observed_profiles) AS observed_profiles,
+          ROUND(100.0 * alumni_weight / NULLIF((SELECT total_alumni_weight FROM denom), 0), 2) AS alumni_role_share_pct,
+          ROUND(active_postings_recent) AS active_postings_recent,
+          ROUND(new_postings_recent) AS new_postings_recent,
+          ROUND(expected_hires_recent) AS expected_hires_recent,
+          ROUND(active_postings_previous) AS active_postings_previous,
+          ROUND(active_postings_change) AS active_postings_change,
+          ROUND(active_postings_growth_pct, 1) AS active_postings_growth_pct,
+          ROUND(active_salary_avg_recent) AS active_salary_avg_recent,
+          ROUND(filling_time_avg_recent, 1) AS filling_time_avg_recent,
+          ROUND(role_demand_score, 2) AS role_demand_score,
+          ROUND(school_major_role_opportunity_score, 2) AS school_major_role_opportunity_score
+        FROM grouped
+        ORDER BY school_major_role_opportunity_score DESC NULLS LAST,
+          role_demand_score DESC NULLS LAST,
+          alumni_weight DESC
+        LIMIT {limit}
+        """,
+        [_demand_source("school_major_role_demand"), *params, DEMAND_ROLE_MIN_SUPPORT, DEMAND_ROLE_MIN_SUPPORT],
+    )
+
+
+def _demand_skills(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    if not _demand_dataset_exists("school_major_skill_demand"):
+        return []
+    where_sql, params = _demand_where(filters)
+    limit = max(_safe_limit(filters.top_n), 30)
+    return _records_from_query(
+        con,
+        f"""
+        WITH scope AS (
+          SELECT *
+          FROM read_parquet(?)
+          {where_sql}
+        )
+        SELECT
+          skill,
+          ROUND(SUM(school_major_skill_opportunity_score), 2) AS school_major_skill_opportunity_score,
+          ROUND(SUM(supporting_role_alumni_weight), 2) AS supporting_role_alumni_weight,
+          ROUND(SUM(supporting_role_observed_profiles)) AS supporting_role_observed_profiles,
+          ROUND(MAX(scaled_skill_count_recent)) AS scaled_skill_count_recent,
+          ROUND(MAX(scaled_skill_inflow_recent)) AS scaled_skill_inflow_recent,
+          ROUND(MAX(scaled_external_skill_inflow_recent)) AS scaled_external_skill_inflow_recent,
+          ROUND(
+            SUM(scaled_skill_count_growth_pct * supporting_role_alumni_weight)
+              / NULLIF(SUM(supporting_role_alumni_weight), 0),
+            1
+          ) AS scaled_skill_count_growth_pct
+        FROM scope
+        WHERE skill IS NOT NULL
+          AND skill <> ''
+          AND LOWER(skill) NOT IN ('unknown', 'empty', 'other')
+        GROUP BY skill
+        HAVING SUM(supporting_role_alumni_weight) >= ?
+           AND SUM(supporting_role_observed_profiles) >= ?
+        ORDER BY school_major_skill_opportunity_score DESC NULLS LAST,
+          supporting_role_alumni_weight DESC
+        LIMIT {limit}
+        """,
+        [_demand_source("school_major_skill_demand"), *params, DEMAND_SKILL_MIN_SUPPORT, DEMAND_SKILL_MIN_SUPPORT],
+    )
+
+
+def _demand_posting_summary(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
+    if not _demand_dataset_exists("posting_role_summary"):
+        return {}
+    return _single_record(
+        con,
+        """
+        SELECT
+          MAX(latest_month) AS latest_month,
+          ROUND(SUM(active_postings_recent)) AS active_postings_recent,
+          ROUND(SUM(new_postings_recent)) AS new_postings_recent,
+          ROUND(SUM(expected_hires_recent)) AS expected_hires_recent
+        FROM read_parquet(?)
+        """,
+        [_demand_source("posting_role_summary")],
+    )
+
+
+def _demand_role_values(roles: list[dict[str, Any]]) -> tuple[str, list[Any]]:
+    selected = []
+    seen: set[tuple[str, str]] = set()
+    for row in roles:
+        role_k50 = str(row.get("role_k50") or "")
+        role_k150 = str(row.get("role_k150") or "")
+        if not role_k50 and not role_k150:
+            continue
+        key = (role_k50, role_k150)
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append(key)
+        if len(selected) >= DEMAND_CONTEXT_ROLE_LIMIT:
+            break
+    if not selected:
+        return "", []
+    values_sql = ",".join(["(?, ?)"] * len(selected))
+    params = [value for pair in selected for value in pair]
+    return values_sql, params
+
+
+def _demand_context_rows(
+    con: duckdb.DuckDBPyConnection,
+    filters: QueryRequest,
+    roles: list[dict[str, Any]],
+    *,
+    label_sql: str,
+    label_alias: str,
+    where_extra: str,
+    min_weight: float,
+) -> list[dict[str, Any]]:
+    values_sql, role_params = _demand_role_values(roles)
+    if not _dataset_exists("base_fact"):
+        return []
+    source = _base_source_for_filters(filters)
+    if not values_sql or not source:
+        return []
+    where_sql, where_params = _where(filters, include_horizon=True, include_postgrad=True)
+    limit = min(_safe_limit(filters.top_n), 12)
+    return _records_from_query(
+        con,
+        f"""
+        WITH demand_roles(role_k50, role_k150) AS (
+          VALUES {values_sql}
+        ),
+        base_raw AS (
+          SELECT
+            *,
+            {_location_label_expr()} AS demand_location
+          FROM read_parquet(?)
+          {where_sql}
+        ),
+        eligible AS (
+          SELECT b.*
+          FROM base_raw b
+          JOIN demand_roles d
+            ON COALESCE(b.role_k150_v3, '') = d.role_k150
+            OR COALESCE(b.role_k50_v3, '') = d.role_k50
+          WHERE b.career_employer_flag = 1
+        ),
+        denom AS (
+          SELECT SUM(final_weight) AS total_n
+          FROM eligible
+        )
+        SELECT
+          {label_sql} AS label,
+          ROUND(SUM(final_weight), 2) AS n,
+          ROUND(100.0 * SUM(final_weight) / NULLIF((SELECT total_n FROM denom), 0), 2) AS share_pct,
+          ROUND(SUM(CASE WHEN salary IS NOT NULL THEN final_weight * salary ELSE 0 END)
+            / NULLIF(SUM(CASE WHEN salary IS NOT NULL THEN final_weight ELSE 0 END), 0)) AS weighted_mean_salary
+        FROM eligible
+        WHERE {label_sql} IS NOT NULL
+          AND {label_sql} <> ''
+          AND LOWER({label_sql}) NOT IN ('unknown', 'empty', 'other')
+          {where_extra}
+        GROUP BY 1
+        HAVING SUM(final_weight) >= ?
+        ORDER BY SUM(final_weight) DESC
+        LIMIT {limit}
+        """,
+        [*role_params, source, *where_params, min_weight],
+    )
+
+
+def _demand_context(con: duckdb.DuckDBPyConnection, filters: QueryRequest, roles: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    same_school_filter = _same_school_employer_filter(filters)
+    return {
+        "employers": _demand_context_rows(
+            con,
+            filters,
+            roles,
+            label_sql="employer",
+            label_alias="employer",
+            where_extra=f"""
+              AND unknown_employer_flag = 0
+              AND named_employer_flag = 1
+              {same_school_filter}
+            """,
+            min_weight=EMPLOYER_ROW_MIN_WEIGHT,
+        ),
+        "industries": _demand_context_rows(
+            con,
+            filters,
+            roles,
+            label_sql="industry_k50",
+            label_alias="industry",
+            where_extra="",
+            min_weight=MIN_CELL_WEIGHT,
+        ),
+        "metros": _demand_context_rows(
+            con,
+            filters,
+            roles,
+            label_sql="demand_location",
+            label_alias="metro",
+            where_extra="",
+            min_weight=GEOGRAPHY_ROW_MIN_WEIGHT,
+        ),
+    }
+
+
+def _demand(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
+    if not _demand_dataset_exists("school_major_role_demand"):
+        return {
+            "available": False,
+            "reason": "Demand facts are not installed yet. Upload demand_facts/ next to platform_parquet to enable this page.",
+        }
+    query_filters = deepcopy(filters)
+    query_filters.horizon = _demand_horizon(filters)
+    roles = _demand_roles(con, query_filters)
+    skills = _demand_skills(con, query_filters)
+    broadened_major = False
+    if not roles and query_filters.majors and query_filters.cip_level in {"cip4", "cip6"}:
+        broadened_filters = deepcopy(query_filters)
+        broadened_filters.cip_level = "cip2"
+        broadened_filters.majors = list(dict.fromkeys(str(major)[:2] for major in query_filters.majors if str(major)[:2]))
+        roles = _demand_roles(con, broadened_filters)
+        if roles:
+            skills = _demand_skills(con, broadened_filters)
+            query_filters = broadened_filters
+            broadened_major = True
+    if not roles and query_filters.horizon != "1yr":
+        one_year_filters = deepcopy(filters)
+        one_year_filters.horizon = "1yr"
+        roles = _demand_roles(con, one_year_filters)
+        if roles:
+            skills = _demand_skills(con, one_year_filters)
+            query_filters = one_year_filters
+        elif one_year_filters.majors and one_year_filters.cip_level in {"cip4", "cip6"}:
+            broadened_one_year_filters = deepcopy(one_year_filters)
+            broadened_one_year_filters.cip_level = "cip2"
+            broadened_one_year_filters.majors = list(
+                dict.fromkeys(str(major)[:2] for major in one_year_filters.majors if str(major)[:2])
+            )
+            roles = _demand_roles(con, broadened_one_year_filters)
+            if roles:
+                skills = _demand_skills(con, broadened_one_year_filters)
+                query_filters = broadened_one_year_filters
+                broadened_major = True
+    posting_summary = _demand_posting_summary(con)
+    top_role = roles[0] if roles else {}
+    observed_profiles = sum(float(row.get("observed_profiles") or 0) for row in roles)
+    return {
+        "available": True,
+        "requested_horizon": filters.horizon,
+        "effective_horizon": query_filters.horizon,
+        "horizon_fallback": filters.horizon != query_filters.horizon,
+        "effective_cip_level": query_filters.cip_level,
+        "effective_majors": query_filters.majors,
+        "major_broadened": broadened_major,
+        "summary": {
+            **posting_summary,
+            "top_role": top_role.get("role_k150") or top_role.get("role_k50"),
+            "top_role_demand_score": top_role.get("role_demand_score"),
+            "observed_profiles": round(observed_profiles),
+            "role_count": len(roles),
+            "skill_count": len(skills),
+        },
+        "roles": roles,
+        "skills": skills,
+        "context": _demand_context(con, query_filters, roles),
+        "notes": [
+            "Role and skill demand use recent U.S. postings dynamics.",
+            "Employer, industry, and metro cards show where alumni in demand-fit roles have worked; they are not firm-level posting demand until that export is added.",
+        ],
+    }
+
+
 def _role_industry_hierarchy(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
     """Flat role/industry hierarchy used by the zoomable blue treemaps."""
     base_columns = _dataset_columns("base_fact")
@@ -6887,7 +7247,7 @@ def _dashboard_requires_slice(filters: QueryRequest, tab: str) -> bool:
         return True
     # Career reads from precomputed work facts or directly from the school cache;
     # building the generic slice first is redundant and costs noticeable latency.
-    if tab == "career":
+    if tab in {"career", "demand"}:
         return False
     return True
 
@@ -7223,6 +7583,8 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                     result["career"] = _career(con, filters)
                 if tab == "coverage":
                     result["coverage"] = _coverage(con, filters)
+                if tab == "demand":
+                    result["demand"] = _demand(con, filters)
                 return result
 
             if tab == "overview":
@@ -7285,6 +7647,10 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
 
             if tab == "career":
                 result["career"] = _career(con, filters)
+                return result
+
+            if tab == "demand":
+                result["demand"] = _demand(con, filters)
                 return result
 
             if tab == "demographics":
