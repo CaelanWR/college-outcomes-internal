@@ -1926,20 +1926,23 @@
       transform: translateY(-1px);
     }
 
-    .school-picker-stack {
+    .school-picker-stack,
+    .major-picker-stack {
       position: relative;
       display: grid;
       gap: 6px;
       width: 100%;
     }
 
-    .school-search-input {
+    .school-search-input,
+    .major-search-input {
       background:
         linear-gradient(90deg, rgba(72,235,143,0.10), transparent 34%),
         rgba(255,255,255,0.92);
     }
 
-    .school-search-suggestions {
+    .school-search-suggestions,
+    .major-search-suggestions {
       display: none;
       border: 1px solid var(--line);
       border-radius: 14px;
@@ -1951,7 +1954,8 @@
       z-index: 20;
     }
 
-    .school-search-suggestions.is-open {
+    .school-search-suggestions.is-open,
+    .major-search-suggestions.is-open {
       display: grid;
     }
 
@@ -3459,7 +3463,11 @@
       </div>
       <div class="control control-major">
         <label>Major</label>
-        <select id="major-select"></select>
+        <div class="major-picker-stack">
+          <input id="major-search" class="major-search-input" placeholder="Search majors..." autocomplete="off" />
+          <div id="major-search-suggestions" class="major-search-suggestions" role="listbox" aria-label="Major search suggestions"></div>
+          <select id="major-select"></select>
+        </div>
       </div>
       <div class="control compare-status-control">
         <span class="control-label">Analysis Mode</span>
@@ -3742,6 +3750,9 @@
       schoolSearchQuery: '',
       schoolSearchFocused: false,
       schoolSearchBlurTimer: null,
+      majorSearchQuery: '',
+      majorSearchFocused: false,
+      majorSearchBlurTimer: null,
       compareSchoolSearchQuery: '',
       loading: false,
       pendingRefresh: null,
@@ -4812,6 +4823,158 @@
       return selectSchoolRow(match);
     }
 
+    function majorLabel(row) {
+      return `${row?.title || ''} (${row?.code || ''})`;
+    }
+
+    function majorAliasTexts(row) {
+      const title = String(row?.title || '');
+      const code = String(row?.code || '');
+      const aliases = new Set([title, code, `${title} ${code}`]);
+      const normalized = searchNeedle(title);
+      const add = value => {
+        const text = String(value || '').trim();
+        if (text) aliases.add(text);
+      };
+      const aliasRules = [
+        [/computer and information sciences|computer science|information sciences/, ['CS', 'Comp Sci', 'Computer Science']],
+        [/economics/, ['Econ']],
+        [/business administration|management/, ['Business', 'Business Admin']],
+        [/finance/, ['Finance']],
+        [/history/, ['History']],
+        [/political science|government/, ['Poli Sci', 'Government']],
+        [/psychology/, ['Psych']],
+        [/biology|biological sciences/, ['Bio', 'Biology']],
+        [/mathematics|statistics/, ['Math', 'Stats', 'Math Stats']],
+        [/nursing/, ['Nursing']],
+        [/engineering/, ['Engineering']],
+        [/communication|journalism/, ['Comms', 'Communications']],
+        [/education/, ['Teaching', 'Teacher Education']],
+        [/visual and performing arts|film|cinema/, ['Film', 'Arts']],
+      ];
+      aliasRules.forEach(([pattern, values]) => {
+        if (pattern.test(normalized)) values.forEach(add);
+      });
+      return [...aliases].filter(Boolean);
+    }
+
+    function majorSearchAliases(row) {
+      if (!row) return [];
+      if (!row._searchAliases) {
+        Object.defineProperty(row, '_searchAliases', {
+          value: majorAliasTexts(row).map(searchNeedle).filter(Boolean),
+          enumerable: false,
+          configurable: true,
+        });
+      }
+      return row._searchAliases;
+    }
+
+    function majorSearchScore(row, query) {
+      const needle = searchNeedle(query);
+      if (!needle) return 0;
+      const rawQuery = String(query || '').trim().toLowerCase();
+      const code = String(row?.code || '').toLowerCase();
+      const aliases = majorSearchAliases(row);
+      const parts = needle.split(/\s+/).filter(Boolean);
+      let best = -1;
+      aliases.forEach(alias => {
+        if (!alias) return;
+        let score = -1;
+        if (code && code === rawQuery) score = 1050;
+        else if (alias === needle) score = 1000;
+        else if (alias.startsWith(needle)) score = 850;
+        else if (alias.split(' ').some(token => token === needle)) score = 740;
+        else if (alias.includes(needle)) score = 620;
+        else if (parts.every(part => alias.includes(part))) score = 500;
+        if (score > best) best = score;
+      });
+      return best;
+    }
+
+    function filteredMajors(rows, query) {
+      const needle = searchNeedle(query);
+      if (!needle) return rows || [];
+      return (rows || [])
+        .map((row, index) => ({ row, index, score: majorSearchScore(row, query) }))
+        .filter(item => item.score >= 0)
+        .sort((a, b) => b.score - a.score || String(a.row.title || '').localeCompare(String(b.row.title || '')) || String(a.row.code || '').localeCompare(String(b.row.code || '')) || a.index - b.index)
+        .map(item => item.row);
+    }
+
+    function renderMajorSearchOptions(rows) {
+      const panel = $('major-search-suggestions');
+      if (!panel) return;
+      const query = state.majorSearchQuery || '';
+      const matches = query ? filteredMajors(rows, query).slice(0, 8) : [];
+      if (!state.majorSearchFocused || !query) {
+        panel.classList.remove('is-open');
+        panel.innerHTML = '';
+        return;
+      }
+      panel.classList.add('is-open');
+      panel.innerHTML = matches.length
+        ? matches
+          .map(row => `
+            <button type="button" class="school-suggestion" role="option" data-major-suggestion="${escapeHtml(row.code || '')}">
+              <strong>${escapeHtml(row.title || '')}</strong>
+              <span>${escapeHtml(row.code || '')}</span>
+            </button>
+          `)
+          .join('')
+        : '<div class="school-suggestion-empty">No matching majors</div>';
+    }
+
+    function cancelMajorSearchBlur() {
+      if (!state.majorSearchBlurTimer) return;
+      clearTimeout(state.majorSearchBlurTimer);
+      state.majorSearchBlurTimer = null;
+    }
+
+    function renderMajorSelectOptions(rows, selectedCode = '') {
+      const allRows = rows || [];
+      const selected = allRows.find(row => String(row.code) === String(selectedCode)) || null;
+      const selectedValue = selected ? String(selected.code) : '';
+      const query = state.majorSearchQuery || '';
+      let visibleRows = filteredMajors(allRows, query);
+      if (selected && !visibleRows.some(row => String(row.code) === selectedValue)) {
+        visibleRows = [selected, ...visibleRows];
+      }
+      $('major-select').innerHTML = '<option value="">All majors</option>';
+      visibleRows.forEach(row => {
+        $('major-select').appendChild(option(majorLabel(row), row.code, Boolean(selectedValue) && selectedValue === String(row.code)));
+      });
+      $('major-select').value = selectedValue;
+      renderMajorSearchOptions(allRows);
+    }
+
+    function selectMajorRow(match) {
+      if (!match) return false;
+      const rows = state.options?.major_options || [];
+      state.majorSearchQuery = '';
+      state.majorSearchFocused = false;
+      if ($('major-search')) $('major-search').value = '';
+      renderMajorSelectOptions(rows, String(match.code || ''));
+      markFiltersDirty({ resetDrill: true });
+      return true;
+    }
+
+    function selectMajorFromSearch(commitFirst = false) {
+      const rows = state.options?.major_options || [];
+      const query = $('major-search')?.value || '';
+      state.majorSearchQuery = query;
+      const normalizedQuery = searchNeedle(query);
+      const rawQuery = String(query || '').trim();
+      const exact = rows.find(row => majorSearchAliases(row).includes(normalizedQuery) || String(row.code) === rawQuery);
+      const fallback = commitFirst ? filteredMajors(rows, query)[0] : null;
+      const match = exact || fallback;
+      if (!match) {
+        renderMajorSelectOptions(rows, $('major-select')?.value || '');
+        return false;
+      }
+      return selectMajorRow(match);
+    }
+
     function comparePickerLabel(label, maxLength = 44) {
       return legendLabel(String(label || ''), maxLength);
     }
@@ -4992,6 +5155,11 @@
       const previous = preserve ? $('major-select').value : '';
       const validCodes = new Set((options.major_options || []).map(row => String(row.code)));
       const keepPrevious = previous && validCodes.has(String(previous));
+      if (!keepPrevious) {
+        state.majorSearchQuery = '';
+        state.majorSearchFocused = false;
+        if ($('major-search')) $('major-search').value = '';
+      }
       let savedCompareMajors = [];
       try {
         savedCompareMajors = JSON.parse(storage.getItem('outcomes.compareMajors') || '[]');
@@ -5003,11 +5171,7 @@
         .map(String)
         .filter(code => validCodes.has(code));
       const existingCompareMajors = new Set(compareMajorValues);
-      $('major-select').innerHTML = '<option value="">All majors</option>';
-      (options.major_options || []).forEach(row => {
-        const label = `${row.title} (${row.code})`;
-        $('major-select').appendChild(option(label, row.code, keepPrevious && previous === row.code));
-      });
+      renderMajorSelectOptions(options.major_options || [], keepPrevious ? previous : '');
       populateSelect($('compare-major-select'), options.major_options || [], row => `${row.title} (${row.code})`, row => row.code, existingCompareMajors);
       renderCompareMajorPicker(options.major_options || [], existingCompareMajors);
       syncCompareStatus();
@@ -12244,6 +12408,49 @@
         selectSchoolRow(match);
       });
 
+      $('major-search').addEventListener('input', () => {
+        cancelMajorSearchBlur();
+        state.majorSearchQuery = $('major-search').value || '';
+        state.majorSearchFocused = true;
+        renderMajorSelectOptions(state.options?.major_options || [], $('major-select')?.value || '');
+      });
+      $('major-search').addEventListener('focus', () => {
+        cancelMajorSearchBlur();
+        state.majorSearchQuery = $('major-search').value || '';
+        state.majorSearchFocused = true;
+        renderMajorSearchOptions(state.options?.major_options || []);
+      });
+      $('major-search').addEventListener('blur', () => {
+        cancelMajorSearchBlur();
+        state.majorSearchBlurTimer = setTimeout(() => {
+          state.majorSearchBlurTimer = null;
+          if (document.activeElement === $('major-search')) return;
+          state.majorSearchFocused = false;
+          renderMajorSearchOptions(state.options?.major_options || []);
+        }, 120);
+      });
+      $('major-search').addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+          cancelMajorSearchBlur();
+          state.majorSearchQuery = '';
+          state.majorSearchFocused = false;
+          $('major-search').value = '';
+          renderMajorSelectOptions(state.options?.major_options || [], $('major-select')?.value || '');
+          return;
+        }
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        selectMajorFromSearch(true);
+      });
+      $('major-search-suggestions').addEventListener('mousedown', event => {
+        const button = event.target.closest('[data-major-suggestion]');
+        if (!button) return;
+        event.preventDefault();
+        cancelMajorSearchBlur();
+        const match = (state.options?.major_options || []).find(row => String(row.code) === String(button.dataset.majorSuggestion));
+        selectMajorRow(match);
+      });
+
       ['school-select', 'degree-select'].forEach(id => {
         $(id).addEventListener('change', () => {
           if (id === 'school-select') {
@@ -12255,7 +12462,13 @@
           markFiltersDirty({ reloadOptions: true, resetDrill: true });
         });
       });
-      $('major-select').addEventListener('change', () => markFiltersDirty({ resetDrill: true }));
+      $('major-select').addEventListener('change', () => {
+        state.majorSearchQuery = '';
+        state.majorSearchFocused = false;
+        if ($('major-search')) $('major-search').value = '';
+        renderMajorSelectOptions(state.options?.major_options || [], $('major-select')?.value || '');
+        markFiltersDirty({ resetDrill: true });
+      });
       ['compare-school-select', 'compare-major-select', 'cip-level-select'].forEach(id => {
         $(id).addEventListener('change', () => {
           if (id === 'compare-school-select') {
