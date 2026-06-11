@@ -109,29 +109,50 @@ HORIZON_ORDER = {"1yr": 1, "5yr": 5, "10yr": 10, "early_2025": 0}
 SAME_SCHOOL_EMPLOYER_FILTER = """
 AND NOT (
   same_school_employer_flag = 1
-  OR (unitid IN ('190150', '196468') AND LOWER(employer) LIKE '%columbia university%')
-  OR (unitid = '189097' AND LOWER(employer) LIKE '%barnard%')
-  OR (unitid = '110635' AND (LOWER(employer) LIKE '%berkeley%' OR LOWER(employer) LIKE '%university of california%'))
-  OR (unitid = '110662' AND (LOWER(employer) LIKE '%ucla%' OR LOWER(employer) LIKE '%university of california%'))
-  OR (unitid = '170976' AND LOWER(employer) LIKE '%university of michigan%')
-  OR (unitid = '217156' AND LOWER(employer) LIKE '%brown university%')
-  OR (unitid = '243744' AND LOWER(employer) LIKE '%stanford university%')
+  OR (unitid IN ('190150', '196468') AND (
+    LOWER(employer) LIKE '%columbia university%'
+    OR LOWER(employer) LIKE '%trustees of columbia%'
+    OR LOWER(employer) LIKE '%columbia in the city of new york%'
+    OR LOWER(employer) LIKE '%president and trustees of columbia%'
+  ))
+  OR (unitid = '189097' AND (LOWER(employer) LIKE '%barnard%' OR LOWER(employer) LIKE '%trustees of barnard%'))
+  OR (unitid = '110635' AND (
+    LOWER(employer) LIKE '%berkeley%'
+    OR LOWER(employer) LIKE '%university of california%'
+    OR LOWER(employer) LIKE '%regents of the university of california%'
+  ))
+  OR (unitid = '110662' AND (
+    LOWER(employer) LIKE '%ucla%'
+    OR LOWER(employer) LIKE '%university of california%'
+    OR LOWER(employer) LIKE '%regents of the university of california%'
+  ))
+  OR (unitid = '170976' AND (LOWER(employer) LIKE '%university of michigan%' OR LOWER(employer) LIKE '%regents of the university of michigan%'))
+  OR (unitid = '217156' AND (LOWER(employer) LIKE '%brown university%' OR LOWER(employer) LIKE '%brown corporation%'))
+  OR (unitid = '243744' AND (
+    LOWER(employer) LIKE '%stanford university%'
+    OR LOWER(employer) LIKE '%leland stanford junior university%'
+    OR LOWER(employer) LIKE '%board of trustees of stanford%'
+  ))
   OR (unitid = '166683' AND (LOWER(employer) LIKE '%massachusetts institute of technology%' OR LOWER(employer) LIKE '%mit%'))
-  OR (unitid = '166027' AND LOWER(employer) LIKE '%harvard%')
-  OR (unitid = '130794' AND LOWER(employer) LIKE '%yale%')
-  OR (unitid = '186131' AND LOWER(employer) LIKE '%princeton%')
-  OR (unitid = '215062' AND LOWER(employer) LIKE '%university of pennsylvania%')
-  OR (unitid = '190415' AND LOWER(employer) LIKE '%cornell%')
-  OR (unitid = '198419' AND LOWER(employer) LIKE '%duke university%')
+  OR (unitid = '166027' AND (
+    LOWER(employer) LIKE '%harvard%'
+    OR LOWER(employer) LIKE '%president and fellows of harvard%'
+    OR LOWER(employer) LIKE '%harvard college%'
+  ))
+  OR (unitid = '130794' AND (LOWER(employer) LIKE '%yale%' OR LOWER(employer) LIKE '%president and fellows of yale%'))
+  OR (unitid = '186131' AND (LOWER(employer) LIKE '%princeton%' OR LOWER(employer) LIKE '%trustees of princeton%'))
+  OR (unitid = '215062' AND (LOWER(employer) LIKE '%university of pennsylvania%' OR LOWER(employer) LIKE '%trustees of the university of pennsylvania%'))
+  OR (unitid = '190415' AND (LOWER(employer) LIKE '%cornell%' OR LOWER(employer) LIKE '%trustees of cornell%'))
+  OR (unitid = '198419' AND (LOWER(employer) LIKE '%duke university%' OR LOWER(employer) LIKE '%duke endowment%'))
   OR (unitid = '147767' AND LOWER(employer) LIKE '%northwestern university%')
-  OR (unitid = '144050' AND LOWER(employer) LIKE '%university of chicago%')
-  OR (unitid = '193900' AND (LOWER(employer) LIKE '%new york university%' OR LOWER(employer) LIKE '%nyu%'))
+  OR (unitid = '144050' AND (LOWER(employer) LIKE '%university of chicago%' OR LOWER(employer) LIKE '%trustees of the university of chicago%'))
+  OR (unitid = '193900' AND (LOWER(employer) LIKE '%new york university%' OR LOWER(employer) LIKE '%nyu%' OR LOWER(employer) LIKE '%trustees of new york university%'))
   OR (unitid = '123961' AND (LOWER(employer) LIKE '%university of southern california%' OR LOWER(employer) LIKE '%usc%'))
-  OR (unitid = '236948' AND LOWER(employer) LIKE '%university of washington%')
-  OR (unitid = '234076' AND LOWER(employer) LIKE '%university of virginia%')
+  OR (unitid = '236948' AND (LOWER(employer) LIKE '%university of washington%' OR LOWER(employer) LIKE '%board of regents of the university of washington%'))
+  OR (unitid = '234076' AND (LOWER(employer) LIKE '%university of virginia%' OR LOWER(employer) LIKE '%rector and visitors of the university of virginia%'))
   OR (unitid = '199120' AND (LOWER(employer) LIKE '%university of north carolina%' OR LOWER(employer) LIKE '%unc%'))
   OR (unitid = '139755' AND (LOWER(employer) LIKE '%georgia institute of technology%' OR LOWER(employer) LIKE '%georgia tech%'))
-  OR (unitid = '211440' AND LOWER(employer) LIKE '%carnegie mellon%')
+  OR (unitid = '211440' AND (LOWER(employer) LIKE '%carnegie mellon%' OR LOWER(employer) LIKE '%cmu%'))
 )
 """
 
@@ -1488,21 +1509,29 @@ def _overview(con: duckdb.DuckDBPyConnection, filters: QueryRequest | None = Non
     return row
 
 
-def _overview_employer_summary(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
+def _overview_employer_summary(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
+    same_school_filter = _same_school_employer_filter(filters)
     return {
         "top_employer": _single_record(
             con,
-            """
+            f"""
+            WITH denom AS (
+              SELECT SUM(final_weight) AS total_n
+              FROM slice
+              WHERE career_employer_flag = 1
+                {same_school_filter}
+            )
             SELECT
               employer,
               ROUND(SUM(final_weight), 2) AS n,
-              ROUND(100.0 * SUM(final_weight) / NULLIF((SELECT SUM(final_weight) FROM slice), 0), 2) AS share_pct
+              ROUND(100.0 * SUM(final_weight) / NULLIF((SELECT total_n FROM denom), 0), 2) AS share_pct
             FROM slice
             WHERE employer IS NOT NULL
               AND employer <> ''
               AND unknown_employer_flag = 0
               AND named_employer_flag = 1
               AND career_employer_flag = 1
+              {same_school_filter}
             GROUP BY employer
             HAVING SUM(final_weight) > ?
             ORDER BY SUM(final_weight) DESC
@@ -7589,7 +7618,7 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
 
             if tab == "overview":
                 result["overview"] = _overview(con, filters)
-                result["employer_summary"] = _overview_employer_summary(con)
+                result["employer_summary"] = _overview_employer_summary(con, filters)
                 result["role_summary"] = _overview_role_summary(con)
                 if view_mode == "snapshot":
                     result["top_majors"] = _top_majors(con, filters)
