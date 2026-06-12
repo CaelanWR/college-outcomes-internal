@@ -11840,8 +11840,10 @@
 
     function treemapTileText(label, share) {
       const shareValue = Number(share);
-      const compactLabel = escapeHtml(legendLabel(label, shareValue >= 7 ? 30 : 24));
-      if (!Number.isFinite(shareValue) || shareValue < 4) return compactLabel;
+      if (!Number.isFinite(shareValue) || shareValue < 2.5) return '';
+      const maxChars = shareValue >= 10 ? 34 : (shareValue >= 5 ? 28 : 20);
+      const compactLabel = escapeHtml(legendLabel(label, maxChars));
+      if (shareValue < 5) return compactLabel;
       return `${compactLabel}<br>${pct(shareValue)}`;
     }
 
@@ -11889,7 +11891,7 @@
         width: plotWidth,
         height: plotHeight,
         margin: { l: 0, r: 0, t: 0, b: 0 },
-        uniformtext: { minsize: 9, mode: 'show' },
+        uniformtext: { minsize: 9, mode: 'hide' },
       }, plotConfig).then(plot => {
         plot.on('plotly_click', event => {
           const node = nodes[event.points?.[0]?.pointNumber];
@@ -11981,7 +11983,7 @@
         width: plotWidth,
         height: plotHeight,
         margin: { l: 0, r: 0, t: 0, b: 58 },
-        uniformtext: { minsize: 9, mode: 'show' },
+        uniformtext: { minsize: 9, mode: 'hide' },
         sliders: [{
           active: years.length - 1,
           currentvalue: { prefix: 'Class of ', font: { color: '#2D426A', size: 13 } },
