@@ -11838,12 +11838,13 @@
       drawSimpleBars(id, rows.slice().reverse().map(r => ({ label: r.label, n: r.n })), 'n', title === 'Roles' ? COLORS[3] : COLORS[1]);
     }
 
-    function treemapTileText(label, share) {
-      const shareValue = Number(share);
-      if (!Number.isFinite(shareValue) || shareValue < 1.2) return '';
-      const maxChars = shareValue >= 10 ? 34 : (shareValue >= 4 ? 26 : 16);
+    function treemapTileText(label, areaShare, displayedShare = areaShare) {
+      const areaValue = Number(areaShare);
+      const shareValue = Number(displayedShare);
+      if (!Number.isFinite(areaValue) || areaValue < 3) return '';
+      const maxChars = areaValue >= 18 ? 34 : (areaValue >= 8 ? 26 : 18);
       const compactLabel = escapeHtml(legendLabel(label, maxChars));
-      if (shareValue < 4) return compactLabel;
+      if (areaValue < 8 || !Number.isFinite(shareValue)) return compactLabel;
       return `${compactLabel}<br>${pct(shareValue)}`;
     }
 
@@ -11856,7 +11857,9 @@
       const domain = options.payDomain ?? treemapPayDomain(nodes);
       const rootTotal = sumRows(rows, 'n');
       const parentTotal = sumRows(filterRowsByHierarchyPath(rows, levels, path), 'n') || rootTotal;
+      const visibleTotal = sumRows(nodes, 'value') || parentTotal;
       const tileShare = row => parentTotal ? (Number(row.value || 0) / parentTotal) * 100 : null;
+      const visibleTileShare = row => visibleTotal ? (Number(row.value || 0) / visibleTotal) * 100 : null;
       updateTreemapLegend(id, domain);
       Plotly.newPlot(id, [{
         type: 'treemap',
@@ -11865,7 +11868,7 @@
         labels: nodes.map(row => row.label),
         parents: nodes.map(() => ''),
         values: nodes.map(row => row.value),
-        text: nodes.map(row => treemapTileText(row.label, tileShare(row))),
+        text: nodes.map(row => treemapTileText(row.label, visibleTileShare(row), tileShare(row))),
         textinfo: 'text',
         texttemplate: '%{text}',
         textposition: 'middle center',
@@ -11935,12 +11938,13 @@
           .filter(Boolean)
           .sort((a, b) => Number(b.n || 0) - Number(a.n || 0));
         const total = sumRows(yearRows, 'n');
+        const visibleShare = row => total ? (Number(row.n || 0) / total) * 100 : null;
         return {
           ids: yearRows.map(row => `${year} > ${row.label}`),
           labels: yearRows.map(row => row.label),
           parents: yearRows.map(() => ''),
           values: yearRows.map(row => Number(row.n || 0)),
-          text: yearRows.map(row => treemapTileText(row.label, row.share_pct)),
+          text: yearRows.map(row => treemapTileText(row.label, visibleShare(row), row.share_pct)),
           marker: {
             colors: yearRows.map(row => payColor(Number(row.weighted_mean_salary), domain)),
             line: { width: 1.25, color: '#ffffff' },
