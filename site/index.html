@@ -11840,10 +11840,10 @@
 
     function treemapTileText(label, share) {
       const shareValue = Number(share);
-      if (!Number.isFinite(shareValue) || shareValue < 2.5) return '';
-      const maxChars = shareValue >= 10 ? 34 : (shareValue >= 5 ? 28 : 20);
+      if (!Number.isFinite(shareValue) || shareValue < 1.2) return '';
+      const maxChars = shareValue >= 10 ? 34 : (shareValue >= 4 ? 26 : 16);
       const compactLabel = escapeHtml(legendLabel(label, maxChars));
-      if (shareValue < 5) return compactLabel;
+      if (shareValue < 4) return compactLabel;
       return `${compactLabel}<br>${pct(shareValue)}`;
     }
 
@@ -11869,7 +11869,7 @@
         textinfo: 'text',
         texttemplate: '%{text}',
         textposition: 'middle center',
-        textfont: { size: 12 },
+        textfont: { size: 14 },
         marker: {
           colors: nodes.map(row => payColor(Number(row.median_salary), domain)),
           line: { width: 1.25, color: '#ffffff' },
@@ -11891,7 +11891,7 @@
         width: plotWidth,
         height: plotHeight,
         margin: { l: 0, r: 0, t: 0, b: 0 },
-        uniformtext: { minsize: 9, mode: 'hide' },
+        uniformtext: { minsize: 10, mode: 'show' },
       }, plotConfig).then(plot => {
         plot.on('plotly_click', event => {
           const node = nodes[event.points?.[0]?.pointNumber];
@@ -11970,7 +11970,7 @@
         textinfo: 'text',
         texttemplate: '%{text}',
         textposition: 'middle center',
-        textfont: { size: 12 },
+        textfont: { size: 14 },
         hovertemplate: '<b>%{label}</b><br>Class of %{customdata[3]}<br>%{customdata[0]:.1f}% of total<br>%{customdata[1]:.1f}% of visible top group<br>%{customdata[2]}<extra></extra>',
         pathbar: { visible: false },
         tiling: { packing: 'squarify', squarifyratio: 1.1 },
@@ -11983,7 +11983,7 @@
         width: plotWidth,
         height: plotHeight,
         margin: { l: 0, r: 0, t: 0, b: 58 },
-        uniformtext: { minsize: 9, mode: 'hide' },
+        uniformtext: { minsize: 10, mode: 'show' },
         sliders: [{
           active: years.length - 1,
           currentvalue: { prefix: 'Class of ', font: { color: '#2D426A', size: 13 } },
