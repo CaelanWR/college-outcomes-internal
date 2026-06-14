@@ -193,20 +193,69 @@ def education_later_date_sql(alias: str) -> str:
     return f"{alias}.enddate"
 
 
+def education_degree_text_sql(alias: str) -> str:
+    return f"UPPER(TRIM(COALESCE({alias}.degree, '')))"
+
+
+def postgrad_degree_filter_sql(alias: str = "e") -> str:
+    """Later-degree filter that accepts normalized and raw graduate labels.
+
+    The source education table has used both raw labels (Master/Doctor) and
+    normalized labels (Masters/Research Doctorate/Professional Doctorate). A
+    narrow raw-label filter silently drops law/medical/research doctorates.
+    """
+    alias = alias.strip()
+    degree_text = education_degree_text_sql(alias)
+    degree_cip = degree_cip_sql(alias)
+    return f"""
+    (
+        {degree_text} IN (
+            'MASTER',
+            'MASTERS',
+            'MASTER''S',
+            'MBA',
+            'DOCTOR',
+            'DOCTORATE',
+            'PHD',
+            'PH.D.',
+            'RESEARCH DOCTORATE',
+            'PROFESSIONAL DOCTORATE',
+            'OTHER DOCTORATE',
+            'LAW',
+            'JD',
+            'J.D.',
+            'JURIS DOCTOR',
+            'MD',
+            'M.D.'
+        )
+        OR {degree_text} LIKE 'DOCTOR%'
+        OR LEFT(COALESCE({degree_cip}, ''), 2) = '22'
+        OR LEFT(COALESCE({degree_cip}, ''), 5) = '51.12'
+    )
+    """.strip()
+
+
 def postgrad_degree_label_sql(alias: str = "e") -> str:
     """Postgrad degree labels for platform export, with professional CIPs first."""
     alias = alias.strip()
     doctor_cip = degree_cip_sql(alias)
+    degree_text = education_degree_text_sql(alias)
     return f"""
     CASE
-        WHEN {alias}.degree = 'Master' THEN 'Masters'
-        WHEN {alias}.degree = 'MBA' THEN 'MBA'
-        WHEN {alias}.degree = 'Doctor' AND LEFT(COALESCE({doctor_cip}, ''), 2) = '22' THEN 'LAW'
-        WHEN {alias}.degree = 'Doctor' AND LEFT(COALESCE({doctor_cip}, ''), 5) = '51.12' THEN 'MD'
-        WHEN {alias}.degree = 'Doctor' AND {alias}.ipeds_awlevel IN ('17') THEN 'PhD'
-        WHEN {alias}.degree = 'Doctor' AND {alias}.ipeds_awlevel IN ('18', '09', '9', '10', '11') THEN 'Professional Doctorate'
-        WHEN {alias}.degree = 'Doctor' AND {alias}.ipeds_awlevel IN ('19') THEN 'Other Doctorate'
-        WHEN {alias}.degree = 'Doctor' THEN 'Doctorate'
+        WHEN LEFT(COALESCE({doctor_cip}, ''), 2) = '22'
+          OR {degree_text} IN ('LAW', 'JD', 'J.D.', 'JURIS DOCTOR') THEN 'LAW'
+        WHEN LEFT(COALESCE({doctor_cip}, ''), 5) = '51.12'
+          OR {degree_text} IN ('MD', 'M.D.') THEN 'MD'
+        WHEN {degree_text} IN ('MASTER', 'MASTERS', 'MASTER''S') THEN 'Masters'
+        WHEN {degree_text} = 'MBA' THEN 'MBA'
+        WHEN {degree_text} IN ('PHD', 'PH.D.', 'RESEARCH DOCTORATE') THEN 'PhD'
+        WHEN {degree_text} = 'PROFESSIONAL DOCTORATE' THEN 'Professional Doctorate'
+        WHEN {degree_text} = 'OTHER DOCTORATE' THEN 'Other Doctorate'
+        WHEN {degree_text} IN ('DOCTOR', 'DOCTORATE') AND {alias}.ipeds_awlevel IN ('17') THEN 'PhD'
+        WHEN {degree_text} IN ('DOCTOR', 'DOCTORATE') AND {alias}.ipeds_awlevel IN ('18', '09', '9', '10', '11') THEN 'Professional Doctorate'
+        WHEN {degree_text} IN ('DOCTOR', 'DOCTORATE') AND {alias}.ipeds_awlevel IN ('19') THEN 'Other Doctorate'
+        WHEN {degree_text} IN ('DOCTOR', 'DOCTORATE') THEN 'Doctorate'
+        WHEN {degree_text} LIKE 'DOCTOR%' THEN 'Doctorate'
         ELSE {alias}.degree
     END
     """.strip()
@@ -218,7 +267,7 @@ def plus_one_masters_flag_sql(later_alias: str, origin_alias: str) -> str:
     return f"""
         CASE
             WHEN {origin_alias}.degree = 'Bachelors'
-             AND {later_alias}.degree = 'Master'
+             AND {education_degree_text_sql(later_alias)} IN ('MASTER', 'MASTERS', 'MASTER''S')
              AND CAST({later_alias}.unitid AS VARCHAR) = CAST({origin_alias}.unitid AS VARCHAR)
              AND DATEDIFF('day', {origin_alias}.grad_date, {later_date}) BETWEEN 1 AND 366
             THEN 1
@@ -312,7 +361,7 @@ later_candidates AS (
     FROM {base_cte} b
     JOIN {later_source} e2
       ON b.user_id = e2.user_id
-     AND (e2.degree IN ('Master', 'MBA') OR e2.degree LIKE 'Doctor%')
+     AND {postgrad_degree_filter_sql('e2')}
      AND {later_date} > b.grad_date
 ),
 later_edu AS (
@@ -797,9 +846,9 @@ later_edu AS (
         SELECT DISTINCT user_id, unitid, degree, grad_year, cip4, grad_date
         FROM outcomes
     ) o
-    JOIN {EDUCATION_CIP} e2
+    JOIN {postgrad_education_source_sql()} e2
       ON o.user_id = e2.user_id
-     AND (e2.degree IN ('Master', 'MBA') OR e2.degree LIKE 'Doctor%')
+     AND {postgrad_degree_filter_sql('e2')}
      AND {later_date} > o.grad_date
 ),
 {feeder_bachelor_education_cte_sql('outcomes')},
@@ -1200,6 +1249,7 @@ recent_global_cip4_calibration AS (
 
 def _work_later_education_cte_sql(base_cte: str = "grad_years") -> str:
     later_date = education_later_date_sql("e2")
+    later_source = postgrad_education_source_sql()
     return f"""
 later_edu AS (
     SELECT
@@ -1223,9 +1273,9 @@ later_edu AS (
         SELECT DISTINCT user_id, unitid, degree, grad_year, cip4, grad_date
         FROM {base_cte}
     ) o
-    JOIN {EDUCATION_CIP} e2
+    JOIN {later_source} e2
      ON o.user_id = e2.user_id
-     AND (e2.degree IN ('Master', 'MBA') OR e2.degree LIKE 'Doctor%')
+     AND {postgrad_degree_filter_sql('e2')}
      AND {later_date} > o.grad_date
 )
 """
@@ -1579,7 +1629,7 @@ def _graduate_degree_match_sql(left_col: str, right_col: str) -> str:
 def _grad_transition_base_sql() -> str:
     grad_windows = ", ".join(f"({window})" for window in GRAD_TRANSITION_WINDOWS)
     grad_degree_values = _sql_literal_list(GRAD_DEGREE_VALUES)
-    raw_grad_degree_filter = "(e.degree IN ('Master', 'MBA') OR e.degree LIKE 'Doctor%')"
+    raw_grad_degree_filter = postgrad_degree_filter_sql("e")
     graduate_degree_match = _graduate_degree_match_sql("g.degree", "ge.degree")
     return f"""
 CREATE OR REPLACE TABLE {SCRATCH}.SCHOOL_OUTCOMES_GRAD_TRANSITION_BASE AS
