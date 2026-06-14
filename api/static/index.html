@@ -11838,13 +11838,14 @@
       drawSimpleBars(id, rows.slice().reverse().map(r => ({ label: r.label, n: r.n })), 'n', title === 'Roles' ? COLORS[3] : COLORS[1]);
     }
 
-    function treemapTileText(label, areaShare, displayedShare = areaShare) {
+    function treemapTileText(label, areaShare, displayedShare = areaShare, rank = 0) {
       const areaValue = Number(areaShare);
       const shareValue = Number(displayedShare);
-      if (!Number.isFinite(areaValue) || areaValue < 3) return '';
-      const maxChars = areaValue >= 18 ? 34 : (areaValue >= 8 ? 26 : 18);
+      if (!Number.isFinite(areaValue) || areaValue < 4.5) return '';
+      if (rank >= 8 && areaValue < 9) return '';
+      const maxChars = areaValue >= 18 ? 30 : (areaValue >= 9 ? 22 : 12);
       const compactLabel = escapeHtml(legendLabel(label, maxChars));
-      if (areaValue < 8 || !Number.isFinite(shareValue)) return compactLabel;
+      if (areaValue < 9 || !Number.isFinite(shareValue)) return compactLabel;
       return `${compactLabel}<br>${pct(shareValue)}`;
     }
 
@@ -11868,7 +11869,7 @@
         labels: nodes.map(row => row.label),
         parents: nodes.map(() => ''),
         values: nodes.map(row => row.value),
-        text: nodes.map(row => treemapTileText(row.label, visibleTileShare(row), tileShare(row))),
+        text: nodes.map((row, index) => treemapTileText(row.label, visibleTileShare(row), tileShare(row), index)),
         textinfo: 'text',
         texttemplate: '%{text}',
         textposition: 'middle center',
@@ -11944,7 +11945,7 @@
           labels: yearRows.map(row => row.label),
           parents: yearRows.map(() => ''),
           values: yearRows.map(row => Number(row.n || 0)),
-          text: yearRows.map(row => treemapTileText(row.label, visibleShare(row), row.share_pct)),
+          text: yearRows.map((row, index) => treemapTileText(row.label, visibleShare(row), row.share_pct, index)),
           marker: {
             colors: yearRows.map(row => payColor(Number(row.weighted_mean_salary), domain)),
             line: { width: 1.25, color: '#ffffff' },
