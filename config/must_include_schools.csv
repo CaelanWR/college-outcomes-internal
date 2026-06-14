@@ -1,0 +1,161 @@
+match_type,pattern,reason
+contains,University of California,UC system
+exact,University of California-Los Angeles,UC system
+exact,University of California-Berkeley,UC system
+exact,University of California-Davis,UC system
+exact,University of California-Irvine,UC system
+exact,University of California-Merced,UC system
+exact,University of California-Riverside,UC system
+exact,University of California-San Diego,UC system
+exact,University of California-San Francisco,UC system
+exact,University of California-Santa Barbara,UC system
+exact,University of California-Santa Cruz,UC system
+contains,California State University,CSU system
+contains,State University of New York,SUNY system
+contains,SUNY,SUNY system
+contains,CUNY,CUNY system
+contains,University of Texas,Texas public system
+contains,Texas A&M,Texas public system
+contains,University of Houston,Texas public system
+contains,Texas Tech University,Texas public system
+contains,University of Florida,Florida flagship
+exact,Florida State University,Florida flagship
+exact,University of Central Florida,large public
+exact,Florida International University,large public
+exact,University of South Florida,large public
+exact,University of Miami,major private
+exact,University of Georgia,SEC flagship
+exact,Georgia Institute of Technology-Main Campus,major public
+exact,University of Michigan-Ann Arbor,Big Ten flagship
+exact,Michigan State University,Big Ten flagship
+exact,Ohio State University-Main Campus,Big Ten flagship
+exact,Pennsylvania State University-Main Campus,Big Ten flagship
+exact,University of Wisconsin-Madison,Big Ten flagship
+exact,University of Illinois Urbana-Champaign,Big Ten flagship
+exact,University of Illinois Chicago,large public
+exact,Indiana University-Bloomington,Big Ten flagship
+exact,Purdue University-Main Campus,Big Ten flagship
+exact,University of Minnesota-Twin Cities,Big Ten flagship
+exact,University of Iowa,Big Ten flagship
+exact,University of Nebraska-Lincoln,Big Ten flagship
+exact,University of Maryland-College Park,Big Ten flagship
+exact,Rutgers University-New Brunswick,Big Ten flagship
+exact,University of Washington-Seattle Campus,Pac-12 flagship
+exact,University of Oregon,Pac-12 flagship
+exact,Oregon State University,Pac-12 flagship
+exact,University of Colorado Boulder,Pac-12 flagship
+exact,University of Utah,Pac-12 flagship
+exact,Arizona State University Campus Immersion,large public
+exact,University of Arizona,large public
+exact,University of Nevada-Las Vegas,large public
+exact,University of Nevada-Reno,large public
+exact,University of North Carolina at Chapel Hill,ACC flagship
+exact,North Carolina State University at Raleigh,large public
+exact,University of Virginia-Main Campus,ACC flagship
+exact,Virginia Polytechnic Institute and State University,large public
+exact,University of Pittsburgh-Pittsburgh Campus,ACC flagship
+exact,Clemson University,ACC flagship
+exact,University of South Carolina-Columbia,SEC flagship
+exact,The University of Alabama,SEC flagship
+exact,Auburn University,SEC flagship
+exact,Louisiana State University and Agricultural & Mechanical College,SEC flagship
+exact,University of Tennessee-Knoxville,SEC flagship
+exact,University of Kentucky,SEC flagship
+exact,University of Missouri-Columbia,SEC flagship
+exact,University of Arkansas,SEC flagship
+exact,University of Mississippi,SEC flagship
+exact,Mississippi State University,SEC flagship
+exact,University of Oklahoma-Norman Campus,Big 12 flagship
+exact,Oklahoma State University-Main Campus,Big 12 flagship
+exact,University of Kansas,Big 12 flagship
+exact,Kansas State University,Big 12 flagship
+exact,Iowa State University,Big 12 flagship
+exact,University of Cincinnati-Main Campus,Big 12 flagship
+exact,University of Connecticut,major public
+exact,University of Massachusetts-Amherst,major public
+exact,University of Delaware,major public
+exact,University of Vermont,major public
+exact,University of New Hampshire-Main Campus,major public
+exact,University of Maine,major public
+exact,University of Rhode Island,major public
+exact,University at Buffalo,SUNY flagship
+exact,Binghamton University,SUNY flagship
+exact,Stony Brook University,SUNY flagship
+exact,University at Albany,SUNY flagship
+exact,William & Mary,major public
+exact,George Mason University,large public
+exact,Virginia Commonwealth University,large public
+exact,Old Dominion University,large public
+exact,Temple University,large public
+exact,University of Louisville,large public
+exact,University of Memphis,large public
+exact,Boise State University,large public
+exact,Colorado School of Mines,major public
+exact,San Diego State University,CSU prominent
+exact,San Jose State University,CSU prominent
+exact,California Polytechnic State University-San Luis Obispo,CSU prominent
+exact,California State Polytechnic University-Pomona,CSU prominent
+exact,Harvard University,Ivy/private
+exact,Yale University,Ivy/private
+exact,Princeton University,Ivy/private
+exact,Columbia University in the City of New York,Ivy/private
+exact,University of Pennsylvania,Ivy/private
+exact,Dartmouth College,Ivy/private
+exact,Brown University,Ivy/private
+exact,Cornell University,Ivy/private
+exact,Stanford University,major private
+exact,Massachusetts Institute of Technology,major private
+exact,California Institute of Technology,major private
+exact,University of Chicago,major private
+exact,Duke University,major private
+exact,Northwestern University,major private
+exact,Johns Hopkins University,major private
+exact,Vanderbilt University,major private
+exact,Rice University,major private
+exact,Washington University in St Louis,major private
+exact,University of Notre Dame,major private
+exact,Georgetown University,major private
+exact,Carnegie Mellon University,major private
+exact,New York University,major private
+exact,University of Southern California,major private
+exact,Boston University,major private
+exact,Northeastern University,major private
+exact,Tufts University,major private
+exact,Emory University,major private
+exact,Wake Forest University,major private
+exact,Brandeis University,major private
+exact,Case Western Reserve University,major private
+exact,University of Rochester,major private
+exact,Tulane University of Louisiana,major private
+exact,Lehigh University,major private
+exact,Boston College,major private
+exact,Villanova University,major private
+exact,Fordham University,major private
+exact,Syracuse University,major private
+exact,American University,major private
+exact,George Washington University,major private
+exact,Howard University,HBCU/prominent
+exact,Spelman College,HBCU/prominent
+exact,Morehouse College,HBCU/prominent
+exact,Florida Agricultural and Mechanical University,HBCU/prominent
+exact,North Carolina A & T State University,HBCU/prominent
+exact,Hampton University,HBCU/prominent
+exact,Tuskegee University,HBCU/prominent
+exact,Pomona College,liberal arts
+exact,Claremont McKenna College,liberal arts
+exact,Harvey Mudd College,liberal arts
+exact,Swarthmore College,liberal arts
+exact,Amherst College,liberal arts
+exact,Williams College,liberal arts
+exact,Wellesley College,liberal arts
+exact,Bowdoin College,liberal arts
+exact,Middlebury College,liberal arts
+exact,Carleton College,liberal arts
+exact,Grinnell College,liberal arts
+exact,Haverford College,liberal arts
+exact,Davidson College,liberal arts
+exact,Colby College,liberal arts
+exact,Colgate University,liberal arts
+exact,Hamilton College,liberal arts
+exact,Bates College,liberal arts
+exact,Macalester College,liberal arts

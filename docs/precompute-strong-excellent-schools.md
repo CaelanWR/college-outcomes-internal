@@ -16,6 +16,29 @@ The notebook writes the promoted run list to:
 
 `<OUT_DIR>/us_strong_excellent_school_run_list.csv`
 
+For the broader rebuild, use the expanded-list builder after the U.S. capacity
+audit exists:
+
+```bash
+python scripts/build_expanded_school_run_list.py \
+  --source <OUT_DIR>/us_school_data_capacity_audit.csv \
+  --current <OUT_DIR>/us_strong_excellent_school_run_list.csv \
+  --out-dir <OUT_DIR> \
+  --target-max 1350
+```
+
+This writes:
+
+```text
+<OUT_DIR>/expanded_school_run_list.csv
+<OUT_DIR>/expanded_school_must_include_review.csv
+```
+
+Use `expanded_school_run_list.csv` to set `UNITID_LIST` and `UNITID_SQL` before
+rerunning the platform export. The must-include review file is where missing or
+too-thin priority schools should be checked, including UCLA and other flagship
+systems.
+
 Further-education matching must use the full education universe for the later
 degree lookup, even when bachelor rows are limited to the selected run list. If
 the notebook narrows `EDUCATION_CIP` to selected schools, set

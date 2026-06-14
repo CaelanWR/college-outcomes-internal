@@ -13,6 +13,7 @@ site/school_outcomes_data/
 site/school_outcomes_data
 site/data/
 data/
+outputs/expanded_school_run_list_local_test/
 *.parquet
 *.duckdb
 *.db
