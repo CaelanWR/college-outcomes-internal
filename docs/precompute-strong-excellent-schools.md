@@ -32,12 +32,15 @@ This writes:
 ```text
 <OUT_DIR>/expanded_school_run_list.csv
 <OUT_DIR>/expanded_school_must_include_review.csv
+<OUT_DIR>/school_quality_bin_counts.csv
 ```
 
 Use `expanded_school_run_list.csv` to set `UNITID_LIST` and `UNITID_SQL` before
 rerunning the platform export. The must-include review file is where missing or
 too-thin priority schools should be checked, including UCLA and other flagship
-systems.
+systems. The quality-bin counts file is the lightweight check to rerun when you
+just want to see how many schools are excellent, strong, usable, watchlist, or
+otherwise too thin before committing to the full rebuild.
 
 Further-education matching must use the full education universe for the later
 degree lookup, even when bachelor rows are limited to the selected run list. If

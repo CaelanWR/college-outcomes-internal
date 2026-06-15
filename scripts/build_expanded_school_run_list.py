@@ -146,6 +146,45 @@ def _quality_masks(df: pd.DataFrame, high_quality_tiers: set[str], min_score: fl
     return high_quality, usable_must_include
 
 
+def _quality_bin_counts(schools: pd.DataFrame) -> pd.DataFrame:
+    df = schools.copy()
+    df["quality_bin"] = df["data_capacity_tier"].fillna("").astype(str).str.strip().replace("", "unknown")
+    for col in ["high_quality_flag", "must_include_flag", "usable_must_include_flag", "selected_for_expanded_run"]:
+        if col not in df.columns:
+            df[col] = False
+        df[col] = df[col].fillna(False).astype(bool)
+    df["data_readiness_score"] = pd.to_numeric(df["data_readiness_score"], errors="coerce")
+    df["recent_bachelor_users"] = pd.to_numeric(df["recent_bachelor_users"], errors="coerce")
+    df["total_bachelor_users"] = pd.to_numeric(df["total_bachelor_users"], errors="coerce")
+    order = {
+        "excellent": 0,
+        "strong": 1,
+        "usable": 2,
+        "watchlist": 3,
+        "thin": 4,
+        "avoid": 5,
+        "unknown": 6,
+    }
+    counts = (
+        df.groupby("quality_bin", dropna=False)
+        .agg(
+            schools=("unitid", "nunique"),
+            selected=("selected_for_expanded_run", "sum"),
+            high_quality=("high_quality_flag", "sum"),
+            must_include=("must_include_flag", "sum"),
+            usable_must_include=("usable_must_include_flag", "sum"),
+            avg_readiness=("data_readiness_score", "mean"),
+            total_bachelor_users=("total_bachelor_users", "sum"),
+            recent_bachelor_users=("recent_bachelor_users", "sum"),
+        )
+        .reset_index()
+    )
+    counts["sort_order"] = counts["quality_bin"].map(order).fillna(99)
+    counts = counts.sort_values(["sort_order", "quality_bin"]).drop(columns=["sort_order"])
+    counts["avg_readiness"] = counts["avg_readiness"].round(1)
+    return counts
+
+
 def build_run_list(
     source_path: Path,
     must_include_path: Path,
@@ -188,6 +227,8 @@ def build_run_list(
             "selection_reason",
         ] += "+current_run"
 
+    quality_counts = _quality_bin_counts(schools)
+
     selected = schools[schools["selected_for_expanded_run"]].copy()
     selected["sort_tier"] = selected["data_capacity_tier"].map({"excellent": 0, "strong": 1, "usable": 2}).fillna(3)
     selected["sort_must"] = (~selected["must_include_flag"]).astype(int)
@@ -205,6 +246,7 @@ def build_run_list(
 
     out_dir.mkdir(parents=True, exist_ok=True)
     selected.to_csv(out_dir / "expanded_school_run_list.csv", index=False)
+    quality_counts.to_csv(out_dir / "school_quality_bin_counts.csv", index=False)
 
     review = must_matches.merge(
         schools[
@@ -225,7 +267,7 @@ def build_run_list(
         how="left",
     )
     review.to_csv(out_dir / "expanded_school_must_include_review.csv", index=False)
-    return selected, review
+    return selected, review, quality_counts
 
 
 def main() -> int:
@@ -240,7 +282,7 @@ def main() -> int:
     args = parser.parse_args()
 
     target_max = None if args.target_max == 0 else args.target_max
-    selected, review = build_run_list(
+    selected, review, quality_counts = build_run_list(
         source_path=args.source,
         must_include_path=args.must_include,
         current_path=args.current,
@@ -250,6 +292,9 @@ def main() -> int:
         min_must_score=args.min_must_score,
     )
 
+    print("\nSchool quality bins:")
+    print(quality_counts.to_string(index=False))
+    print()
     print(f"Selected schools: {len(selected):,}")
     print(f"Must-include matched: {(review['must_include_status'] == 'matched').sum():,}")
     print(f"Must-include missing from input: {(review['must_include_status'] == 'missing_from_input').sum():,}")
@@ -264,6 +309,7 @@ def main() -> int:
             print(missed[["unitid", "ipeds_name", "data_capacity_tier", "data_readiness_score", "needs_match_review"]].head(30).to_string(index=False))
     print(f"Wrote: {args.out_dir / 'expanded_school_run_list.csv'}")
     print(f"Wrote: {args.out_dir / 'expanded_school_must_include_review.csv'}")
+    print(f"Wrote: {args.out_dir / 'school_quality_bin_counts.csv'}")
     return 0
 
 
