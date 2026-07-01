@@ -858,6 +858,79 @@ def _work_postgrad_unsupported(filters: QueryRequest, dataset: str) -> bool:
     return _work_postgrad_filter_active(filters) and not _work_dataset_supports_postgrad(dataset)
 
 
+def _career_major_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    requested = list(dict.fromkeys(str(major) for major in filters.majors if str(major)))
+    if not requested:
+        return []
+    rows: list[dict[str, Any]] = []
+    if _work_dataset_exists("annual_salary"):
+        where_sql, params = _work_where(filters, postgrad_dataset="annual_salary")
+        rows = _records_from_query(
+            con,
+            f"""
+            SELECT
+              CAST(cip4 AS VARCHAR) AS code,
+              COALESCE(MAX(NULLIF(major_title, '')), CAST(cip4 AS VARCHAR)) AS title,
+              ROUND(SUM(n_alumni)) AS alumni
+            FROM read_parquet(?)
+            {where_sql}
+            GROUP BY cip4
+            """,
+            [_work_source_for_filters("annual_salary", filters), *params],
+        )
+    lookup = {str(row.get("code")): row for row in rows if row.get("code") is not None}
+    total_alumni = sum(float(row.get("alumni") or 0) for row in lookup.values())
+    result = []
+    for code in requested:
+        row = dict(lookup.get(code) or {})
+        alumni = row.get("alumni")
+        result.append(
+            {
+                "code": code,
+                "title": row.get("title") or code,
+                "alumni": alumni,
+                "total_alumni": total_alumni or None,
+                "alumni_share_pct": round(100.0 * float(alumni or 0) / total_alumni, 2) if total_alumni else None,
+            }
+        )
+    return result
+
+
+def _career_school_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
+    requested = list(dict.fromkeys(str(school) for school in filters.schools if str(school)))
+    if not requested:
+        return []
+    rows: list[dict[str, Any]] = []
+    if _work_dataset_exists("annual_salary"):
+        where_sql, params = _work_where(filters, postgrad_dataset="annual_salary")
+        rows = _records_from_query(
+            con,
+            f"""
+            SELECT
+              CAST(unitid AS VARCHAR) AS unitid,
+              CAST(unitid AS VARCHAR) AS code,
+              COALESCE(MAX(NULLIF(school_name, '')), CAST(unitid AS VARCHAR)) AS school_name,
+              COALESCE(MAX(NULLIF(school_name, '')), CAST(unitid AS VARCHAR)) AS title,
+              ROUND(SUM(n_alumni)) AS alumni
+            FROM read_parquet(?)
+            {where_sql}
+            GROUP BY unitid
+            """,
+            [_work_source_for_filters("annual_salary", filters), *params],
+        )
+    lookup = {str(row.get("unitid") or row.get("code")): row for row in rows if row.get("unitid") or row.get("code")}
+    return [
+        {
+            "unitid": school,
+            "code": school,
+            "school_name": (lookup.get(school) or {}).get("school_name") or school,
+            "title": (lookup.get(school) or {}).get("title") or school,
+            "alumni": (lookup.get(school) or {}).get("alumni"),
+        }
+        for school in requested
+    ]
+
+
 def _career_requires_person_level(filters: QueryRequest) -> bool:
     postgrad_requires_fallback = _work_postgrad_filter_active(filters) and not _work_dataset_supports_postgrad("annual_salary")
     return bool(
@@ -7260,25 +7333,53 @@ def _career_superstars(con: duckdb.DuckDBPyConnection, filters: QueryRequest) ->
 
 
 def _career(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, Any]:
-    include_employer_share = not filters.compare_mode and filters.view_mode in {"overtime", "all"}
-    return {
+    include_overtime = filters.view_mode in {"overtime", "all"}
+    include_snapshot = filters.view_mode in {"snapshot", "all"}
+    include_employer_share = not filters.compare_mode and include_overtime
+    career = {
         "earnings": _career_earnings(con, filters),
-        "archetypes": _career_archetypes(con, filters),
-        "superstars": _career_superstars(con, filters),
-        "graduate_value": _career_graduate_value(con, filters),
-        "graduate_transitions": _career_graduate_transitions(con, filters),
-        "internships": _career_internships(con, filters),
-        "seniority": _career_seniority(con, filters),
-        "average_seniority": _career_average_seniority(con, filters),
-        "employer_tenure": _career_employer_tenure(con, filters),
-        "employer_share": _career_employer_share(con, filters) if include_employer_share else [],
+        "archetypes": [],
+        "superstars": [],
+        "graduate_value": {"available": False, "timeline": [], "primary": {}},
+        "graduate_transitions": {"available": False, "roles": [], "industries": []},
+        "internships": {
+            "available": False,
+            "summary": {},
+            "rates": [],
+            "employer_comparison": [],
+            "employers": [],
+            "roles": [],
+            "industries": [],
+            "geography": [],
+            "conversions": [],
+        },
+        "seniority": [],
+        "average_seniority": [],
+        "employer_tenure": [],
+        "employer_share": [],
         "mobility": _career_mobility(con, filters),
     }
+    if include_snapshot:
+        career["archetypes"] = _career_archetypes(con, filters)
+        career["graduate_value"] = _career_graduate_value(con, filters)
+        career["graduate_transitions"] = _career_graduate_transitions(con, filters)
+    if include_overtime:
+        if filters.compare_mode:
+            career["average_seniority"] = _career_average_seniority(con, filters)
+        else:
+            career["seniority"] = _career_seniority(con, filters)
+            career["employer_tenure"] = _career_employer_tenure(con, filters)
+            career["employer_share"] = _career_employer_share(con, filters) if include_employer_share else []
+    return career
 
 
 def _dashboard_requires_slice(filters: QueryRequest, tab: str) -> bool:
     if tab in {"all", "full"}:
         return True
+    # Compare Career can be served entirely from precomputed work facts plus a
+    # lightweight selected-entity list. Avoid the full base slice here.
+    if filters.compare_mode and tab == "career":
+        return False
     # Compare pages need overview/comparison rows in addition to the active tab.
     if filters.compare_mode:
         return True
@@ -7347,6 +7448,13 @@ def _dashboard_uncached(filters: QueryRequest) -> dict[str, Any]:
                 return result
 
             if filters.compare_mode:
+                if tab == "career":
+                    if filters.compare_dimension == "major":
+                        result["major_comparison"] = _career_major_comparison(con, filters)
+                    else:
+                        result["school_comparison"] = _career_school_comparison(con, filters)
+                    result["career"] = _career(con, filters)
+                    return result
                 result["overview"] = _overview(con)
                 if filters.compare_dimension == "major":
                     result["major_comparison"] = _major_comparison(con, filters)
