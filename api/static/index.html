@@ -7837,15 +7837,21 @@
         else drawCareerSeniority('career-seniority');
         if (!comparing) drawCareerEmployerShare('career-employer-share');
       } else {
+        if (comparing) {
+          $('content').innerHTML = [
+            metricRow,
+            card('Career Earnings After Graduation', 'career-earnings', 6, true),
+            card('Average Career Stage by Years Since Graduation', 'career-seniority', 6, true),
+          ].join('');
+          drawCareerEarnings('career-earnings');
+          drawCareerAverageSeniority('career-seniority');
+          return;
+        }
         $('content').innerHTML = [
           metricRow,
-          ...(comparing
-            ? []
-            : [
-              ...(hasGraduateValue ? [card('Graduate Value', 'career-graduate-value', 12, false, { export: false, compact: true })] : []),
-              ...(hasGraduateTransitions ? [card('Career Moves After Grad School', 'career-grad-transitions', 12, false, { export: false, compact: true })] : []),
-              ...(hasCareerModels ? [card('Common Career Paths', 'career-models', 12, false, { topControl: true, export: false })] : []),
-            ]),
+          ...(hasGraduateValue ? [card('Graduate Value', 'career-graduate-value', 12, false, { export: false, compact: true })] : []),
+          ...(hasGraduateTransitions ? [card('Career Moves After Grad School', 'career-grad-transitions', 12, false, { export: false, compact: true })] : []),
+          ...(hasCareerModels ? [card('Common Career Paths', 'career-models', 12, false, { topControl: true, export: false })] : []),
         ].join('');
         if (hasGraduateValue) drawGraduateValue('career-graduate-value');
         if (hasGraduateTransitions) drawGraduateTransitionSummary('career-grad-transitions');

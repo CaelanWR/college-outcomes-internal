@@ -7359,17 +7359,16 @@ def _career(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str, 
         "employer_share": [],
         "mobility": _career_mobility(con, filters),
     }
-    if include_snapshot:
+    if include_snapshot and not filters.compare_mode:
         career["archetypes"] = _career_archetypes(con, filters)
         career["graduate_value"] = _career_graduate_value(con, filters)
         career["graduate_transitions"] = _career_graduate_transitions(con, filters)
-    if include_overtime:
-        if filters.compare_mode:
-            career["average_seniority"] = _career_average_seniority(con, filters)
-        else:
-            career["seniority"] = _career_seniority(con, filters)
-            career["employer_tenure"] = _career_employer_tenure(con, filters)
-            career["employer_share"] = _career_employer_share(con, filters) if include_employer_share else []
+    if filters.compare_mode:
+        career["average_seniority"] = _career_average_seniority(con, filters)
+    elif include_overtime:
+        career["seniority"] = _career_seniority(con, filters)
+        career["employer_tenure"] = _career_employer_tenure(con, filters)
+        career["employer_share"] = _career_employer_share(con, filters) if include_employer_share else []
     return career
 
 
