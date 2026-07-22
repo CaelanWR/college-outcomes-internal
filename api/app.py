@@ -4164,8 +4164,9 @@ def _postgrad_detail_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRe
 
 def _top_majors(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
     cip_col = _cip_col(filters)
+    valid_cip_sql = _valid_cip_option_sql(cip_col)
     limit = _safe_limit(filters.top_n)
-    return _records_from_query(
+    rows = _records_from_query(
         con,
         f"""
         WITH cohort AS (
@@ -4175,6 +4176,7 @@ def _top_majors(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[d
             SUM(profile_weight) AS alumni
           FROM cohort_slice
           WHERE {cip_col} IS NOT NULL
+            AND {valid_cip_sql}
           GROUP BY {cip_col}
         ),
         outcomes AS (
@@ -4186,6 +4188,7 @@ def _top_majors(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[d
             quantile_cont(salary, 0.5) AS median_salary
           FROM slice
           WHERE {cip_col} IS NOT NULL
+            AND {valid_cip_sql}
           GROUP BY {cip_col}
         )
         SELECT
@@ -4203,10 +4206,12 @@ def _top_majors(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[d
         """,
         [SALARY_MIN_WEIGHT, SALARY_MIN_WEIGHT, MIN_CELL_WEIGHT],
     )
+    return _apply_cip_titles(con, rows, cip_col)
 
 
 def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_current: bool) -> dict[str, Any]:
     cip_col = _cip_col(filters)
+    valid_cip_sql = _valid_cip_option_sql(cip_col)
     limit = _safe_limit(filters.top_n)
     current_exists = include_current and _create_current_slice(con, filters)
     has_major_filter = bool(filters.majors)
@@ -4225,11 +4230,11 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
     weight_expr = "SUM(profile_weight)"
     if has_major_filter:
         top_sources = [
-            f"SELECT {cip_col} AS code, major_title AS title, profile_weight AS n FROM cohort_slice WHERE {cip_col} IS NOT NULL"
+            f"SELECT {cip_col} AS code, major_title AS title, profile_weight AS n FROM cohort_slice WHERE {cip_col} IS NOT NULL AND {valid_cip_sql}"
         ]
         if current_exists:
             top_sources.append(
-                f"SELECT {cip_col} AS code, major_title AS title, profile_weight AS n FROM current_slice WHERE {cip_col} IS NOT NULL"
+                f"SELECT {cip_col} AS code, major_title AS title, profile_weight AS n FROM current_slice WHERE {cip_col} IS NOT NULL AND {valid_cip_sql}"
             )
         top_codes = _records_from_query(
             con,
@@ -4251,6 +4256,7 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
             SELECT {cip_col} AS code, MAX(major_title) AS title, {weight_expr} AS n
             FROM {source_for_top}
             WHERE {cip_col} IS NOT NULL
+              AND {valid_cip_sql}
             GROUP BY {cip_col}
             HAVING {weight_expr} > ?
             ORDER BY n DESC
@@ -4258,6 +4264,7 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
             """,
             [MIN_CELL_WEIGHT],
         )
+    top_codes = _apply_cip_titles(con, top_codes, cip_col)
     codes = [row["code"] for row in top_codes if row["code"]]
     if not codes:
         return {"series": [], "current_series": [], "top": []}
@@ -4335,7 +4342,11 @@ def _major_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest, include_
             """,
             [*codes, MIN_CELL_WEIGHT],
         )
-    return {"top": top_codes, "series": base_series, "current_series": current_series}
+    return {
+        "top": top_codes,
+        "series": _apply_cip_titles(con, base_series, cip_col),
+        "current_series": _apply_cip_titles(con, current_series, cip_col),
+    }
 
 
 def _employer_trend(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> list[dict[str, Any]]:
