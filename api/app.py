@@ -1247,17 +1247,55 @@ def _cip_title_lookup(con: duckdb.DuckDBPyConnection, cip_col: str) -> dict[str,
     return {str(row["code"]): str(row["title"]) for row in rows if row.get("code") and row.get("title")}
 
 
+def _valid_cip_option_code(code: Any, cip_col: str) -> bool:
+    """Keep user-facing majors to recognized, non-placeholder CIP codes."""
+    text = str(code or "").strip()
+    expected_shapes = {
+        "cip2": (2, None),
+        "cip4": (2, 2),
+        "cip6": (2, 4),
+    }
+    shape = expected_shapes.get(cip_col)
+    if not text or not shape or text.startswith("99"):
+        return False
+    if shape[1] is None:
+        return len(text) == shape[0] and text.isdigit()
+    parts = text.split(".")
+    return (
+        len(parts) == 2
+        and len(parts[0]) == shape[0]
+        and len(parts[1]) == shape[1]
+        and parts[0].isdigit()
+        and parts[1].isdigit()
+    )
+
+
+def _valid_cip_option_sql(cip_col: str) -> str:
+    patterns = {
+        "cip2": r"^[0-9]{2}$",
+        "cip4": r"^[0-9]{2}\.[0-9]{2}$",
+        "cip6": r"^[0-9]{2}\.[0-9]{4}$",
+    }
+    return f"regexp_full_match({cip_col}, '{patterns[cip_col]}') AND LEFT({cip_col}, 2) <> '99'"
+
+
 def _apply_cip_titles(con: duckdb.DuckDBPyConnection, rows: list[dict[str, Any]], cip_col: str) -> list[dict[str, Any]]:
     titles = _cip_title_lookup(con, cip_col)
-    if not titles:
-        return rows
-    return [
-        {
-            **row,
-            "title": titles.get(str(row.get("code")), row.get("title") or row.get("code")),
-        }
-        for row in rows
-    ]
+    cleaned: list[dict[str, Any]] = []
+    for row in rows:
+        code = str(row.get("code") or "").strip()
+        if not _valid_cip_option_code(code, cip_col):
+            continue
+        if titles:
+            title = str(titles.get(code) or "").strip()
+            if not title:
+                continue
+        else:
+            title = str(row.get("title") or "").strip()
+            if not title:
+                continue
+        cleaned.append({**row, "code": code, "title": title})
+    return cleaned
 
 
 @app.get("/api/health")
@@ -1375,6 +1413,7 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
             )
 
             def major_options_for(cip_column: str) -> list[dict[str, Any]]:
+                valid_cip_sql = _valid_cip_option_sql(cip_column)
                 if comparable_school_compare:
                     rows = _records_from_query(
                         con,
@@ -1387,6 +1426,7 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
                             SUM(profile_weight) AS alumni
                           FROM option_cohort
                           WHERE {cip_column} IS NOT NULL
+                            AND {valid_cip_sql}
                           GROUP BY unitid, {cip_column}
                           HAVING SUM(profile_weight) > ?
                         ),
@@ -1419,6 +1459,7 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
                             ROUND(SUM(profile_weight), 2) AS alumni
                           FROM option_cohort
                           WHERE {cip_column} IS NOT NULL
+                            AND {valid_cip_sql}
                           GROUP BY {cip_column}
                         )
                         SELECT code, COALESCE(title, code) AS title, alumni

@@ -4827,6 +4827,16 @@
       return `${row?.title || ''} (${row?.code || ''})`;
     }
 
+    function validMajorOption(row) {
+      const code = String(row?.code || '').trim();
+      const title = String(row?.title || '').trim();
+      return Boolean(
+        title
+        && !code.startsWith('99')
+        && /^(?:[0-9]{2}|[0-9]{2}\.[0-9]{2}|[0-9]{2}\.[0-9]{4})$/.test(code)
+      );
+    }
+
     function majorAliasTexts(row) {
       const title = String(row?.title || '');
       const code = String(row?.code || '');
@@ -4893,9 +4903,10 @@
     }
 
     function filteredMajors(rows, query) {
+      const validRows = (rows || []).filter(validMajorOption);
       const needle = searchNeedle(query);
-      if (!needle) return rows || [];
-      return (rows || [])
+      if (!needle) return validRows;
+      return validRows
         .map((row, index) => ({ row, index, score: majorSearchScore(row, query) }))
         .filter(item => item.score >= 0)
         .sort((a, b) => b.score - a.score || String(a.row.title || '').localeCompare(String(b.row.title || '')) || String(a.row.code || '').localeCompare(String(b.row.code || '')) || a.index - b.index)
@@ -4932,7 +4943,7 @@
     }
 
     function renderMajorSelectOptions(rows, selectedCode = '') {
-      const allRows = rows || [];
+      const allRows = (rows || []).filter(validMajorOption);
       const selected = allRows.find(row => String(row.code) === String(selectedCode)) || null;
       const selectedValue = selected ? String(selected.code) : '';
       const query = state.majorSearchQuery || '';
@@ -4960,7 +4971,7 @@
     }
 
     function selectMajorFromSearch(commitFirst = false) {
-      const rows = state.options?.major_options || [];
+      const rows = (state.options?.major_options || []).filter(validMajorOption);
       const query = $('major-search')?.value || '';
       state.majorSearchQuery = query;
       const normalizedQuery = searchNeedle(query);
@@ -5153,7 +5164,8 @@
 
     function populateMajorOptions(options, preserve = true) {
       const previous = preserve ? $('major-select').value : '';
-      const validCodes = new Set((options.major_options || []).map(row => String(row.code)));
+      const majorOptions = (options.major_options || []).filter(validMajorOption);
+      const validCodes = new Set(majorOptions.map(row => String(row.code)));
       const keepPrevious = previous && validCodes.has(String(previous));
       if (!keepPrevious) {
         state.majorSearchQuery = '';
@@ -5171,9 +5183,9 @@
         .map(String)
         .filter(code => validCodes.has(code));
       const existingCompareMajors = new Set(compareMajorValues);
-      renderMajorSelectOptions(options.major_options || [], keepPrevious ? previous : '');
-      populateSelect($('compare-major-select'), options.major_options || [], row => `${row.title} (${row.code})`, row => row.code, existingCompareMajors);
-      renderCompareMajorPicker(options.major_options || [], existingCompareMajors);
+      renderMajorSelectOptions(majorOptions, keepPrevious ? previous : '');
+      populateSelect($('compare-major-select'), majorOptions, row => `${row.title} (${row.code})`, row => row.code, existingCompareMajors);
+      renderCompareMajorPicker(majorOptions, existingCompareMajors);
       syncCompareStatus();
     }
 
@@ -12471,7 +12483,9 @@
         if (!button) return;
         event.preventDefault();
         cancelMajorSearchBlur();
-        const match = (state.options?.major_options || []).find(row => String(row.code) === String(button.dataset.majorSuggestion));
+        const match = (state.options?.major_options || [])
+          .filter(validMajorOption)
+          .find(row => String(row.code) === String(button.dataset.majorSuggestion));
         selectMajorRow(match);
       });
 
