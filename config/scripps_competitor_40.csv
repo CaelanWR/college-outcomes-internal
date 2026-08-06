@@ -1,0 +1,41 @@
+run_rank,unitid,ipeds_name,force_include_for_june5_503_run,data_quality_tier,data_quality_score,selection_reason,validation_requirement
+1,123165,Scripps College,yes,strong,92.1,trial anchor,strict Scripps entity and Claremont cross-registration audit
+2,121345,Pomona College,yes,strong,98.3,Claremont peer,standard
+3,112260,Claremont McKenna College,yes,strong,98.6,Claremont peer,standard
+4,115409,Harvey Mudd College,yes,strong,95.0,Claremont peer,standard
+5,121257,Pitzer College,yes,strong,90.5,Claremont peer,standard
+6,120254,Occidental College,yes,strong,98.5,Southern California liberal arts peer,standard
+7,123961,University of Southern California,yes,strong,98.4,Southern California competitor,standard
+8,110635,University of California-Berkeley,yes,mapping_repair_required,0.0,UC competitor,validate repaired school mapping and nonzero rows
+9,110662,University of California-Los Angeles,yes,mapping_repair_required,0.0,UC competitor,validate repaired school mapping and nonzero rows
+10,110680,University of California-San Diego,yes,mapping_repair_required,0.0,UC competitor,validate repaired school mapping and nonzero rows
+11,110705,University of California-Santa Barbara,yes,mapping_repair_required,0.0,UC competitor,validate repaired school mapping and nonzero rows
+12,110653,University of California-Irvine,yes,mapping_repair_required,0.0,UC competitor,validate repaired school mapping and nonzero rows
+13,110644,University of California-Davis,yes,mapping_repair_required,0.0,UC competitor,validate repaired school mapping and nonzero rows
+14,110714,University of California-Santa Cruz,yes,mapping_repair_required,0.0,UC competitor,validate repaired school mapping and nonzero rows
+15,110671,University of California-Riverside,yes,mapping_repair_required,0.0,UC competitor,validate repaired school mapping and nonzero rows
+16,445188,University of California-Merced,yes,mapping_repair_required,0.0,UC competitor,validate repaired school mapping and nonzero rows
+17,243744,Stanford University,yes,excellent,100.0,California reach competitor,standard
+18,110404,California Institute of Technology,yes,strong,100.0,California reach competitor,standard
+19,122931,Santa Clara University,yes,excellent,100.0,California private peer,standard
+20,117946,Loyola Marymount University,yes,excellent,100.0,Southern California private peer,standard
+21,121150,Pepperdine University,yes,excellent,100.0,Southern California private peer,standard
+22,111948,Chapman University,yes,excellent,100.0,Southern California private peer,standard
+23,122436,University of San Diego,yes,excellent,100.0,California private peer,standard
+24,122612,University of San Francisco,yes,excellent,100.0,California private peer,standard
+25,121691,University of Redlands,yes,excellent,100.0,Southern California private peer,standard
+26,209922,Reed College,yes,excellent,100.0,West Coast liberal arts peer,standard
+27,209056,Lewis & Clark College,yes,excellent,99.7,Pacific Northwest peer,standard
+28,237057,Whitman College,yes,strong,99.0,Pacific Northwest liberal arts peer,standard
+29,210401,Willamette University,yes,excellent,99.6,Pacific Northwest peer,standard
+30,236328,University of Puget Sound,yes,excellent,96.0,Pacific Northwest peer,standard
+31,236595,Seattle University,yes,excellent,100.0,Pacific Northwest private peer,standard
+32,235316,Gonzaga University,yes,excellent,100.0,Pacific Northwest private peer,standard
+33,189097,Barnard College,yes,strong,97.3,womens college peer,standard
+34,168218,Wellesley College,yes,strong,96.2,womens college peer,standard
+35,167835,Smith College,yes,strong,97.8,womens college peer,standard
+36,166939,Mount Holyoke College,yes,strong,97.2,womens college peer,standard
+37,211273,Bryn Mawr College,yes,strong,97.6,womens college peer,standard
+38,164465,Amherst College,yes,strong,98.6,selective liberal arts peer,standard
+39,168342,Williams College,yes,strong,98.1,selective liberal arts peer,standard
+40,216287,Swarthmore College,yes,strong,96.8,selective liberal arts peer,standard
