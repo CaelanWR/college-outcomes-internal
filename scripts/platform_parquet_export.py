@@ -21,7 +21,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 
-PLATFORM_EXPORT_VERSION = "2026-05-13-nace70-plus-elite-plus-one-feeders-grad-lift-v1"
+PLATFORM_EXPORT_VERSION = "2026-08-07-postgrad-destination-recovery-v2"
 PLATFORM_SUPPRESSION_THRESHOLD = 25
 PLATFORM_ROWS_PER_PART = 5000
 
@@ -197,6 +197,52 @@ def education_degree_text_sql(alias: str) -> str:
     return f"UPPER(TRIM(COALESCE({alias}.degree, '')))"
 
 
+def _education_column_names() -> set[str]:
+    return {str(column).lower() for column in globals().get("EDUCATION_COLUMNS", set())}
+
+
+def _optional_education_column_sql(alias: str, column: str) -> str:
+    if column.lower() in _education_column_names():
+        return f"{alias}.{column}"
+    return "CAST(NULL AS VARCHAR)"
+
+
+def _clean_education_text_sql(expression: str) -> str:
+    return f"""
+    CASE
+        WHEN {expression} IS NULL THEN NULL
+        WHEN LOWER(TRIM(CAST({expression} AS VARCHAR))) IN (
+            '', 'empty', 'unknown', 'other', 'n/a', 'na', 'none', 'null',
+            'not available', 'unavailable', 'undisclosed'
+        ) THEN NULL
+        ELSE TRIM(CAST({expression} AS VARCHAR))
+    END
+    """.strip()
+
+
+def education_raw_degree_text_sql(alias: str) -> str:
+    raw_degree = _optional_education_column_sql(alias, "degree_raw")
+    return f"UPPER(TRIM(COALESCE({_clean_education_text_sql(raw_degree)}, {alias}.degree, '')))"
+
+
+def postgrad_program_title_sql(alias: str) -> str:
+    """Best available observed program name when a CIP match is unavailable."""
+    terms = [_clean_education_text_sql(assigned_cip_title_sql(alias))]
+    for column in ("field_raw", "field"):
+        if column in _education_column_names():
+            terms.append(_clean_education_text_sql(f"{alias}.{column}"))
+    return f"COALESCE({', '.join(terms)})"
+
+
+def postgrad_school_name_sql(alias: str) -> str:
+    """Best available destination name without manufacturing an Unknown school."""
+    terms = [_clean_education_text_sql(f"{alias}.ipeds_name")]
+    for column in ("ultimate_parent_school_name", "university_name"):
+        if column in _education_column_names():
+            terms.append(_clean_education_text_sql(f"{alias}.{column}"))
+    return f"COALESCE({', '.join(terms)})"
+
+
 def postgrad_degree_filter_sql(alias: str = "e") -> str:
     """Later-degree filter that accepts normalized and raw graduate labels.
 
@@ -206,6 +252,7 @@ def postgrad_degree_filter_sql(alias: str = "e") -> str:
     """
     alias = alias.strip()
     degree_text = education_degree_text_sql(alias)
+    raw_degree_text = education_raw_degree_text_sql(alias)
     degree_cip = degree_cip_sql(alias)
     return f"""
     (
@@ -229,6 +276,7 @@ def postgrad_degree_filter_sql(alias: str = "e") -> str:
             'M.D.'
         )
         OR {degree_text} LIKE 'DOCTOR%'
+        OR REGEXP_LIKE({raw_degree_text}, '.*(PHD|PH\\.D\\.|DPHIL|DOCTOR OF PHILOSOPHY|JURIS DOCTOR|JD|J\\.D\\.|LLB|LL\\.B\\.|DOCTOR OF MEDICINE|MBBS|MBCHB|PROFESSIONAL DOCTORATE).*')
         OR LEFT(COALESCE({degree_cip}, ''), 2) = '22'
         OR LEFT(COALESCE({degree_cip}, ''), 5) = '51.12'
     )
@@ -240,16 +288,21 @@ def postgrad_degree_label_sql(alias: str = "e") -> str:
     alias = alias.strip()
     doctor_cip = degree_cip_sql(alias)
     degree_text = education_degree_text_sql(alias)
+    raw_degree_text = education_raw_degree_text_sql(alias)
     return f"""
     CASE
         WHEN LEFT(COALESCE({doctor_cip}, ''), 2) = '22'
-          OR {degree_text} IN ('LAW', 'JD', 'J.D.', 'JURIS DOCTOR') THEN 'LAW'
+          OR {degree_text} IN ('LAW', 'JD', 'J.D.', 'JURIS DOCTOR')
+          OR REGEXP_LIKE({raw_degree_text}, '.*(JURIS DOCTOR|(^|[^A-Z])JD([^A-Z]|$)|J\\.D\\.|LLB|LL\\.B\\.).*') THEN 'LAW'
         WHEN LEFT(COALESCE({doctor_cip}, ''), 5) = '51.12'
-          OR {degree_text} IN ('MD', 'M.D.') THEN 'MD'
+          OR {degree_text} IN ('MD', 'M.D.')
+          OR REGEXP_LIKE({raw_degree_text}, '.*(DOCTOR OF MEDICINE|DOCTOR OF OSTEOPATHIC MEDICINE|(^|[^A-Z])MD([^A-Z]|$)|M\\.D\\.|MBBS|MBCHB).*') THEN 'MD'
         WHEN {degree_text} IN ('MASTER', 'MASTERS', 'MASTER''S') THEN 'Masters'
         WHEN {degree_text} = 'MBA' THEN 'MBA'
-        WHEN {degree_text} IN ('PHD', 'PH.D.', 'RESEARCH DOCTORATE') THEN 'PhD'
-        WHEN {degree_text} = 'PROFESSIONAL DOCTORATE' THEN 'Professional Doctorate'
+        WHEN {degree_text} IN ('PHD', 'PH.D.', 'RESEARCH DOCTORATE')
+          OR REGEXP_LIKE({raw_degree_text}, '.*(PHD|PH\\.D\\.|DPHIL|DOCTOR OF PHILOSOPHY).*') THEN 'PhD'
+        WHEN {degree_text} = 'PROFESSIONAL DOCTORATE'
+          OR REGEXP_LIKE({raw_degree_text}, '.*(EDD|ED\\.D\\.|PSYD|PSY\\.D\\.|PHARMD|DPT|DNP|DDS|DMD|DVM|DBA|PROFESSIONAL DOCTORATE).*') THEN 'Professional Doctorate'
         WHEN {degree_text} = 'OTHER DOCTORATE' THEN 'Other Doctorate'
         WHEN {degree_text} IN ('DOCTOR', 'DOCTORATE') AND {alias}.ipeds_awlevel IN ('17') THEN 'PhD'
         WHEN {degree_text} IN ('DOCTOR', 'DOCTORATE') AND {alias}.ipeds_awlevel IN ('18', '09', '9', '10', '11') THEN 'Professional Doctorate'
@@ -351,11 +404,11 @@ later_candidates AS (
     SELECT
         b.*,
         {postgrad_degree_label_sql('e2')} AS postgrad_degree,
-        e2.ipeds_name AS postgrad_school,
+        {postgrad_school_name_sql('e2')} AS postgrad_school,
         LEFT({assigned_cip4_sql('e2')}, 2) AS postgrad_cip2,
         {assigned_cip4_sql('e2')} AS postgrad_cip4,
         {assigned_cip4_sql('e2')} AS postgrad_cip_code,
-        {assigned_cip_title_sql('e2')} AS postgrad_cip_title,
+        {postgrad_program_title_sql('e2')} AS postgrad_cip_title,
         YEAR({later_date}) AS postgrad_year,
         DATEDIFF('day', b.grad_date, {later_date}) / 365.25 AS years_to_postgrad
     FROM {base_cte} b
@@ -832,9 +885,9 @@ later_edu AS (
         o.grad_year,
         o.cip4,
         {postgrad_degree_with_plus_one_sql('e2', 'o')} AS later_degree_type,
-        e2.ipeds_name AS later_school,
+        {postgrad_school_name_sql('e2')} AS later_school,
         {assigned_cip4_sql('e2')} AS later_cip4,
-        {assigned_cip_title_sql('e2')} AS later_program,
+        {postgrad_program_title_sql('e2')} AS later_program,
         YEAR({later_date}) AS later_grad_year,
         DATEDIFF('day', o.grad_date, {later_date}) / 365.25 AS years_to_later_degree,
         {plus_one_masters_flag_sql('e2', 'o')} AS plus_one_masters_flag,
@@ -1259,9 +1312,9 @@ later_edu AS (
         o.grad_year,
         o.cip4,
         {postgrad_degree_with_plus_one_sql('e2', 'o')} AS later_degree_type,
-        e2.ipeds_name AS later_school,
+        {postgrad_school_name_sql('e2')} AS later_school,
         {assigned_cip4_sql('e2')} AS later_cip4,
-        {assigned_cip_title_sql('e2')} AS later_program,
+        {postgrad_program_title_sql('e2')} AS later_program,
         YEAR({later_date}) AS later_grad_year,
         DATEDIFF('day', o.grad_date, {later_date}) / 365.25 AS years_to_later_degree,
         {plus_one_masters_flag_sql('e2', 'o')} AS plus_one_masters_flag,
