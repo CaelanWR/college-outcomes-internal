@@ -699,7 +699,7 @@
     }
 
     function populateStaticControls(options) {
-      const defaultSchool = options.schools.find(s => /Columbia University in the City of New York/i.test(s.name)) || options.schools[0];
+      const defaultSchool = options.schools.find(s => String(s.unitid) === '123165') || options.schools[0];
       const existingPrimary = $('school-select').value || defaultSchool?.unitid || '';
       const existingCompare = new Set(selectedValues($('compare-school-select')).map(String));
       populateSelect($('school-select'), options.schools, s => s.name, s => s.unitid, new Set([String(existingPrimary)]));

@@ -1348,11 +1348,7 @@ def options(filters: QueryRequest, _: None = Depends(require_internal_password))
         static = _static_options()
         if not filters.schools and static.get("schools"):
             default_school = next(
-                (
-                    row
-                    for row in static["schools"]
-                    if "columbia university in the city of new york" in str(row.get("name", "")).lower()
-                ),
+                (row for row in static["schools"] if str(row.get("unitid")) == "123165"),
                 static["schools"][0],
             )
             filters = filters.model_copy(deep=True)
