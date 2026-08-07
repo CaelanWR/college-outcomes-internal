@@ -4011,6 +4011,15 @@ def _postgrad_show_program_detail(degree_type: str | None) -> bool:
     return bool(degree_type and degree_type != "No further education")
 
 
+def _postgrad_non_noise_text_sql(expression: str) -> str:
+    normalized = f"LOWER(TRIM(CAST({expression} AS VARCHAR)))"
+    return (
+        f"{expression} IS NOT NULL AND {normalized} NOT IN "
+        "('', 'unknown', 'empty', 'other', 'n/a', 'na', 'none', 'null', "
+        "'not available', 'unavailable', 'undisclosed')"
+    )
+
+
 def _postgrad_program_label_sql() -> tuple[str, str, list[Any]]:
     if _dataset_exists("references/cip4_titles") and "cip4_title" in _dataset_columns("references/cip4_titles"):
         return (
@@ -4068,7 +4077,7 @@ def _postgrad_aggregate_program_label_sql() -> tuple[str, str, list[Any]]:
         )
         params.append(_dataset_glob("references/cip2_titles"))
         title_terms.append("postgrad_cip2_title")
-    title_terms.extend(["NULLIF(postgrad_cip_code, '')", "'Unknown'"])
+    title_terms.append("NULLIF(postgrad_cip_code, '')")
     return f"COALESCE({', '.join(title_terms)})", "\n".join(joins), params
 
 
@@ -4106,8 +4115,7 @@ def _postgrad_detail_comparison(con: duckdb.DuckDBPyConnection, filters: QueryRe
               {join_sql}
               WHERE later_degree_type IN ({placeholders})
                 {entity_filter_sql}
-                AND {label_sql} IS NOT NULL
-                AND {label_sql} <> ''
+                AND {_postgrad_non_noise_text_sql(label_sql)}
             ),
             denom AS (
               SELECT code, SUM(profile_weight) AS total_n
@@ -5975,7 +5983,7 @@ def _postgrad_from_aggregates(con: duckdb.DuckDBPyConnection, filters: QueryRequ
               ROUND(SUM(n)) AS n,
               ROUND(100.0 * SUM(n) / NULLIF((SELECT total_n FROM denom), 0), 1) AS share_pct
             FROM degree_slice
-            WHERE postgrad_school IS NOT NULL AND postgrad_school <> ''
+            WHERE {_postgrad_non_noise_text_sql('postgrad_school')}
             GROUP BY postgrad_school
             HAVING SUM(n) > ?
             ORDER BY SUM(n) DESC
@@ -6008,7 +6016,7 @@ def _postgrad_from_aggregates(con: duckdb.DuckDBPyConnection, filters: QueryRequ
                   ROUND(SUM(n)) AS n,
                   ROUND(100.0 * SUM(n) / NULLIF((SELECT total_n FROM denom), 0), 1) AS share_pct
                 FROM degree_slice
-                WHERE program_label IS NOT NULL AND program_label <> ''
+                WHERE {_postgrad_non_noise_text_sql('program_label')}
                 GROUP BY program_label
                 HAVING SUM(n) > ?
                 ORDER BY SUM(n) DESC
@@ -6095,8 +6103,7 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
               ROUND(SUM(profile_weight)) AS n,
               ROUND(100.0 * SUM(profile_weight) / NULLIF((SELECT total_n FROM denom), 0), 1) AS share_pct
             FROM degree_slice
-            WHERE later_school IS NOT NULL
-              AND later_school <> ''
+            WHERE {_postgrad_non_noise_text_sql('later_school')}
             GROUP BY later_school
             HAVING SUM(profile_weight) > ?
             ORDER BY SUM(profile_weight) DESC
@@ -6128,8 +6135,7 @@ def _postgrad(con: duckdb.DuckDBPyConnection, filters: QueryRequest) -> dict[str
                   ROUND(SUM(profile_weight)) AS n,
                   ROUND(100.0 * SUM(profile_weight) / NULLIF((SELECT total_n FROM denom), 0), 1) AS share_pct
                 FROM degree_slice
-                WHERE program_label IS NOT NULL
-                  AND program_label <> ''
+                WHERE {_postgrad_non_noise_text_sql('program_label')}
                 GROUP BY program_label
                 HAVING SUM(profile_weight) > ?
                 ORDER BY SUM(profile_weight) DESC
