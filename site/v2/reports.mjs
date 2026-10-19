@@ -1,7 +1,7 @@
-import {label,format,visibleKey,sections,VIEWS,degreeLabel,normalizeEducation} from "./contracts.mjs";
-import {chartModels,lineModel} from "./chart-models.mjs";
-import {renderChart,fitCharts} from "./charts.mjs";
-import {actionFor,chartAction,reportQuery,reportGroups} from "./report-models.mjs";
+import {label,format,visibleKey,sections,VIEWS,degreeLabel,normalizeEducation} from "./contracts.mjs?v=1cb143ddb56e";
+import {chartModels,lineModel} from "./chart-models.mjs?v=1cb143ddb56e";
+import {renderChart,fitCharts} from "./charts.mjs?v=1cb143ddb56e";
+import {actionFor,chartAction,reportQuery,reportGroups} from "./report-models.mjs?v=1cb143ddb56e";
 const el=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
 export function createReports({api,getOptions=()=>({})}) {
   const dialog=el("dialog",undefined,"detail-report");dialog.setAttribute("aria-labelledby","detail-title");

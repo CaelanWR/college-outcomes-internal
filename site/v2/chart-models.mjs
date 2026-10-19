@@ -1,6 +1,6 @@
-import {COLORS} from "./theme.mjs";
-import {salaryTrend,salaryDensity} from "./salary-smoothing.mjs";
-import {isSalaryKey,normalizeEducation} from "./contracts.mjs";
+import {COLORS} from "./theme.mjs?v=1cb143ddb56e";
+import {salaryTrend,salaryDensity} from "./salary-smoothing.mjs?v=1cb143ddb56e";
+import {isSalaryKey,normalizeEducation} from "./contracts.mjs?v=1cb143ddb56e";
 const numeric=v=>typeof v==="number"&&Number.isFinite(v);
 const rows=v=>Array.isArray(v)?v:[];
 function field(data,candidates){return candidates.find(key=>data.some(row=>numeric(row[key])));}

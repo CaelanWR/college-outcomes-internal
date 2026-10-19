@@ -1,6 +1,6 @@
-import {bindPlotClick} from './interactions.mjs';
-import {DESTINATION_TYPES,destinationRows,filterDestinations,destinationNodes,treemapLayout} from './treemap-models.mjs';
-import {format} from './contracts.mjs';import {COLORS,FONT,TEXT_COLOR} from './theme.mjs';
+import {bindPlotClick} from './interactions.mjs?v=1cb143ddb56e';
+import {DESTINATION_TYPES,destinationRows,filterDestinations,destinationNodes,treemapLayout} from './treemap-models.mjs?v=1cb143ddb56e';
+import {format} from './contracts.mjs?v=1cb143ddb56e';import {COLORS,FONT,TEXT_COLOR} from './theme.mjs?v=1cb143ddb56e';
 const NS='http://www.w3.org/2000/svg',el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;},svg=(tag,attrs={},text)=>{const n=document.createElementNS(NS,tag);for(const [key,value] of Object.entries(attrs))n.setAttribute(key,String(value));if(text!==undefined)n.textContent=text;return n;};
 export function renderDestinationTreemaps(data,q,onDetail){
  const section=el('section',undefined,'destination-explorer');section.append(el('h2','Explore career destinations'),el('p','Click to zoom in; double-click or Shift+Enter to isolate. The other map follows your selection.','note'));

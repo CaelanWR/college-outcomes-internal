@@ -1,6 +1,6 @@
-import {bindPlotClick} from './interactions.mjs';
-import {pathwayModel,pathwayDetail,pathwayHighlights,pathwaySummary} from './pathway-models.mjs';
-import {format} from './contracts.mjs';import {COLORS,FONT,TEXT_COLOR} from './theme.mjs';
+import {bindPlotClick} from './interactions.mjs?v=1cb143ddb56e';
+import {pathwayModel,pathwayDetail,pathwayHighlights,pathwaySummary} from './pathway-models.mjs?v=1cb143ddb56e';
+import {format} from './contracts.mjs?v=1cb143ddb56e';import {COLORS,FONT,TEXT_COLOR} from './theme.mjs?v=1cb143ddb56e';
 const NS='http://www.w3.org/2000/svg',el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const svg=(tag,attrs={},text)=>{const n=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,String(v));if(text!==undefined)n.textContent=text;return n;};
 const special=name=>['Not observed','Other / limited detail','Other roles'].includes(name);

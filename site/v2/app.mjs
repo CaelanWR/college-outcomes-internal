@@ -1,11 +1,11 @@
-import {renderPathways} from "./pathways.mjs";
-import {renderDestinationTreemaps} from "./treemaps.mjs";
-import {VIEWS, makeQuery, sections, label, format, visibleKey,degreeLabel,normalizeEducation} from "./contracts.mjs";
-import {chartModels} from "./chart-models.mjs";
-import {renderChart,fitCharts} from "./charts.mjs";
-import {actionFor,chartAction} from "./report-models.mjs";
-import {comparisonModels,comparisonRows,comparisonScope,comparisonSections} from "./comparison-models.mjs";
-import {createReports} from "./reports.mjs";
+import {renderPathways} from "./pathways.mjs?v=1cb143ddb56e";
+import {renderDestinationTreemaps} from "./treemaps.mjs?v=1cb143ddb56e";
+import {VIEWS, makeQuery, sections, label, format, visibleKey,degreeLabel,normalizeEducation} from "./contracts.mjs?v=1cb143ddb56e";
+import {chartModels} from "./chart-models.mjs?v=1cb143ddb56e";
+import {renderChart,fitCharts} from "./charts.mjs?v=1cb143ddb56e";
+import {actionFor,chartAction} from "./report-models.mjs?v=1cb143ddb56e";
+import {comparisonModels,comparisonRows,comparisonScope,comparisonSections} from "./comparison-models.mjs?v=1cb143ddb56e";
+import {createReports} from "./reports.mjs?v=1cb143ddb56e";
 export function startWorkspace({request,apiOrigin="",pathwaysOrigin=apiOrigin}={}) {
 const responseCache=new Map();
 const $ = id => document.getElementById(id);
