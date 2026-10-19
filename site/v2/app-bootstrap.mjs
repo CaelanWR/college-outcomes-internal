@@ -1,3 +1,3 @@
-import {startWorkspace} from "./app.mjs?v=1cb143ddb56e";
-import {deploymentFor} from "./deployment.mjs?v=1cb143ddb56e";
+import {startWorkspace} from "./app.mjs?v=34e7f57be8d1";
+import {deploymentFor} from "./deployment.mjs?v=34e7f57be8d1";
 startWorkspace(deploymentFor(location));

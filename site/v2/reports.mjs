@@ -1,7 +1,8 @@
-import {label,format,visibleKey,sections,VIEWS,degreeLabel,normalizeEducation} from "./contracts.mjs?v=1cb143ddb56e";
-import {chartModels,lineModel} from "./chart-models.mjs?v=1cb143ddb56e";
-import {renderChart,fitCharts} from "./charts.mjs?v=1cb143ddb56e";
-import {actionFor,chartAction,reportQuery,reportGroups} from "./report-models.mjs?v=1cb143ddb56e";
+import {label,format,visibleKey,sections,VIEWS,degreeLabel,normalizeEducation} from "./contracts.mjs?v=34e7f57be8d1";
+import {chartModels,lineModel} from "./chart-models.mjs?v=34e7f57be8d1";
+import {renderChart,fitCharts} from "./charts.mjs?v=34e7f57be8d1";
+import {actionFor,chartAction,reportQuery,reportGroups} from "./report-models.mjs?v=34e7f57be8d1";
+import {projectionNote} from './student-projections.mjs?v=34e7f57be8d1';
 const el=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
 export function createReports({api,getOptions=()=>({})}) {
   const dialog=el("dialog",undefined,"detail-report");dialog.setAttribute("aria-labelledby","detail-title");
@@ -47,7 +48,7 @@ export function createReports({api,getOptions=()=>({})}) {
     if(action.kind==="pathway"){
       const paths=action.paths||[],panel=el("section",undefined,"panel");panel.append(el("h3","Recorded paths through this selection"),el("p",`${paths.length} linked sequences. Percentages use alumni in this selection.`,"note"),reportTable(paths,"pathway.sequence",data,q));content.append(panel);
     }else if(action.kind==='projection'){
-      const panel=el('section',undefined,'panel');panel.append(el('h3','Expected graduating classes'),el('p','Projected counts come from the current-student profiles and the original tracker calculation. Institution, degree and program filters apply across expected graduation years.','note'),reportTable(action.rows||[],'current.projections',data,q));content.append(panel);
+      const panel=el('section',undefined,'panel');panel.append(el('h3','Expected graduating classes'),el('p',projectionNote(data)+' Institution, degree and program filters apply across expected graduation years.','note'),reportTable(action.rows||[],'current.projections',data,q));content.append(panel);
     }else if(action.kind==='treemap'){
       const panel=el('section',undefined,'panel');panel.append(el('h3','Roles, industries and companies in this selection'),el('p','Only the selected destinations are included. Select a row to inspect its detail.','note'),reportTable(action.rows||[],'destination.selection',data,q));content.append(panel);
     }else if(action.kind==="point"){

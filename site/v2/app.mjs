@@ -1,11 +1,12 @@
-import {renderPathways} from "./pathways.mjs?v=1cb143ddb56e";
-import {renderDestinationTreemaps} from "./treemaps.mjs?v=1cb143ddb56e";
-import {VIEWS, makeQuery, sections, label, format, visibleKey,degreeLabel,normalizeEducation} from "./contracts.mjs?v=1cb143ddb56e";
-import {chartModels} from "./chart-models.mjs?v=1cb143ddb56e";
-import {renderChart,fitCharts} from "./charts.mjs?v=1cb143ddb56e";
-import {actionFor,chartAction} from "./report-models.mjs?v=1cb143ddb56e";
-import {comparisonModels,comparisonRows,comparisonScope,comparisonSections} from "./comparison-models.mjs?v=1cb143ddb56e";
-import {createReports} from "./reports.mjs?v=1cb143ddb56e";
+import {renderPathways} from "./pathways.mjs?v=34e7f57be8d1";
+import {renderDestinationTreemaps} from "./treemaps.mjs?v=34e7f57be8d1";
+import {VIEWS, makeQuery, sections, label, format, visibleKey,degreeLabel,normalizeEducation,defaultSchool} from "./contracts.mjs?v=34e7f57be8d1";
+import {prepareStudentProjections} from './student-projections.mjs?v=34e7f57be8d1';
+import {chartModels} from "./chart-models.mjs?v=34e7f57be8d1";
+import {renderChart,fitCharts} from "./charts.mjs?v=34e7f57be8d1";
+import {actionFor,chartAction} from "./report-models.mjs?v=34e7f57be8d1";
+import {comparisonModels,comparisonRows,comparisonScope,comparisonSections} from "./comparison-models.mjs?v=34e7f57be8d1";
+import {createReports} from "./reports.mjs?v=34e7f57be8d1";
 export function startWorkspace({request,apiOrigin="",pathwaysOrigin=apiOrigin}={}) {
 const responseCache=new Map();
 const $ = id => document.getElementById(id);
@@ -38,6 +39,14 @@ function comparisonControls(){
 async function activateView(key){if(busy)return;const wasComparison=state.view==="comparison";if(options)collect();invalidate();state.view=key;comparisonControls();updateHeading();if(options){if(wasComparison!==(key==="comparison"))await refreshOptions();await load();}}
 function invalidate(){if(!options||busy)return;reports.close();$("content").replaceChildren(element("section","Your cohort changed. Explore the cohort to load its results.","empty"));setStatus("Filters changed. Results will update when you explore this cohort.");}
 async function api(path,body){
+  const data=await requestData(path,body);
+  if(path!=="/api/dashboard"||!body?.include_current_students)return data;
+  // A historical cohort filter must not change the current class-size baseline.
+  if(body.compare_mode&&body.compare_dimension==='school')return data;
+  const baseline=body.grad_years?.length||body.view_mode==='overtime'?await requestData(path,{...body,majors:[],grad_years:[],compare_mode:false,view_mode:'snapshot',top_n:5,include_current_students:false}):data;
+  return prepareStudentProjections(data,baseline);
+}
+async function requestData(path,body){
   const authAtStart=token,epochAtStart=connectionEpoch;
   const cacheKey=["/api/dashboard","/api/pathways"].includes(path)?path+JSON.stringify(body):null;
   const cached=cacheKey&&responseCache.get(cacheKey);if(cached&&Date.now()-cached.time<120000)return cached.data;
@@ -53,7 +62,7 @@ function populate(id, rows, value, title, initial){
 function fillOptions(first=false){
   const schools=options.schools||[];
   populate("school",schools,r=>r.unitid,r=>r.name,state.schools[0]);
-  if(first){$("school").value=schools.some(r=>String(r.unitid)==="123165")?"123165":String(schools[0]?.unitid||"");}
+  if(first)$("school").value=defaultSchool(schools);
   populate("peer",[{unitid:"",name:"Choose a peer"},...schools.filter(r=>String(r.unitid)!==$("school").value)],r=>r.unitid,r=>r.name,state.peers[0]||"");
   populate("peer2",[{unitid:"",name:"Add another peer"},...schools.filter(r=>String(r.unitid)!==$("school").value)],r=>r.unitid,r=>r.name,state.peers[1]||"");
   populate("degree",options.degrees||[],r=>r.degree,r=>degreeLabel(r.label||r.degree),state.degree);

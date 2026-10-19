@@ -1,6 +1,6 @@
-import {bindPlotClick,createIsolation} from './interactions.mjs?v=1cb143ddb56e';
-import {COLORS, TEXT_COLOR, FONT, seriesColor} from "./theme.mjs?v=1cb143ddb56e";
-import {format,label,formatAxis} from "./contracts.mjs?v=1cb143ddb56e";
+import {bindPlotClick,createIsolation} from './interactions.mjs?v=34e7f57be8d1';
+import {COLORS, TEXT_COLOR, FONT, seriesColor} from "./theme.mjs?v=34e7f57be8d1";
+import {format,label,formatAxis} from "./contracts.mjs?v=34e7f57be8d1";
 const NS="http://www.w3.org/2000/svg", W=720,H=330,L=66,R=82,T=25,B=53;
 const valid=v=>typeof v==="number"&&Number.isFinite(v);
 function svg(tag,attrs={},text){const e=document.createElementNS(NS,tag);for(const [key,value] of Object.entries(attrs))e.setAttribute(key,String(value));if(text!==undefined)e.textContent=text;return e;}
@@ -23,6 +23,13 @@ function chartIsolation(figure,size,apply){
 function addLegend(container,series,controller){const legend=html('div',undefined,'chart-legend');series.forEach((s,i)=>{const button=html('button',undefined,'legend-item');button.type='button';button.setAttribute('aria-pressed','true');button.setAttribute('aria-label',`${s.name}. Click to toggle; double-click or Shift+Enter to isolate.`);const swatch=svg('svg',{width:22,height:10,'aria-hidden':'true'});swatch.append(svg('line',{x1:1,x2:21,y1:5,y2:5,stroke:s.color||seriesColor(i),'stroke-width':2}));button.append(swatch,document.createTextNode(s.name));bindPlotClick(button,{single:()=>controller.toggle(i),double:()=>controller.isolate(i)});legend.append(button);});container.append(legend);}
 export function linePaths(points,xKey,yKey,xs,ys){let pen=false,path="";for(const p of points){if(!valid(p[yKey])){pen=false;continue;}path+=(pen?" L":" M")+xs(p[xKey])+","+ys(p[yKey]);pen=true;}return path.trim();}
 export function renderChart(model,onPoint){
+  if(model.expandedSeries||model.expandedRows){
+    const wrapper=html('div',undefined,'major-chart'),controls=html('div',undefined,'major-chart-controls'),button=html('button',undefined,'quiet'),plot=html('div');
+    let expanded=false;const total=(model.expandedSeries||model.expandedRows).length;
+    button.type='button';button.setAttribute('aria-label',`Show more majors in ${model.title}`);
+    const draw=()=>{button.textContent=expanded?'Show top 5 majors':`Show more majors (${total})`;button.setAttribute('aria-expanded',String(expanded));const visible={...model,...(expanded&&model.expandedSeries?{series:model.expandedSeries}:{}),...(expanded&&model.expandedRows?{rows:model.expandedRows}:{})};delete visible.expandedSeries;delete visible.expandedRows;plot.replaceChildren(renderChart(visible,onPoint));if(wrapper.isConnected)requestAnimationFrame(()=>fitCharts(wrapper));};
+    button.addEventListener('click',()=>{expanded=!expanded;draw();});controls.append(button);wrapper.append(controls,plot);draw();return wrapper;
+  }
   const smooth=model.smoothing===true;
   const figure=html("figure",undefined,"chart-figure");const description=html("p",model.projection&&model.type==="lines"?"Share of graduating class":model.type==="distribution"?"Share of salaries":label(model.value||model.y||"share_pct"),"chart-axis-note");figure.append(description);
   const tooltip=html("div",undefined,"chart-tooltip");tooltip.hidden=true;tooltip.setAttribute("role","status");

@@ -11,6 +11,9 @@ export const VIEWS = {
   comparison: ["Compare outcomes", "Compare majors or peer institutions using the same degree, cohort and horizon."],
   coverage: ["Evidence & coverage", "Inspect the support available for your selected cohort."]
 };
+export function defaultSchool(schools=[]) {
+  return String(schools.find(s=>String(s.unitid)==='243744')?.unitid ?? schools[0]?.unitid ?? '');
+}
 export function makeQuery(state,{optionsOnly=false}={}) {
   if (!(state.view in VIEWS)) throw new Error("Choose a valid view.");
   if (!state.schools?.length) throw new Error("Select at least one institution.");
@@ -48,6 +51,7 @@ export function normalizeEducation(data){
  return result;
 }
 export const LABELS = {
+  profile_based_students:'Profile-based estimate', profile_based_total_students:'Cohort profile-based estimate',
   projected_share_pct: "Projected major share", current_students: "Projected students", total_current_students: "Projected cohort size", observed_current_profiles: "Observed student profiles", total_observed_current_profiles: "Observed student profiles in cohort", current_coverage_pct: "Profile coverage", total_current_coverage_pct: "Cohort profile coverage", earlier_projected_students: "Earlier projected students", later_projected_students: "Later projected students",
   share_change_pp: 'Change in major share', recent_alumni: 'Alumni in recent cohorts', prior_share_pct: 'Earlier major share', recent_share_pct: 'Recent major share', role_k50_v3: 'Role', role_k150_v3: 'Detailed role', industry_k200: 'Industry', industry_k400: 'Detailed industry', employer: 'Company',
   profiles: "Profiles", role_1yr: "Role · year 1", role_5yr: "Role · year 5", role_10yr: "Role · year 10",
