@@ -1,7 +1,7 @@
-import {COLORS} from "./theme.mjs?v=34e7f57be8d1";
-import {salaryTrend,salaryDensity} from "./salary-smoothing.mjs?v=34e7f57be8d1";
-import {isSalaryKey,normalizeEducation} from "./contracts.mjs?v=34e7f57be8d1";
-import {prepareStudentProjections,sourceStudentRows,projectionNote} from './student-projections.mjs?v=34e7f57be8d1';
+import {COLORS} from "./theme.mjs?v=20c03c7369ce";
+import {salaryTrend,salaryDensity} from "./salary-smoothing.mjs?v=20c03c7369ce";
+import {isSalaryKey,normalizeEducation} from "./contracts.mjs?v=20c03c7369ce";
+import {prepareStudentProjections,sourceStudentRows,projectionNote} from './student-projections.mjs?v=20c03c7369ce';
 const numeric=v=>typeof v==="number"&&Number.isFinite(v);
 const rows=v=>Array.isArray(v)?v:[];
 function fewerMajors(model,selected){

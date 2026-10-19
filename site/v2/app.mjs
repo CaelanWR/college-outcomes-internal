@@ -1,12 +1,12 @@
-import {renderPathways} from "./pathways.mjs?v=34e7f57be8d1";
-import {renderDestinationTreemaps} from "./treemaps.mjs?v=34e7f57be8d1";
-import {VIEWS, makeQuery, sections, label, format, visibleKey,degreeLabel,normalizeEducation,defaultSchool} from "./contracts.mjs?v=34e7f57be8d1";
-import {prepareStudentProjections} from './student-projections.mjs?v=34e7f57be8d1';
-import {chartModels} from "./chart-models.mjs?v=34e7f57be8d1";
-import {renderChart,fitCharts} from "./charts.mjs?v=34e7f57be8d1";
-import {actionFor,chartAction} from "./report-models.mjs?v=34e7f57be8d1";
-import {comparisonModels,comparisonRows,comparisonScope,comparisonSections} from "./comparison-models.mjs?v=34e7f57be8d1";
-import {createReports} from "./reports.mjs?v=34e7f57be8d1";
+import {renderPathways} from "./pathways.mjs?v=20c03c7369ce";
+import {renderDestinationTreemaps} from "./treemaps.mjs?v=20c03c7369ce";
+import {VIEWS, makeQuery, sections, label, format, visibleKey,degreeLabel,normalizeEducation,defaultSchool} from "./contracts.mjs?v=20c03c7369ce";
+import {prepareStudentProjections} from './student-projections.mjs?v=20c03c7369ce';
+import {chartModels} from "./chart-models.mjs?v=20c03c7369ce";
+import {renderChart,fitCharts} from "./charts.mjs?v=20c03c7369ce";
+import {actionFor,chartAction} from "./report-models.mjs?v=20c03c7369ce";
+import {comparisonModels,comparisonRows,comparisonScope,comparisonSections} from "./comparison-models.mjs?v=20c03c7369ce";
+import {createReports} from "./reports.mjs?v=20c03c7369ce";
 export function startWorkspace({request,apiOrigin="",pathwaysOrigin=apiOrigin}={}) {
 const responseCache=new Map();
 const $ = id => document.getElementById(id);
@@ -105,11 +105,8 @@ function metricReport(key,data,q){const tab=key.includes("salary")?"earnings":ke
 function render(data,q){
   data=normalizeEducation(data);
   const content=$("content");content.replaceChildren();const compare=state.view==="comparison",list=compare?comparisonSections(data,q):sections(data);
-  const evidence=element("div",undefined,"evidence");const meta=data.meta||{};
-  evidence.textContent=`Source: ${meta.data_version||"version not returned"} · ${q.horizon==="early_2025"||meta.partial_horizon?"Partial outcome horizon":"Horizon: "+$("horizon").selectedOptions[0].textContent} · ${q.view_mode==="snapshot"?"Snapshot":"Over time"}.`;
-  content.append(evidence);
-  if(state.view==="pathways"){evidence.textContent="Linked role checkpoints: 1, 5 and 10 years after graduation.";content.append(renderPathways(data,q,(action,base,response)=>reports.open(action,base,response)));return;}
-  if(!list.length){const box=element("section",undefined,"empty");box.append(element("h2","No results returned for this view"),element("p","Try another cohort or horizon. The current API does not always distinguish unavailable data from insufficient support."));content.append(box);return;}
+  if(state.view==="pathways"){content.append(renderPathways(data,q,(action,base,response)=>reports.open(action,base,response)));return;}
+  if(!list.length){const box=element("section",undefined,"empty");box.append(element("h2","No results returned for this view"),element("p","Try another program, graduation cohort or horizon."));content.append(box);return;}
   if(state.view==='destinations'&&q.view_mode==='snapshot')content.append(renderDestinationTreemaps(data,q,(action,base,response)=>reports.open(action,base,response)));
   const models=compare?comparisonModels(data,q,options):chartModels(data,state.view,q.view_mode);
   if(compare){const rows=comparisonRows(data,q,options);if(rows.length){const panel=element("section",undefined,"panel comparison-summary");panel.append(element("h2",q.compare_dimension==="major"?"Majors at a glance":"Institutions at a glance"),element("p","Select a name to open its detailed report.","note"),table(rows,q.compare_dimension==="major"?"major_comparison":"school_comparison",data,q,["code","unitid"]));content.append(panel);}else content.append(element("section","No comparison results returned for these selections.","empty"));}
@@ -118,17 +115,17 @@ function render(data,q){
   const results=element("div",undefined,"results chart-results");
   for(const model of models){const panel=element("section",undefined,"panel chart-panel"+((model.type==="lines"&&model.series.length>3||model.type==='bubble')?" full":""));panel.append(element("h2",model.title));if(model.note)panel.append(element("p",model.note,"note"));panel.append(renderChart(model,row=>reports.open(chartAction(model,row,data),compare?comparisonScope(q,model,row):q,data)));results.append(panel);}
   if(state.view==='overview'&&q.include_current_students&&!data.current_student_trend_by_major?.length&&!data.current_student_trend?.length&&!data.major_trend?.current_series?.length){const missing=element('section',undefined,'panel');missing.append(element('h2','Current student projections'),element('p','No current-student projections were returned for this institution, degree and program.','note'));content.append(missing);}
-  if(models.length){content.append(element("p","Select a result to open its detailed report.","evidence"),results);}
-  const details=element("details",undefined,"data-details");details.open=!models.length;details.append(element("summary",models.length?"View the underlying tables and supporting metrics":"Available data and supporting metrics"));
+  if(models.length){content.append(results);}
+  const details=element("details",undefined,"data-details");details.open=!models.length;details.append(element("summary","Data tables"));
   const tables=element("div",undefined,"results");for(const section of list){const panel=element("section",undefined,"panel"+(section.metrics?" full":""));panel.append(element("h2",section.key.split(".").map(label).join(" · ")));if(section.metrics)panel.append(metricGrid(section.metrics));else panel.append(table(section.rows,section.key,data,q));tables.append(panel);}details.append(tables);content.append(details);
-  const methodology=element("details",undefined,"data-details methodology");methodology.append(element("summary","How the numbers are calculated"),element("p","Alumni counts are calibrated to the graduate population. Salaries follow the outcomes model, and the shaded range shows the 25th to 75th percentiles. Further education reflects the records available. Counts are rounded to whole numbers, salaries to useful amounts, and percentages to at most one decimal. Calculations retain full precision.","evidence"));content.append(methodology);requestAnimationFrame(()=>fitCharts(content));
+  const methodology=element("details",undefined,"data-details methodology");methodology.append(element("summary","About the data"),element("p","Alumni counts are calibrated to the graduate population. Salaries follow the outcomes model, and the shaded range shows the 25th to 75th percentiles. Further education reflects the records available.","evidence"));content.append(methodology);requestAnimationFrame(()=>fitCharts(content));
 }
 async function load(){
   if(busy)return;const epoch=connectionEpoch;reports.close();let q;try{collect();q=makeQuery(state);}catch(error){$("content").replaceChildren(element("section",error.message,"empty"));setStatus(error.message,true);return;}
-  busy=true;controls(true);$("content").setAttribute("aria-busy","true");setStatus("Querying the current protected outcomes API…");
+  busy=true;controls(true);$("content").setAttribute("aria-busy","true");setStatus("Loading outcomes…");
   // Clear prior results so old data cannot appear under newly selected filters.
   $("content").replaceChildren(element("section","Loading this cohort…","empty"));
-  try{const data=await api(state.view==="pathways"?"/api/pathways":"/api/dashboard",q);render(data,q);setStatus("Cohort loaded. The selected filters apply to every result below.");}catch(error){if(epoch!==connectionEpoch)return;$("content").replaceChildren(element("section","Results could not be loaded. "+error.message,"empty"));setStatus(error.message,true);}finally{if(epoch===connectionEpoch){busy=false;controls(false);$("content").removeAttribute("aria-busy");}}
+  try{const data=await api(state.view==="pathways"?"/api/pathways":"/api/dashboard",q);render(data,q);setStatus("");}catch(error){if(epoch!==connectionEpoch)return;$("content").replaceChildren(element("section","Results could not be loaded. "+error.message,"empty"));setStatus(error.message,true);}finally{if(epoch===connectionEpoch){busy=false;controls(false);$("content").removeAttribute("aria-busy");}}
 }
 $("apply").addEventListener("click",load);
 for(const button of document.querySelectorAll("[data-mode]"))button.addEventListener("click",async()=>{if(busy)return;state.mode=button.dataset.mode;document.querySelectorAll("[data-mode]").forEach(b=>b.setAttribute("aria-pressed",String(b===button)));if(options)await load();});
@@ -136,11 +133,9 @@ function openLogin(){if(busy){cancelPending();setStatus("Pending query cancelled
 $("connection").addEventListener("click",openLogin);$("welcome-connect").addEventListener("click",openLogin);$("close-dialog").addEventListener("click",()=>$("login").close());
 $("login-form").addEventListener("submit",async event=>{
   event.preventDefault();cancelPending();const epoch=connectionEpoch;responseCache.clear();token=$("token").value.trim();$("token").value="";busy=true;controls(true);const submit=$("login-form").querySelector("[type=submit]");submit.disabled=true;$("login-error").textContent="Connecting…";
-  try{options=await api("/api/options",{schools:[],degree:state.degree,cip_level:"cip4",majors:[],grad_years:[],horizon:state.horizon,active_tab:"overview"});if(!options.schools?.length)throw new Error("No institutions are available for this credential.");fillOptions(true);controls(false);$("connection").textContent="Connected · manage";$("login").close();setStatus("Connected. Choose a cohort to explore.");}catch(error){if(epoch!==connectionEpoch)return;reports.close();token="";responseCache.clear();options=null;controls(true);$("connection").textContent="Connect data";$("content").innerHTML=welcome;$("welcome-connect").addEventListener("click",openLogin);$("login-error").textContent=error.message;}finally{if(epoch===connectionEpoch){busy=false;submit.disabled=false;}}
+  try{options=await api("/api/options",{schools:[],degree:state.degree,cip_level:"cip4",majors:[],grad_years:[],horizon:state.horizon,active_tab:"overview"});if(!options.schools?.length)throw new Error("No institutions are available for this credential.");fillOptions(true);controls(false);$("connection").textContent="Connected · manage";$("login").close();setStatus("");}catch(error){if(epoch!==connectionEpoch)return;reports.close();token="";responseCache.clear();options=null;controls(true);$("connection").textContent="Connect data";$("content").innerHTML=welcome;$("welcome-connect").addEventListener("click",openLogin);$("login-error").textContent=error.message;}finally{if(epoch===connectionEpoch){busy=false;submit.disabled=false;}}
   if(epoch===connectionEpoch&&options)await load();
 });
 $("disconnect").addEventListener("click",()=>{cancelPending();reports.close();token="";responseCache.clear();options=null;state.schools=[];controls(true);$("connection").textContent="Connect data";$("content").innerHTML=welcome;$("welcome-connect").addEventListener("click",openLogin);$("cohort-label").textContent="Connect to choose an institution";$("login").close();setStatus("Disconnected. Your token has been cleared from memory.");});
 comparisonControls();updateHeading();
-api("/api/health").then(health=>{$("release").textContent=`Current source: ${health.data_version||"version unavailable"} · Exported ${health.data_created_at?health.data_created_at.slice(0,10):"date unavailable"}`;}).catch(()=>{$("release").textContent="Current source metadata could not be reached.";});
-
 }

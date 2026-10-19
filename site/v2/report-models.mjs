@@ -1,5 +1,5 @@
-import {currentStudentRows} from './chart-models.mjs?v=34e7f57be8d1';
-import {degreeLabel} from './contracts.mjs?v=34e7f57be8d1';
+import {currentStudentRows} from './chart-models.mjs?v=20c03c7369ce';
+import {degreeLabel} from './contracts.mjs?v=20c03c7369ce';
 const list=value=>Array.isArray(value)?value:[];
 const pick=(row,...keys)=>keys.map(k=>row?.[k]).find(v=>v!==null&&v!==undefined&&v!=="");
 export function actionFor(section,row,data={}) {

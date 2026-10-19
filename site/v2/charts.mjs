@@ -1,6 +1,6 @@
-import {bindPlotClick,createIsolation} from './interactions.mjs?v=34e7f57be8d1';
-import {COLORS, TEXT_COLOR, FONT, seriesColor} from "./theme.mjs?v=34e7f57be8d1";
-import {format,label,formatAxis} from "./contracts.mjs?v=34e7f57be8d1";
+import {bindPlotClick,createIsolation} from './interactions.mjs?v=20c03c7369ce';
+import {COLORS, TEXT_COLOR, FONT, seriesColor} from "./theme.mjs?v=20c03c7369ce";
+import {format,label,formatAxis} from "./contracts.mjs?v=20c03c7369ce";
 const NS="http://www.w3.org/2000/svg", W=720,H=330,L=66,R=82,T=25,B=53;
 const valid=v=>typeof v==="number"&&Number.isFinite(v);
 function svg(tag,attrs={},text){const e=document.createElementNS(NS,tag);for(const [key,value] of Object.entries(attrs))e.setAttribute(key,String(value));if(text!==undefined)e.textContent=text;return e;}

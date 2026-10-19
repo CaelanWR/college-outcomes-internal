@@ -1,6 +1,6 @@
-import {bindPlotClick} from './interactions.mjs?v=34e7f57be8d1';
-import {pathwayModel,pathwayDetail,pathwayHighlights,pathwaySummary} from './pathway-models.mjs?v=34e7f57be8d1';
-import {format} from './contracts.mjs?v=34e7f57be8d1';import {COLORS,FONT,TEXT_COLOR} from './theme.mjs?v=34e7f57be8d1';
+import {bindPlotClick} from './interactions.mjs?v=20c03c7369ce';
+import {pathwayModel,pathwayDetail,pathwayHighlights,pathwaySummary} from './pathway-models.mjs?v=20c03c7369ce';
+import {format} from './contracts.mjs?v=20c03c7369ce';import {COLORS,FONT,TEXT_COLOR} from './theme.mjs?v=20c03c7369ce';
 const NS='http://www.w3.org/2000/svg',el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const svg=(tag,attrs={},text)=>{const n=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,String(v));if(text!==undefined)n.textContent=text;return n;};
 const special=name=>['Not observed','Other / limited detail','Other roles'].includes(name);
@@ -48,5 +48,5 @@ export function renderPathways(data,q,onDetail){
  };
  for(const [mode,title] of [['checkpoints','Career map'],['next','Next roles'],['feeder','Feeder roles']]){const b=el('button',title);b.type='button';b.dataset.mode=mode;b.addEventListener('click',()=>{state.mode=mode;draw();});buttons.push(b);modes.append(b);}
  interval.addEventListener('change',()=>{state.pair=interval.value.split('-').map(Number);draw();});role.addEventListener('change',()=>{state.role=role.value;state.isolated=null;draw();});controls.append(modes,intervalLabel,roleLabel,reset);section.append(controls,metrics,body);
- const source=el('details',undefined,'pathway-source-details');source.append(el('summary',`About these pathways · ${format(cohort.total,'alumni')} alumni in the cohort`),el('p',`Source: ${data.meta?.source_label||'Linked snapshots'} · Exported ${data.meta?.data_created_at?.slice(0,10)||'date unavailable'}. This local bundle is separate from the current tracker release. Other roles groups smaller categories. Any limited-detail categories follow the tracker’s cell settings.`,'evidence'));section.append(source);draw();return section;
+ const source=el('details',undefined,'pathway-source-details');source.append(el('summary','About these pathways'),el('p','Follows alumni with recorded roles at years 1, 5 and 10 after graduation. Smaller destinations are grouped under Other roles.','evidence'));section.append(source);draw();return section;
 }
